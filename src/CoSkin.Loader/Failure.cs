@@ -4,6 +4,8 @@ internal sealed record Failure(string Code, string Message, long? Line = null, l
 {
     internal static Failure Describe(Exception exception)
     {
+        if (exception is TrayActionException action)
+            return new(action.Code, TrayMessages.Error(System.Globalization.CultureInfo.CurrentUICulture.Name, action.Code));
         if (exception is System.Text.Json.JsonException syntax)
             return new("json-syntax", "JSON 문법 오류", syntax.LineNumber + 1, syntax.BytePositionInLine + 1);
         var message = exception.Message;

@@ -528,3 +528,52 @@ export const controlMessages = {
     styleTab: "样式",
   },
 };
+
+Object.assign(controlMessages.ko, {
+  runtimeStartup: "Windows 로그인 시 CoSkin 실행", runtimeStartupHelp: "트레이에서 대기하다 Codex가 켜지면 연결합니다. 설치된 CoSkin에서 설정할 수 있습니다.",
+  runtimeUpdateTitle: "GitHub 업데이트", runtimeInstallUpdate: "업데이트 설치",
+  runtimeUpdateidle: "GitHub의 서명된 안정 버전을 확인합니다.",
+  runtimeUpdateunavailable: "업데이트를 확인할 수 없습니다. 설치된 CoSkin과 안정 배포 정보를 확인해 주세요.",
+  runtimeUpdatedisabled: "자동 업데이트가 꺼져 있습니다. 수동 확인은 가능합니다.",
+  runtimeUpdatecurrent: "현재 버전이 최신입니다.",
+  runtimeUpdateready: "CoSkin {version}을 설치할 수 있습니다.",
+  runtimeUpdatedeferred: "CoSkin {version}이 준비됐습니다. 편집·미리보기를 마치고 설정을 저장하면 설치됩니다.",
+  runtimeUpdateretrypending: "업데이트 서버 연결을 잠시 후 다시 확인합니다.",
+  runtimeUpdateupdating: "업데이트를 설치합니다. CoSkin이 다시 시작되고 테마와 Codex는 유지됩니다.",
+});
+Object.assign(controlMessages.en, {
+  runtimeStartup: "Start CoSkin at Windows sign-in", runtimeStartupHelp: "Wait in the tray and connect when Codex opens. Available for installed CoSkin.",
+  runtimeUpdateTitle: "GitHub updates", runtimeInstallUpdate: "Install update",
+  runtimeUpdateidle: "Check signed stable releases on GitHub.",
+  runtimeUpdateunavailable: "Updates are unavailable. Check your CoSkin installation and stable release information.",
+  runtimeUpdatedisabled: "Automatic updates are off. You can still check manually.",
+  runtimeUpdatecurrent: "You're up to date.",
+  runtimeUpdateready: "CoSkin {version} is ready to install.",
+  runtimeUpdatedeferred: "CoSkin {version} is ready. Finish editing or previewing and save settings before installing.",
+  runtimeUpdateretrypending: "The update server will be checked again shortly.",
+  runtimeUpdateupdating: "Installing the update. CoSkin will restart; themes and Codex stay intact.",
+});
+Object.assign(controlMessages.ja, {
+  runtimeStartup: "Windowsログイン時にCoSkinを起動", runtimeStartupHelp: "トレイで待機し、Codex起動時に接続します。インストール済みCoSkinで設定できます。",
+  runtimeUpdateTitle: "GitHub更新", runtimeInstallUpdate: "更新をインストール",
+  runtimeUpdateidle: "GitHubの署名済み安定版を確認します。",
+  runtimeUpdateunavailable: "更新を確認できません。CoSkinのインストールと安定版の配信情報をご確認ください。",
+  runtimeUpdatedisabled: "自動更新は無効です。手動で確認できます。",
+  runtimeUpdatecurrent: "最新バージョンです。",
+  runtimeUpdateready: "CoSkin {version}をインストールできます。",
+  runtimeUpdatedeferred: "CoSkin {version}を用意しました。編集・プレビューを終え、設定を保存すると更新できます。",
+  runtimeUpdateretrypending: "しばらくして更新サーバーを再確認します。",
+  runtimeUpdateupdating: "更新をインストール中です。CoSkinは再起動し、テーマとCodexは保持されます。",
+});
+Object.assign(controlMessages['zh-CN'], {
+  runtimeStartup: "Windows登录时启动CoSkin", runtimeStartupHelp: "在托盘等待，并在Codex启动后连接。仅限已安装的CoSkin。",
+  runtimeUpdateTitle: "GitHub更新", runtimeInstallUpdate: "安装更新",
+  runtimeUpdateidle: "检查GitHub上的签名稳定版本。",
+  runtimeUpdateunavailable: "无法检查更新。请确认CoSkin安装和稳定版本发布信息。",
+  runtimeUpdatedisabled: "自动更新已关闭，仍可手动检查。",
+  runtimeUpdatecurrent: "已是最新版本。",
+  runtimeUpdateready: "CoSkin {version}可供安装。",
+  runtimeUpdatedeferred: "CoSkin {version}已就绪。请结束编辑或预览并保存设置后再安装。",
+  runtimeUpdateretrypending: "稍后将重新检查更新服务器。",
+  runtimeUpdateupdating: "正在安装更新。CoSkin将重启，主题和Codex会保留。",
+});

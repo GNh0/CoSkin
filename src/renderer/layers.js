@@ -563,27 +563,31 @@ export class Decoration {
           !document.hidden,
       );
   }
-  setScrollPaused(value) {
-    if (this.scrollPaused === value) return;
-    this.scrollPaused = value;
-    if (value) {
-      this.scrollAnimations = new Set(
-        this.animations.filter(
-          (animation) => animation.playState === "running",
-        ),
-      );
-      for (const animation of this.scrollAnimations) animation.pause();
-    } else {
-      for (const animation of this.animations)
-        if (
-          animation.playState === "paused" &&
-          !this.hidden &&
-          !document.hidden
-        )
-          animation.play();
-      this.scrollAnimations?.clear();
+  setScrollPaused(value, pauseMedia = value) {
+    if (this.scrollPaused !== value) {
+      this.scrollPaused = value;
+      if (value) {
+        this.scrollAnimations = new Set(
+          this.animations.filter(
+            (animation) => animation.playState === "running",
+          ),
+        );
+        for (const animation of this.scrollAnimations) animation.pause();
+      } else {
+        for (const animation of this.scrollAnimations || [])
+          if (
+            animation.playState === "paused" &&
+            !this.hidden &&
+            !document.hidden
+          )
+            animation.play();
+        this.scrollAnimations?.clear();
+      }
     }
-    for (const player of this.players.values()) player.pause(value);
+    if (this.scrollMediaPaused !== pauseMedia) {
+      this.scrollMediaPaused = pauseMedia;
+      for (const player of this.players.values()) player.pause(pauseMedia);
+    }
   }
   restoreIcon() {
     if (this.icon && this.iconVisibility !== undefined) {

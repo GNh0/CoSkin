@@ -22,6 +22,7 @@ export function settingsPage(panel, section) {
   root.append(h("h2", { text: t("control.runtimeSection") }));
   const fields = {};
   for (const [key, title, description] of [
+    ["startAtSignIn", "control.runtimeStartup", "control.runtimeStartupHelp"],
     ["launchWithCodex", "control.runtimeLaunch", "control.runtimeLaunchHelp"],
     ["exitWithCodex", "control.runtimeExit", "control.runtimeExitHelp"],
     [
@@ -32,6 +33,7 @@ export function settingsPage(panel, section) {
   ]) {
     const input = h("input", { type: "checkbox", "aria-label": t(title) });
     input.checked = preferences[key];
+    input.disabled = key === "startAtSignIn" && panel.c.summary?.startupSettingsAvailable !== true;
     input.style.width = "20px";
     input.style.height = "20px";
     input.style.flexShrink = "0";
@@ -58,18 +60,24 @@ export function settingsPage(panel, section) {
     });
     root.append(row);
   }
+  const update = panel.updateStatus ?? { status: "idle" };
+  const updateMessage = t("control.runtimeUpdate" + update.status, { version: update.version });
+  const updateAction = (operation) => async () => {
+    panel.updateRequesting = true;
+    try {
+      panel.updateStatus = await panel.c.request(operation);
+      panel.notify(t("control.runtimeUpdate" + panel.updateStatus.status, { version: panel.updateStatus.version }));
+    } finally { panel.updateRequesting = false; }
+  };
   root.append(
     h("aside", {}, [
-      h("strong", { text: t("control.runtimeUpdateUnavailable") }),
-      h("p", { text: t("control.runtimeUpdateUnavailableHelp") }),
+      h("strong", { text: t("control.runtimeUpdateTitle") }),
+      h("p", { text: updateMessage, role: "status" }),
       panel.button(
         t("control.runtimeCheckUpdates"),
-        panel.action(async () => {
-          const result = await panel.c.request("runtime-update-check");
-          if (result.status === "unavailable")
-            panel.notify(t("control.runtimeUpdateUnavailableHelp"));
-        }),
+        updateAction("runtime-update-check"),
       ),
+      ...(update.status === "ready" || update.status === "deferred" ? [panel.button(t("control.runtimeInstallUpdate"), updateAction("runtime-update-apply"), !!panel.runtimeSettingsDraft)] : []),
     ]),
   );
   const save = h("button", {

@@ -1,7 +1,7 @@
 using System.Text.Json.Nodes;
 namespace CoSkin;
 
-internal sealed record RuntimePreferences(bool LaunchWithCodex = true, bool ExitWithCodex = true, bool AutomaticUpdates = false);
+internal sealed record RuntimePreferences(bool LaunchWithCodex = true, bool ExitWithCodex = false, bool AutomaticUpdates = false, bool StartAtSignIn = false);
 
 /// <summary>User lifecycle choices are independent of theme revisions and never control Codex shutdown.</summary>
 internal sealed class RuntimePreferenceStore
@@ -23,12 +23,12 @@ internal sealed class RuntimePreferenceStore
                 return new();
             RejectLink(path);
             var data = JsonContract.Read(File.ReadAllBytes(path), 4096);
-            JsonContract.Fields(data, "formatVersion", "launchWithCodex", "exitWithCodex", "automaticUpdates");
+            JsonContract.Fields(data, "formatVersion", "launchWithCodex", "exitWithCodex", "automaticUpdates", "startAtSignIn");
             if (data["formatVersion"]?.GetValue<int>() != 1)
                 throw new InvalidDataException("실행 설정 버전을 지원하지 않습니다.");
             try
             {
-                return new(data["launchWithCodex"]!.GetValue<bool>(), data["exitWithCodex"]!.GetValue<bool>(), data["automaticUpdates"]?.GetValue<bool>() ?? false);
+                return new(data["launchWithCodex"]!.GetValue<bool>(), data["exitWithCodex"]!.GetValue<bool>(), data["automaticUpdates"]?.GetValue<bool>() ?? false, data["startAtSignIn"]?.GetValue<bool>() ?? false);
             }
             catch (Exception error) when (error is InvalidOperationException or NullReferenceException) { throw new InvalidDataException("실행 설정 형식이 올바르지 않습니다.", error); }
         }
@@ -41,7 +41,7 @@ internal sealed class RuntimePreferenceStore
             var temporary = path + "." + Guid.NewGuid().ToString("N") + ".tmp";
             try
             {
-                var data = new JsonObject { ["formatVersion"] = 1, ["launchWithCodex"] = preferences.LaunchWithCodex, ["exitWithCodex"] = preferences.ExitWithCodex, ["automaticUpdates"] = preferences.AutomaticUpdates };
+                var data = new JsonObject { ["formatVersion"] = 1, ["launchWithCodex"] = preferences.LaunchWithCodex, ["exitWithCodex"] = preferences.ExitWithCodex, ["automaticUpdates"] = preferences.AutomaticUpdates, ["startAtSignIn"] = preferences.StartAtSignIn };
                 using (var file = new FileStream(temporary, FileMode.CreateNew, FileAccess.Write, FileShare.None))
                 {
                     var bytes = System.Text.Encoding.UTF8.GetBytes(JsonContract.Serialize(data));

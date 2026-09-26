@@ -25,6 +25,7 @@ CoSkin의 실제 검수용 Codex에서 제작한 README 예제다. 캐릭터 배
 
 ## 실제 화면과 움직이는 배경
 
+- `../theme-library-0.1.0.png`: 2026-09-27 최종 0.1.0의 실제 기본 테마 목록. 검수용 Codex에서 CoSkin 페이지 영역만 캡처했으며 개인 대화·앱 사이드바는 포함하지 않는다.
 - `shorekeeper-live-applied.png`: 정지 배경과 나비 아이콘을 실제 Codex 시작 화면에 적용한 모습.
 - `shorekeeper-theme-library.png`, `shorekeeper-theme-detail.png`: 앱 내부 목록·상세 화면. 카드 안의 축소 장면은 제품이 생성하는 테마 미리보기다.
 - `shorekeeper-effect-editor.png`: 실제 효과 편집 패널.

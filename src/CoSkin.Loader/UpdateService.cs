@@ -24,7 +24,7 @@ internal readonly record struct StableVersion(int Major, int Minor, int Patch) :
     public override string ToString() => $"{Major}.{Minor}.{Patch}";
 }
 
-internal sealed record TrustedUpdate(StableVersion Version, Uri Payload, long Bytes, string Hash);
+internal sealed record TrustedUpdate(StableVersion Version, Uri Payload, long Bytes, string Hash, byte[]? Manifest = null);
 internal static class UpdateContract
 {
     internal const long MaximumPayload = 200L * 1024 * 1024;
@@ -62,11 +62,11 @@ internal static class UpdateContract
         catch (CryptographicException error) { throw new InvalidDataException("업데이트 게시자 키가 올바르지 않습니다.", error); }
         if (signature.Length != 64 || !publisher.VerifyData(canonical, signature, HashAlgorithmName.SHA256, DSASignatureFormat.IeeeP1363FixedFieldConcatenation))
             throw new InvalidDataException("업데이트 게시자 서명을 확인하지 못했습니다.");
-        return new(version, new Uri(url), size, hash);
+        return new(version, new Uri(url), size, hash, bytes.ToArray());
     }
 }
 
-internal sealed record UpdateFeedResult(byte[]? Manifest, string? ETag);
+internal sealed record UpdateFeedResult(byte[]? Manifest, string? ETag, bool Available = true);
 internal interface IUpdateFeed
 {
     Task<UpdateFeedResult> Check(string? etag, CancellationToken cancellationToken);
@@ -74,13 +74,14 @@ internal interface IUpdateFeed
 }
 internal enum UpdateState
 {
-    Unavailable, Disabled, Current, Deferred, Ready, RetryPending
+    Unavailable, Disabled, Current, Deferred, Ready, RetryPending, Updating
 }
 internal sealed record UpdateResult(UpdateState State, TrustedUpdate? Update = null);
 
 /// <summary>No release key is fabricated: production updates remain unavailable until a trusted publisher key ships.</summary>
-internal sealed class UpdateService(IUpdateFeed feed, byte[]? publisherKey, StableVersion current)
+internal sealed class UpdateService(IUpdateFeed feed, byte[]? publisherKey, ReleaseVersion current)
 {
+    internal UpdateService(IUpdateFeed feed, byte[]? publisherKey, StableVersion current) : this(feed, publisherKey, new ReleaseVersion(current, [])) { }
     private readonly SemaphoreSlim gate = new(1, 1);
     private string? etag;
     private TrustedUpdate? candidate;
@@ -100,6 +101,7 @@ internal sealed class UpdateService(IUpdateFeed feed, byte[]? publisherKey, Stab
             if (manual || DateTimeOffset.UtcNow >= nextCheck)
             {
                 var response = await feed.Check(etag, cancellationToken);
+                if (!response.Available) { candidate = null; etag = null; nextCheck = DateTimeOffset.UtcNow.AddHours(1); return new(UpdateState.Unavailable); }
                 if (response.Manifest is not null)
                 {
                     candidate = UpdateContract.Verify(response.Manifest, publisherKey);
@@ -108,7 +110,7 @@ internal sealed class UpdateService(IUpdateFeed feed, byte[]? publisherKey, Stab
                 failures = 0;
                 nextCheck = DateTimeOffset.UtcNow.AddHours(12);
             }
-            if (candidate is null || candidate.Version.CompareTo(current) <= 0)
+            if (candidate is null || new ReleaseVersion(candidate.Version, []).CompareTo(current) <= 0)
                 return new(UpdateState.Current);
             return new(editing ? UpdateState.Deferred : UpdateState.Ready, candidate);
         }

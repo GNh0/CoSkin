@@ -9,8 +9,6 @@ namespace CoSkin;
 internal sealed record CodexInstallation(string Family, string PackageVersion, string AppVersion, string AppDirectory);
 internal static class WindowsLauncher
 {
-    internal const string SupportedPackage = "26.924.1866.0";
-    internal const string SupportedApp = "26.924.20706";
     private const string Family = "OpenAI.Codex_2p2nqsd0c76g0";
     private static string Literal(string value) => "'" + value.Replace("'", "''", StringComparison.Ordinal) + "'";
 
@@ -61,12 +59,33 @@ internal static class WindowsLauncher
         var package = JsonNode.Parse(output)?.AsObject() ?? throw new IOException("설치된 Codex 패키지를 확인하지 못했습니다.");
         var family = JsonContract.String(package, "family");
         var version = JsonContract.String(package, "version");
-        if (family != Family || version != SupportedPackage)
-            throw new InvalidDataException("현재 Codex 버전은 아직 검증되지 않았습니다. CoSkin 적용을 중지하고 테마스킨 목록은 보존합니다.");
+        var build = CodexBuilds.Find(version);
+        if (family != Family || build is null)
+            throw new TrayActionException("unsupported-codex");
         var app = Path.GetFullPath(Path.Combine(JsonContract.String(package, "location"), "app"));
         var executable = Path.Combine(app, "ChatGPT.exe");
         await VerifySignature(executable);
-        return new(family, version, SupportedApp, app);
+        var metadata = Path.Combine(app, "resources", "owl-app.ini");
+        var appVersion = build.AppVersion;
+        if (File.Exists(metadata))
+        {
+            if (new FileInfo(metadata).Length > 4096 || File.GetAttributes(metadata).HasFlag(FileAttributes.ReparsePoint))
+                throw new InvalidDataException("Codex 버전 정보 파일을 확인하지 못했습니다.");
+            appVersion = "";
+            foreach (var line in File.ReadLines(metadata))
+                if (line.StartsWith("AppVersion=", StringComparison.Ordinal))
+                {
+                    if (appVersion.Length > 0)
+                        throw new InvalidDataException("Codex 버전 정보가 중복되었습니다.");
+                    appVersion = line[11..].Trim();
+                }
+        }
+        else if (build.ArchiveHash is not null)
+            throw new TrayActionException("unsupported-codex");
+        var archiveHash = build.ArchiveHash is null ? "" : HashFile(Path.Combine(app, "resources", "app.asar"));
+        if (!CodexBuilds.Matches(build, appVersion, archiveHash))
+            throw new TrayActionException("unsupported-codex");
+        return new(family, version, build.AppVersion, app);
     }
     internal static async Task VerifySignature(string executable)
     {
@@ -80,7 +99,7 @@ internal static class WindowsLauncher
         using var input = File.OpenRead(path);
         return Convert.ToHexString(SHA256.HashData(input));
     }
-    internal static async Task VerifyRunning(string executable)
+    internal static async Task<CodexInstallation> VerifyRunning(string executable)
     {
         var installation = await Discover();
         await VerifySignature(executable);
@@ -89,10 +108,26 @@ internal static class WindowsLauncher
         var archive = Path.Combine(Path.GetDirectoryName(executable)!, "resources", "app.asar");
         if (HashFile(archive) != HashFile(Path.Combine(installation.AppDirectory, "resources", "app.asar")))
             throw new InvalidDataException("실행 중인 Codex의 원본 무결성을 확인하지 못했습니다.");
+        return installation;
     }
     internal static async Task<int> Launch(string store, bool prepareOnly)
     {
         var installation = await Discover();
+        if (NativeAttachment.Available && installation.PackageVersion == "26.924.2738.0")
+        {
+            if (prepareOnly) return 0;
+            var native = new NativeConnectionDiscovery(store);
+            if (await native.Find(CancellationToken.None) is int attached) return attached;
+            if (ResidentDetection.OriginalProcesses().Length > 0) throw new TrayActionException("not-connected");
+            var original = Path.Combine(installation.AppDirectory, "ChatGPT.exe");
+            await PowerShell("$ErrorActionPreference='Stop'; Invoke-CommandInDesktopPackage -PackageFamilyName " + Literal(installation.Family) + " -AppId 'App' -Command " + Literal(original) + " -PreventBreakaway");
+            for (var attempt = 0; attempt < 30; attempt++)
+            {
+                await Task.Delay(1000);
+                if (await native.Find(CancellationToken.None) is int opened) return opened;
+            }
+            throw new IOException("Codex 실행을 요청했습니다. 준비가 끝나면 상주 CoSkin이 연결을 다시 확인합니다.");
+        }
         if (!prepareOnly && await ManagedConnection(store, installation) is int existingPort)
             return existingPort;
         if (!prepareOnly && Process.GetProcessesByName("ChatGPT").Length > 0)
@@ -147,7 +182,7 @@ internal static class WindowsLauncher
         finally { if (File.Exists(temporary)) File.Delete(temporary); }
         return port;
     }
-    private static async Task<int?> ManagedConnection(string store, CodexInstallation installation)
+    internal static async Task<int?> ManagedConnection(string store, CodexInstallation installation)
     {
         var path = Path.Combine(Path.GetFullPath(store), "managed-connection.json");
         if (!File.Exists(path))

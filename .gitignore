@@ -20,6 +20,7 @@ private/
 runtime/
 profile/
 logs/
+assets/native/
 
 # Retain local feasibility evidence without publishing user screens or identities.
 integration/native-*.png

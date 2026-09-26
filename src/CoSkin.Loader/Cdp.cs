@@ -6,6 +6,31 @@ namespace CoSkin;
 
 internal sealed class Cdp : IAsyncDisposable
 {
+    private readonly Cdp? parent;
+    private readonly int rendererId;
+    internal Cdp()
+    {
+        // This Codex Node inspector rejects unsolicited keep-alive control frames.
+        // Application requests already verify liveness every two seconds and time out.
+        socket.Options.KeepAliveInterval = Timeout.InfiniteTimeSpan;
+    }
+    internal Cdp(Cdp parent, int rendererId) : this()
+    {
+        this.parent = parent; this.rendererId = rendererId;
+        parent.Event += Forward;
+    }
+    private void Forward(JsonObject message)
+    {
+        if (message["method"]?.GetValue<string>() != "Runtime.bindingCalled" || message["params"]?["name"]?.GetValue<string>() != "__coskinRendererEvent") return;
+        var payload = message["params"]?["payload"]?.GetValue<string>();
+        if (payload is null || payload.Length > 4 * 1024 * 1024) return;
+        try
+        {
+            var forwarded = JsonNode.Parse(payload)!.AsObject();
+            if (forwarded["id"]?.GetValue<int>() == rendererId && forwarded["method"]?.GetValue<string>() == "Runtime.bindingCalled" && forwarded["params"]?["name"]?.GetValue<string>() == "__coskinRequest") Event?.Invoke(forwarded);
+        }
+        catch (Exception error) when (error is System.Text.Json.JsonException or InvalidOperationException or FormatException) { System.Diagnostics.Debug.WriteLine(error); }
+    }
     private readonly ClientWebSocket socket = new(); private readonly ConcurrentDictionary<int, TaskCompletionSource<JsonObject>> pending = new(); private readonly SemaphoreSlim sendLock = new(1, 1); private int next; private readonly CancellationTokenSource stop = new(); internal event Action<JsonObject>? Event;
     internal async Task Connect(Uri uri)
     {
@@ -42,7 +67,7 @@ internal sealed class Cdp : IAsyncDisposable
                     Event?.Invoke(obj);
             }
         }
-        catch (Exception e) { FailPending(e); }
+        catch (Exception e) { if (!stop.IsCancellationRequested) DiagnosticLog.Record("cdp-receive", e); FailPending(e); }
         finally { FailPending(new IOException("연결이 종료되었습니다.")); }
     }
     private void FailPending(Exception error)
@@ -53,6 +78,8 @@ internal sealed class Cdp : IAsyncDisposable
     }
     internal async Task<JsonObject> Send(string method, JsonObject? parameters = null)
     {
+        if (parent is not null)
+            return (await parent.Evaluate("globalThis.__coskinRendererBridge.command(" + rendererId + "," + System.Text.Json.JsonSerializer.Serialize(method) + "," + (parameters ?? new JsonObject()).ToJsonString() + ")"))!.AsObject();
         var id = Interlocked.Increment(ref next);
         var completion = new TaskCompletionSource<JsonObject>(TaskCreationOptions.RunContinuationsAsynchronously);
         pending[id] = completion;
@@ -78,6 +105,12 @@ internal sealed class Cdp : IAsyncDisposable
     }
     public async ValueTask DisposeAsync()
     {
+        if (parent is not null)
+        {
+            parent.Event -= Forward;
+            try { await parent.Evaluate("globalThis.__coskinRendererBridge?.detach(" + rendererId + ")"); }
+            catch (Exception error) { System.Diagnostics.Debug.WriteLine(error); }
+        }
         stop.Cancel();
         FailPending(new IOException("연결이 종료되었습니다."));
         socket.Dispose();
@@ -86,4 +119,3 @@ internal sealed class Cdp : IAsyncDisposable
         sendLock.Dispose();
     }
 }
-

@@ -20,7 +20,7 @@ internal sealed class InstanceChannel : IAsyncDisposable
         get;
     }
 
-    internal InstanceChannel(string store)
+    internal InstanceChannel(string store, bool claimOwnership = true)
     {
         var canonical = Path.TrimEndingDirectorySeparator(Path.GetFullPath(store)).ToUpperInvariant();
         var identity = Environment.UserDomainName + "\\" + Environment.UserName + "\n" + canonical;
@@ -33,7 +33,7 @@ internal sealed class InstanceChannel : IAsyncDisposable
             bool acquired;
             try
             {
-                acquired = mutex.WaitOne(0);
+                acquired = claimOwnership && mutex.WaitOne(0);
             }
             catch (AbandonedMutexException) { acquired = true; }
             ownership.SetResult(acquired);

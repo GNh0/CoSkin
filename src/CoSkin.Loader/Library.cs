@@ -4,21 +4,22 @@ namespace CoSkin;
 internal sealed class Library : IDisposable
 {
     private readonly TransferStore transfers;
-    private readonly GitHubUpdateFeed updateFeed = new();
-    private readonly UpdateService updates;
+    internal Func<bool, Task<UpdateResult>>? CheckUpdate { get; set; }
+    internal Func<Task<UpdateResult>>? ApplyUpdate { get; set; }
+    internal Action<bool>? SetStartup { get; set; }
     internal RuntimePreferenceStore Preferences
     {
         get;
     }
     internal event Action<JsonObject>? StateChanged;
-    internal string Locale { get; private set; } = "en";
+    internal string Locale { get; private set; } = UiLocale.Normalize(System.Globalization.CultureInfo.CurrentUICulture.Name);
     internal string StageTransfer(byte[] bytes) => transfers.Stage(bytes);
     internal void CancelTransfer(string token) => transfers.Cancel(token);
     public void Dispose()
     {
         transfers.Dispose();
-        updateFeed.Dispose();
     }
+    internal string StorePath => root;
     private readonly string root; private readonly SemaphoreSlim gate = new(1, 1);
     internal Library(string root)
     {
@@ -26,7 +27,6 @@ internal sealed class Library : IDisposable
         Directory.CreateDirectory(root);
         transfers = new TransferStore(Path.GetTempPath());
         Preferences = new RuntimePreferenceStore(this.root);
-        updates = new UpdateService(updateFeed, null, StableVersion.Parse("0.1.0"));
     }
     private string FilePath(string name) => Path.Combine(root, name);
     private JsonObject State() => File.Exists(FilePath("library.json")) ? JsonContract.Read(File.ReadAllBytes(FilePath("library.json"))) : new JsonObject { ["themes"] = new JsonObject(), ["bindings"] = new JsonObject(), ["enabled"] = true };
@@ -118,13 +118,19 @@ internal sealed class Library : IDisposable
                 case "runtime-settings-read":
                     return PreferenceDocument(Preferences.Read());
                 case "runtime-update-check":
-                    var update = await updates.Check(Preferences.Read(), true, false, CancellationToken.None);
-                    return new JsonObject { ["status"] = update.State.ToString().ToLowerInvariant() };
+                    return UpdateDocument(CheckUpdate is null ? new(UpdateState.Unavailable) : await CheckUpdate(true));
+                case "runtime-update-apply":
+                    return UpdateDocument(ApplyUpdate is null ? new(UpdateState.Unavailable) : await ApplyUpdate());
                 case "runtime-settings-write":
                     var settings = request["settings"]?.AsObject() ?? throw new InvalidDataException("실행 설정이 필요합니다.");
-                    JsonContract.Fields(settings, "launchWithCodex", "exitWithCodex", "automaticUpdates");
-                    var preferences = new RuntimePreferences(settings["launchWithCodex"]!.GetValue<bool>(), settings["exitWithCodex"]!.GetValue<bool>(), settings["automaticUpdates"]!.GetValue<bool>());
-                    Preferences.Write(preferences);
+                    JsonContract.Fields(settings, "launchWithCodex", "exitWithCodex", "automaticUpdates", "startAtSignIn");
+                    var before = Preferences.Read();
+                    var preferences = new RuntimePreferences(settings["launchWithCodex"]!.GetValue<bool>(), settings["exitWithCodex"]!.GetValue<bool>(), settings["automaticUpdates"]!.GetValue<bool>(), settings["startAtSignIn"]?.GetValue<bool>() ?? before.StartAtSignIn);
+                    var startupChanged = before.StartAtSignIn != preferences.StartAtSignIn;
+                    if (startupChanged && SetStartup is null) throw new TrayActionException("not-installed");
+                    if (startupChanged) SetStartup!(preferences.StartAtSignIn);
+                    try { Preferences.Write(preferences); }
+                    catch { if (startupChanged) SetStartup!(before.StartAtSignIn); throw; }
                     return PreferenceDocument(preferences);
                 case "motion-policy":
                     var policy = JsonContract.String(request, "policy");
@@ -316,7 +322,8 @@ internal sealed class Library : IDisposable
             throw new InvalidDataException("안정적인 범위 ID를 확인하지 못했습니다.");
         return kind + ":" + id;
     }
-    internal static JsonObject PreferenceDocument(RuntimePreferences value) => new() { ["launchWithCodex"] = value.LaunchWithCodex, ["exitWithCodex"] = value.ExitWithCodex, ["automaticUpdates"] = value.AutomaticUpdates };
+    internal static JsonObject PreferenceDocument(RuntimePreferences value) => new() { ["launchWithCodex"] = value.LaunchWithCodex, ["exitWithCodex"] = value.ExitWithCodex, ["automaticUpdates"] = value.AutomaticUpdates, ["startAtSignIn"] = value.StartAtSignIn };
+    internal static JsonObject UpdateDocument(UpdateResult value) => new() { ["status"] = value.State.ToString().ToLowerInvariant(), ["version"] = value.Update?.Version.ToString() };
     internal async Task<JsonObject> TrayState()
     {
         await gate.WaitAsync();
@@ -338,6 +345,7 @@ internal sealed class Library : IDisposable
         }
         result["documents"] = documents;
         result["runtimeSettingsAvailable"] = true;
+        result["startupSettingsAvailable"] = SetStartup is not null;
         return result;
     }
     private static JsonObject Document(ThemePackage p)

@@ -3,11 +3,11 @@ namespace CoSkin;
 
 internal enum TrayAction
 {
-    Library, Settings, ToggleDecoration, ToggleLaunch, ToggleExit, ToggleUpdates, Apply, Exit
+    Library, Settings, OpenCodex, ToggleStartup, ToggleDecoration, ToggleLaunch, ToggleExit, ToggleUpdates, Apply, Exit
 }
 internal sealed record TrayCommand(TrayAction Action, string? Theme = null);
 internal sealed record TrayTheme(string Id, string Name, bool Applied);
-internal sealed record TraySnapshot(string Locale, bool Connected, bool Enabled, bool Busy, RuntimePreferences Preferences, TrayTheme[] Themes);
+internal sealed record TraySnapshot(string Locale, bool Connected, bool Enabled, bool Busy, RuntimePreferences Preferences, TrayTheme[] Themes, bool OriginalDetected = false);
 
 /// <summary>A native message loop owns the notification icon. Async commands never block that loop.</summary>
 internal sealed class NativeTray : IDisposable
@@ -25,16 +25,39 @@ internal sealed class NativeTray : IDisposable
     private int busy;
     private string lastLocale = "en";
     private bool disposed;
-    internal NativeTray(Func<TraySnapshot> snapshot, Func<TrayCommand, Task> execute)
+    private readonly Action? targetChanged;
+    private readonly WinEventProcedure targetEvent;
+    private IntPtr eventHook;
+    internal NativeTray(Func<TraySnapshot> snapshot, Func<TrayCommand, Task> execute, Action? targetChanged = null)
     {
         this.snapshot = snapshot;
         this.execute = execute;
+        this.targetChanged = targetChanged;
+        targetEvent = (_, _, hwnd, objectId, childId, _, _) => { if (hwnd != IntPtr.Zero && objectId == 0 && childId == 0) TargetWindowChanged(hwnd); };
         procedure = WindowMessage;
         thread = new Thread(Run) { IsBackground = true, Name = "CoSkin notification icon" };
         thread.SetApartmentState(ApartmentState.STA);
         thread.Start();
     }
+    private void TargetWindowChanged(IntPtr handle)
+    {
+        GetWindowThreadProcessId(handle, out var id);
+        if (id == 0 || id == Environment.ProcessId)
+            return;
+        try
+        {
+            using var process = System.Diagnostics.Process.GetProcessById((int)id);
+            if (process.ProcessName.Equals("ChatGPT", StringComparison.OrdinalIgnoreCase))
+                targetChanged?.Invoke();
+        }
+        catch (Exception error) when (error is ArgumentException or InvalidOperationException or System.ComponentModel.Win32Exception) { }
+    }
     internal Task Ready => ready.Task;
+    internal void ShowNotice(string message)
+    {
+        notices.Enqueue(message);
+        PostMessage(window, Notice, UIntPtr.Zero, IntPtr.Zero);
+    }
     private void Run()
     {
         var registration = new WindowClass { Instance = GetModuleHandle(null), Procedure = procedure, ClassName = className };
@@ -43,12 +66,15 @@ internal sealed class NativeTray : IDisposable
         {
             if (atom == 0)
                 throw new System.ComponentModel.Win32Exception(Marshal.GetLastWin32Error());
-            window = CreateWindowEx(0, className, "CoSkin", 0, 0, 0, 0, 0, IntPtr.Zero, IntPtr.Zero, registration.Instance, IntPtr.Zero);
+            window = CreateWindowEx(0x00080080, className, "CoSkin", 0x80000000, 0, 0, 1, 1, IntPtr.Zero, IntPtr.Zero, registration.Instance, IntPtr.Zero);
             if (window == IntPtr.Zero)
+                throw new System.ComponentModel.Win32Exception(Marshal.GetLastWin32Error());
+            if (!SetLayeredWindowAttributes(window, 0, 0, 2))
                 throw new System.ComponentModel.Win32Exception(Marshal.GetLastWin32Error());
             icon = CreateOwnIcon();
             taskbarCreated = RegisterWindowMessage("TaskbarCreated");
             AddIcon();
+            eventHook = SetWinEventHook(0x8000, 0x8002, IntPtr.Zero, targetEvent, 0, 0, 2);
             ready.SetResult();
             if (disposed)
                 return;
@@ -61,6 +87,8 @@ internal sealed class NativeTray : IDisposable
         catch (Exception error) { ready.TrySetException(error); }
         finally
         {
+            if (eventHook != IntPtr.Zero)
+                UnhookWinEvent(eventHook);
             var data = IconData();
             ShellNotifyIcon(2, ref data);
             if (icon != IntPtr.Zero)
@@ -149,41 +177,65 @@ internal sealed class NativeTray : IDisposable
         var menu = CreatePopupMenu();
         var commands = new Dictionary<uint, TrayCommand>();
         uint next = 1;
-        void Item(string label, TrayCommand command, bool disabled = false, bool check = false)
+        void Item(string label, TrayCommand command, bool disabled = false, bool check = false, IntPtr? parent = null)
         {
             var id = next++;
             commands.Add(id, command);
-            AppendMenu(menu, (disabled ? 1u : 0u) | (check ? 8u : 0u), (UIntPtr)id, label);
+            AppendMenu(parent ?? menu, (disabled ? 1u : 0u) | (check ? 8u : 0u), (UIntPtr)id, label);
         }
+        AppendMenu(menu, 1, UIntPtr.Zero, ResidentMessages.Status(state.Locale, state.Connected, state.OriginalDetected));
         var blocked = state.Busy || Volatile.Read(ref busy) != 0;
         Item(labels.Library, new(TrayAction.Library), blocked);
         AppendMenu(menu, 0x0800, UIntPtr.Zero, null);
-        foreach (var theme in state.Themes.Take(30))
-            Item(theme.Name.Replace("&", "&&").Replace("\n", " "), new(TrayAction.Apply, theme.Id), blocked || !state.Connected, theme.Applied);
-        AppendMenu(menu, 0x0800, UIntPtr.Zero, null);
+        var themeMenu = CreatePopupMenu();
+        foreach (var theme in state.Themes.OrderByDescending(theme => theme.Applied).Take(12))
+            Item(theme.Name.Replace("&", "&&").Replace("\n", " "), new(TrayAction.Apply, theme.Id), blocked || !state.Connected, theme.Applied, themeMenu);
+        AppendMenu(themeMenu, 0x0800, UIntPtr.Zero, null);
+        Item(labels.Library, new(TrayAction.Library), blocked, parent: themeMenu);
+        AppendMenu(menu, 0x10, (UIntPtr)themeMenu, ResidentMessages.Themes(state.Locale));
         Item(labels.Decoration, new(TrayAction.ToggleDecoration), blocked || !state.Connected, state.Enabled);
-        Item(labels.Settings, new(TrayAction.Settings), blocked);
-        Item(labels.Launch, new(TrayAction.ToggleLaunch), blocked, state.Preferences.LaunchWithCodex);
-        Item(labels.ExitTogether, new(TrayAction.ToggleExit), blocked, state.Preferences.ExitWithCodex);
-        Item(labels.AutomaticUpdates, new(TrayAction.ToggleUpdates), blocked, state.Preferences.AutomaticUpdates);
+        if (!state.Connected)
+            Item(ResidentMessages.OpenCodex(state.Locale), new(TrayAction.OpenCodex), blocked);
+        var settingsMenu = CreatePopupMenu();
+        Item(labels.Settings, new(TrayAction.Settings), blocked, parent: settingsMenu);
+        AppendMenu(settingsMenu, 0x0800, UIntPtr.Zero, null);
+        Item(ResidentMessages.Startup(state.Locale), new(TrayAction.ToggleStartup), blocked, state.Preferences.StartAtSignIn, settingsMenu);
+        Item(labels.ExitTogether, new(TrayAction.ToggleExit), blocked, state.Preferences.ExitWithCodex, settingsMenu);
+        Item(labels.Launch, new(TrayAction.ToggleLaunch), blocked, state.Preferences.LaunchWithCodex, settingsMenu);
+        Item(labels.AutomaticUpdates, new(TrayAction.ToggleUpdates), blocked, state.Preferences.AutomaticUpdates, settingsMenu);
+        AppendMenu(menu, 0x10, (UIntPtr)settingsMenu, labels.Settings);
         AppendMenu(menu, 0x0800, UIntPtr.Zero, null);
         Item(labels.Exit, new(TrayAction.Exit), blocked);
+        uint selected = 0;
+        var returnFocus = false;
         try
         {
             if (cursor.X == -1 && cursor.Y == -1)
                 GetCursorPos(out cursor);
-            SetForegroundWindow(window);
-            var selected = TrackPopupMenu(menu, 0x0100 | 0x0002, cursor.X, cursor.Y, 0, window, IntPtr.Zero);
+            // A hidden owner cannot reliably become foreground above Windows 11
+            // notification overflow. Show a transparent tool owner only for the menu.
+            if (!SetWindowPos(window, new IntPtr(-1), cursor.X, cursor.Y, 1, 1, 0x0010 | 0x0040))
+                throw new System.ComponentModel.Win32Exception(Marshal.GetLastWin32Error());
+            var foreground = SetForegroundWindow(window);
+            if (!foreground)
+                Console.Error.WriteLine("트레이 메뉴 전경 전환이 제한되었습니다. 최상위 팝업 소유 창을 유지합니다.");
+            selected = TrackPopupMenu(menu, 0x0100 | 0x0002, cursor.X, cursor.Y, 0, window, IntPtr.Zero);
             PostMessage(window, 0, UIntPtr.Zero, IntPtr.Zero);
-            if (commands.TryGetValue(selected, out var command))
-                Dispatch(command);
+            returnFocus = selected == 0 && GetForegroundWindow() == window;
         }
         finally
         {
+            ShowWindow(window, 0);
+            SetWindowPos(window, new IntPtr(-2), 0, 0, 0, 0, 0x0001 | 0x0002 | 0x0010);
             DestroyMenu(menu);
-            var data = IconData();
-            ShellNotifyIcon(3, ref data); // Return keyboard focus to the notification area.
+            if (returnFocus)
+            {
+                var data = IconData();
+                ShellNotifyIcon(3, ref data);
+            }
         }
+        if (commands.TryGetValue(selected, out var command))
+            Dispatch(command);
     }
     private void Dispatch(TrayCommand command)
     {
@@ -206,30 +258,9 @@ internal sealed class NativeTray : IDisposable
     }
     private static IntPtr CreateOwnIcon()
     {
-        const int size = 32;
-        var mask = new byte[size * size / 8];
-        var pixels = new byte[size * size * 4];
-        for (var y = 0; y < size; y++)
-            for (var x = 0; x < size; x++)
-            {
-                var distance = Math.Sqrt(Math.Pow(x - 15.5, 2) + Math.Pow(y - 15.5, 2));
-                var offset = (y * size + x) * 4;
-                if (distance > 15)
-                {
-                    mask[y * 4 + x / 8] |= (byte)(0x80 >> (x % 8));
-                    continue;
-                }
-                var letter = distance is > 7 and < 10 && !(x > 18 && Math.Abs(y - 15.5) < 6);
-                pixels[offset] = letter ? (byte)255 : (byte)220;
-                pixels[offset + 1] = letter ? (byte)255 : (byte)125;
-                pixels[offset + 2] = letter ? (byte)255 : (byte)70;
-                pixels[offset + 3] = 255;
-            }
-        var result = CreateIcon(GetModuleHandle(null), size, size, 1, 32, mask, pixels);
-        if (result == IntPtr.Zero)
-            throw new System.ComponentModel.Win32Exception(Marshal.GetLastWin32Error());
-        return result;
+        return BrandIcon.Load(32);
     }
+
     public void Dispose()
     {
         if (disposed)
@@ -240,6 +271,10 @@ internal sealed class NativeTray : IDisposable
         if (Thread.CurrentThread != thread)
             thread.Join(TimeSpan.FromSeconds(3));
     }
+    [DllImport("user32.dll")] private static extern uint GetWindowThreadProcessId(IntPtr window, out uint process);
+    private delegate void WinEventProcedure(IntPtr hook, uint kind, IntPtr window, int objectId, int childId, uint thread, uint time);
+    [DllImport("user32.dll")] private static extern IntPtr SetWinEventHook(uint minimum, uint maximum, IntPtr module, WinEventProcedure callback, uint process, uint thread, uint flags);
+    [DllImport("user32.dll")] private static extern bool UnhookWinEvent(IntPtr hook);
     private delegate IntPtr WindowProcedure(IntPtr hwnd, uint message, UIntPtr wParam, IntPtr lParam);
     [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
     private struct WindowClass
@@ -285,6 +320,10 @@ internal sealed class NativeTray : IDisposable
     [DllImport("user32.dll", CharSet = CharSet.Unicode)] private static extern bool AppendMenu(IntPtr menu, uint flags, UIntPtr id, string? text);
     [DllImport("user32.dll")] private static extern uint TrackPopupMenu(IntPtr menu, uint flags, int x, int y, int reserved, IntPtr window, IntPtr bounds);
     [DllImport("user32.dll")] private static extern bool GetCursorPos(out Point point);
+    [DllImport("user32.dll", SetLastError = true)] private static extern bool SetLayeredWindowAttributes(IntPtr window, uint key, byte alpha, uint flags);
+    [DllImport("user32.dll", SetLastError = true)] private static extern bool SetWindowPos(IntPtr window, IntPtr after, int x, int y, int width, int height, uint flags);
+    [DllImport("user32.dll")] private static extern bool ShowWindow(IntPtr window, int command);
+    [DllImport("user32.dll")] private static extern IntPtr GetForegroundWindow();
     [DllImport("user32.dll")] private static extern bool SetForegroundWindow(IntPtr window);
     [DllImport("user32.dll")] private static extern bool DestroyMenu(IntPtr menu);
     [DllImport("user32.dll", SetLastError = true)] private static extern IntPtr CreateIcon(IntPtr instance, int width, int height, byte planes, byte bits, byte[] mask, byte[] pixels);

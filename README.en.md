@@ -2,73 +2,77 @@
 
 [한국어](README.md) · [English](README.en.md) · [日本語](README.ja.md) · [简体中文](README.zh-CN.md)
 
-A Windows extension that opens a managed theme library from **CoSkin** in the Codex icon rail, with previews, editing and explicit application.
+A Windows theme library for making Codex your own. Choose images, GIFs and effects, then preview, edit and apply them in the actual app.
 
-**0.1.0-beta.1 is a test prerelease.** This unofficial extension remains under review; it is not a claim of completed production support.
+[Download Windows x64](https://github.com/GNh0/CoSkin/releases/tag/v0.1.0) · [Supported and tested scope](docs/support-matrix.md)
 
-[Download for Windows x64](https://github.com/GNh0/CoSkin/releases/tag/v0.1.0-beta.1) · [Release notes (Korean)](docs/release-0.1.0-beta.1.md)
+## Install and launch
 
-## Install and start
+Extract the ZIP and run **CoSkin.Loader.exe**. Keep the executable, renderer.js and THIRD-PARTY-NOTICES.txt together. End users do not need Node or .NET installed separately.
 
-Extract the Windows x64 ZIP and double-click `CoSkin.Loader.exe` to open per-user setup. Keep all three files together. No separate Node or .NET installation is required. Start with **Codex + CoSkin** from the Start menu. If original Codex is running, save your work and close it normally first; CoSkin does not force it to quit.
+The installer offers Windows sign-in startup, exit with Codex, a desktop shortcut, .coskin file association and automatic updates. Existing themes and Codex data are preserved.
 
-This beta uses the verified dedicated shortcut. Automatic attachment to Codex started normally and automatic CoSkin startup at Windows sign-in are not supported yet.
+**Either launch order works: CoSkin → Codex or Codex → CoSkin.** CoSkin waits in the tray when started first and connects to an already running supported Codex without restarting it. Desktop **CoSkin** starts independently; Start menu **Codex + CoSkin** starts both. CoSkin never forces Codex to quit.
 
-Launch and exit coupling are independent options. The system tray offers theme application, decoration on/off, library/settings and exit. Uninstall through Windows Apps; themes and assets are retained. Cleanup of a running installation's remaining binaries is still being reviewed.
+Ordinary launch attachment is verified for Windows package **26.924.2738.0**, internal app **26.924.22138**. The connection module verifies the executable, OpenAI signature, ASAR and chrome.dll. Other builds require compatibility review. Both apps need the same Windows privilege level. [Resident architecture](docs/resident-architecture.md)
 
-## Known limitations
+## Themes and effects
 
-- **Chat scrolling with a large GIF background can pause or stutter the GIF.** Improvement is deferred until after this test release. Built-in themes use static backgrounds.
-- The reviewed Codex Windows package is **26.924.1866.0**, internal app **26.924.20706**. Other versions may stop connecting.
-- Automatic-update settings exist, but a production signing key/release and actual host replacement are not ready. Install newer packages manually for now.
-- Multiple-window lifecycle, fresh-user installation, every effect combination and maximum-package memory remain under review.
+- Open **CoSkin** from the left icon rail. Create, import, delete, preview and apply themes directly from the card library.
+- Open a card for a detail page with preview, editing, duplication, export and theme information.
+- Right-click a target in actual-screen editing mode. Project and chat row edits default to **all rows of that kind**; individual overrides affect one selected row.
+- Choose app-wide, project or chat scope. Saving and applying are separate; cancelling a preview preserves the former application.
+- PNG, JPEG and GIF are supported. Adjust image opacity separately from text. Edit base, hover and selected states, plus enter, exit, click and repeating effects.
+- [Custom effects](docs/custom-effects.md) use declarative JSON keyframes that can be registered and shared. The renderer uses JavaScript/TypeScript, CSS and the Web Animations API; effect packages do not execute arbitrary JavaScript.
 
-## Actual application examples
+The library is a dedicated page separated from chat. Common backgrounds cover Codex app surfaces, tabs and the app portions of file/browser tools. External website content and Windows dialogs are separate surfaces.
 
-A separately generated, unofficial Wuthering Waves Shorekeeper fan-art example, not a bundled default theme. No private chats or user uploads are included. See [media attribution and generation notes](docs/media/wuthering-waves/ASSET-NOTES.md).
+## Tray and updates
+
+The tray provides library, settings, theme selection, decoration toggle, reconnect and exit. Themes are grouped in a submenu, and menus follow the Codex language. Sign-in startup and exit with Codex are independent options.
+
+Automatic updates check **newer stable GitHub Releases**. Publisher signature, SHA-256 and package layout are verified; replacement waits while editing or previewing. A failed new host restores the previous installation. Codex and theme data are not update payloads. Disabling automatic updates stops background update checks; settings still offer a manual check. [Publishing updates](docs/updates.md)
+
+## Actual screens
+
+![0.1.0 theme library](docs/media/theme-library-0.1.0.png)
+
+An independently generated, unofficial Wuthering Waves Shorekeeper fan-art example. It is not bundled in the runtime ZIP. [Media provenance](docs/media/wuthering-waves/ASSET-NOTES.md)
 
 ![Theme library](docs/media/wuthering-waves/shorekeeper-theme-library.png)
-![Applied Shorekeeper theme](docs/media/wuthering-waves/shorekeeper-live-applied.png)
 ![Theme detail](docs/media/wuthering-waves/shorekeeper-theme-detail.png)
 ![Effect editor](docs/media/wuthering-waves/shorekeeper-effect-editor.png)
-![Row hover effect](docs/media/wuthering-waves/shorekeeper-hover.gif)
-![GIF background in the actual app](docs/media/wuthering-waves/shorekeeper-live-gif.gif)
+![Applied background](docs/media/wuthering-waves/shorekeeper-live-applied.png)
+![Row hover](docs/media/wuthering-waves/shorekeeper-hover.gif)
+![Actual GIF background](docs/media/wuthering-waves/shorekeeper-live-gif.gif)
 
-The animated-background example is sampled from the actual app. It does not establish smooth playback; see the GIF scrolling limitation above.
+Some demonstration captures were made with the first beta. They are not frame-rate guarantees or performance benchmarks.
 
-## Workflow
+## Performance and languages
 
-Preview, apply or delete directly from a card, or click its body to open a separate detail page. Editing returns to the real Codex screen. Only editing mode replaces the target's context menu with CoSkin settings; leaving restores the original menu. Saving and applying are separate. Cancelling a preview preserves the previous application.
+UI follows Codex language with **Korean, English, Japanese and Simplified Chinese**, falling back to English for other languages.
 
-PNG, JPEG and animated GIF images are supported. Image opacity remains independent of original text and input behavior. Reduced motion, hidden, minimized and off-monitor states stop animation. `.coskin` is an import/export format; imported themes and assets live in the internal library and remain usable after the external source is removed.
+Fixed GIF backgrounds continue during wheel scrolling. Effects and GIFs on moving sidebar rows pause briefly to prioritize list responsiveness. Motion stops when hidden, minimized or outside the screen. Windows reduced-motion preference can be followed, overridden with Allow, or replaced with Off. Large GIFs and multiple high-resolution backgrounds still have a cost.
 
-## Implementation and verification
-
-A review copy verified the full page to the right of the rail, responsive cards/detail, library actions, native editing/menu restoration, PNG/JPEG/GIF decoding and independent opacity, source GIF loop counts, minimize/off-monitor pause/resume, chunked transfers, custom-effect registration/playback/package round trips, theme metadata editing, and continuous hover transitions. Recent checks also verified summary/file-tree paint restoration and pointer-over-list wheel scrolling. Final visual approval, multiple-window lifecycle, all effect semantics, maximum-package memory, normal launch, installation and file association remain incomplete. See the [implementation status](docs/support-matrix.md).
-
-The UI prioritizes Codex's application language. Korean, English, Japanese and Simplified Chinese UI/accessibility/error dictionaries are implemented. Chinese regions fall back to Simplified Chinese; other unsupported languages use English. Gallery/detail/editor switching and overflow were checked by temporarily changing document lang. Every target and error path under actual account language settings has not been verified.
+**47 Node tests, 171 host checks**, ESLint and TypeScript checks passed. Actual installation replacement, attachment to existing Codex and data preservation were verified. [Validation scope](docs/support-matrix.md) distinguishes tested conditions from remaining environmental limits.
 
 ## Development
 
-Use Node 24 LTS and the .NET 10 LTS SDK. The end-user host is designed to run without Node. Dependencies use exact versions and a lockfile.
+Requires Node 24, .NET 10 and Visual Studio 2022 C++ x64 tools for the native module.
 
 ```powershell
 npm ci --ignore-scripts
 npm test
-node scripts/bundle.mjs
-dotnet build src/CoSkin.Loader/CoSkin.Loader.csproj
-dotnet run --project tests/CoSkin.HostTests/CoSkin.HostTests.csproj
+npm run lint
+npm run typecheck
+./scripts/build.ps1 -Portable
+dotnet run --project tests/CoSkin.HostTests
 ```
 
-Do not weaken execution policy. Use these direct commands where scripts are restricted. Original Codex executables, ASAR files and integrity settings remain intact.
+Original Codex files, ASAR and shortcuts are not modified. Private logs, user screens, stores and the publisher private key are excluded from releases.
 
-[Product design](docs/CoSkin-설계서.md) · [Package contract](docs/coskin-package-v1.md) · [Architecture and changes](docs/architecture.md)
+[Design](docs/CoSkin-설계서.md) · [Architecture](docs/architecture.md) · [.coskin contract](docs/coskin-package-v1.md)
 
-Private raw experiment logs and screenshots are excluded from public distribution. Online galleries and advanced keyframes are deferred.
+## License
 
-
-[Custom effect development](docs/custom-effects.en.md). Registration, playback and package round trips passed native review; this does not establish every possible effect combination.
-
-## Licensing
-
-CoSkin's own source license is unspecified; the scope of granted rights has not been decided. Third-party components retain their separate licenses. [Third-party notices](THIRD-PARTY-NOTICES.txt) include gifuct-js, its parser and the bundled .NET runtime license/notices. Example fan art is separately generated media, not a redistribution of official character artwork.
+CoSkin source does not yet have an assigned license. Dependencies have their own licenses; see [third-party notices](THIRD-PARTY-NOTICES.txt). Character-related rights belong to their respective holders.

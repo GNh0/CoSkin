@@ -7,13 +7,15 @@ namespace CoSkin;
 
 internal sealed record RegistrationChange(string Key, string Name, RegistrationValue? Before, RegistrationValue? After);
 internal sealed record InstalledArtifact(string Path, string Hash);
-internal sealed record InstallationRecord(int FormatVersion, string Executable, InstalledArtifact[] Files, RegistrationChange[] Registrations, string Shortcut, byte[]? PreviousShortcut);
-internal sealed record InstallationJournal(InstallationRecord Proposed, byte[]? PreviousMarker, byte[]? PreviousShortcut, RegistrationChange[] Rollback, bool Removing = false);
+internal sealed record InstallationRecord(int FormatVersion, string Executable, InstalledArtifact[] Files, RegistrationChange[] Registrations, string Shortcut, byte[]? PreviousShortcut, string? DesktopShortcut = null, byte[]? PreviousDesktopShortcut = null);
+internal sealed record InstallationJournal(InstallationRecord Proposed, byte[]? PreviousMarker, byte[]? PreviousShortcut, RegistrationChange[] Rollback, bool Removing = false, byte[]? DesktopRollback = null);
 
 /// <summary>File and registration transaction with an on-disk recovery journal.</summary>
 internal sealed class InstallationService(string root, IInstallationPlatform platform)
 {
     private const string UninstallKey = @"Software\Microsoft\Windows\CurrentVersion\Uninstall\CoSkin";
+    internal const string StartupKey = @"Software\Microsoft\Windows\CurrentVersion\Run";
+    internal const string StartupName = "CoSkin.Resident";
     private const string ProgramId = "CoSkin.ThemeFile";
     private static readonly string[] BundleFiles = ["CoSkin.Loader.exe", "renderer.js", "THIRD-PARTY-NOTICES.txt"];
     private string Bin => Path.Combine(Path.GetFullPath(root), "bin");
@@ -28,9 +30,40 @@ internal sealed class InstallationService(string root, IInstallationPlatform pla
         return record;
     }
 
-    internal InstallationRecord Install(string sourceDirectory, bool associate, string version = "0.1.0")
+    internal void SetStartup(bool enabled)
     {
-        StableVersion.Parse(version);
+        RejectLinks(Bin);
+        using var ownership = new FileStream(Path.Combine(Bin, "installation.lock"), FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.None);
+        Recover();
+        var bytes = File.ReadAllBytes(Marker);
+        var record = Read<InstallationRecord>(bytes);
+        Validate(record);
+        var actual = platform.Read(StartupKey, StartupName);
+        var command = new RegistrationValue("String", JsonValue.Create(SignInStartup.Command(record.Executable))!);
+        if (actual is not null && !Equal(actual, command))
+            throw new InvalidDataException("자동 시작 등록 소유권이 다릅니다.");
+        var old = record.Registrations.FirstOrDefault(change => change.Key == StartupKey && change.Name == StartupName);
+        var change = new RegistrationChange(StartupKey, StartupName, old?.Before, enabled ? command : null);
+        var next = record with
+        {
+            Registrations = record.Registrations.Where(entry => entry.Key != StartupKey || entry.Name != StartupName).Append(change).ToArray()
+        };
+        var rollback = new RegistrationChange(StartupKey, StartupName, actual, change.After);
+        var shortcutBytes = File.Exists(record.Shortcut) ? File.ReadAllBytes(record.Shortcut) : null;
+        var desktopBytes = record.DesktopShortcut is string desktop && File.Exists(desktop) ? File.ReadAllBytes(desktop) : null;
+        Atomic(Journal, JsonSerializer.SerializeToUtf8Bytes(new InstallationJournal(next, bytes, shortcutBytes, [rollback], DesktopRollback: desktopBytes)));
+        try
+        {
+            platform.Write(StartupKey, StartupName, change.After);
+            Atomic(Marker, JsonSerializer.SerializeToUtf8Bytes(next));
+            File.Delete(Journal);
+        }
+        catch { Recover(); throw; }
+    }
+
+    internal InstallationRecord Install(string sourceDirectory, bool associate, string version = "0.1.0", bool desktopShortcut = true, bool? startAtSignIn = null)
+    {
+        ReleaseVersion.Parse(version);
         RejectLinks(Bin);
         Directory.CreateDirectory(Bin);
         using var ownership = new FileStream(Path.Combine(Bin, "installation.lock"), FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.None);
@@ -53,15 +86,25 @@ internal sealed class InstallationService(string root, IInstallationPlatform pla
         var files = BundleFiles.Select((name, index) => new InstalledArtifact(Path.Combine(directory, name), hashes[index])).ToArray();
         var existed = Directory.Exists(directory);
         var executable = files[0].Path;
-        var changes = Registrations(executable, associate, previous, version);
+        var changes = Registrations(executable, associate, previous, version, startAtSignIn);
         var shortcut = Path.GetFullPath(platform.ShortcutPath);
         RejectLinks(shortcut);
         var target = platform.ShortcutTarget(shortcut);
-        if (target is not null && (previous is null || !Path.GetFullPath(target).Equals(previous.Executable, StringComparison.OrdinalIgnoreCase)))
+        if (target is not null && !OwnsExecutable(previous, target))
             throw new InvalidDataException("같은 이름의 다른 바로가기가 있어 설치하지 않았습니다.");
         var shortcutBytes = File.Exists(shortcut) ? File.ReadAllBytes(shortcut) : null;
+        var desktop = desktopShortcut || previous?.DesktopShortcut is not null ? Path.GetFullPath(platform.DesktopShortcutPath) : null;
+        byte[]? desktopBytes = null;
+        if (desktop is not null)
+        {
+            RejectLinks(desktop);
+            var desktopTarget = platform.ShortcutTarget(desktop);
+            if (desktopTarget is not null && (!OwnsExecutable(previous, desktopTarget) || (previous!.DesktopShortcut != desktop && platform.ShortcutArguments(desktop) is not ("--with-codex" or "--resident"))))
+                throw new InvalidDataException("같은 이름의 다른 바탕화면 바로가기가 있어 덮어쓰지 않습니다.");
+            desktopBytes = File.Exists(desktop) ? File.ReadAllBytes(desktop) : null;
+        }
         var retained = previous?.Files.Where(file => !files.Any(next => next.Path.Equals(file.Path, StringComparison.OrdinalIgnoreCase))) ?? [];
-        var record = new InstallationRecord(1, executable, files.Concat(retained).ToArray(), changes, shortcut, previous is null ? shortcutBytes : previous.PreviousShortcut);
+        var record = new InstallationRecord(1, executable, files.Concat(retained).ToArray(), changes, shortcut, previous is null ? shortcutBytes : previous.PreviousShortcut, desktop, previous?.PreviousDesktopShortcut);
         if (record.Files.Length > 4096)
             throw new InvalidDataException("보존 중인 설치 버전이 많습니다. 설치 등록 해제 후 다시 설치해 주세요.");
         Validate(record);
@@ -86,7 +129,7 @@ internal sealed class InstallationService(string root, IInstallationPlatform pla
             if (!File.Exists(file.Path) || Hash(file.Path) != file.Hash)
                 throw new InvalidDataException("설치 폴더의 배포 파일이 변경되었습니다.");
         var rollback = changes.Select(change => change with { Before = platform.Read(change.Key, change.Name) }).ToArray();
-        Atomic(Journal, JsonSerializer.SerializeToUtf8Bytes(new InstallationJournal(record, previousBytes, shortcutBytes, rollback)));
+        Atomic(Journal, JsonSerializer.SerializeToUtf8Bytes(new InstallationJournal(record, previousBytes, shortcutBytes, rollback, DesktopRollback: desktopBytes)));
         try
         {
             foreach (var change in changes)
@@ -95,6 +138,18 @@ internal sealed class InstallationService(string root, IInstallationPlatform pla
             platform.CreateShortcut(shortcut, executable);
             if (!Path.GetFullPath(platform.ShortcutTarget(shortcut) ?? "").Equals(executable, StringComparison.OrdinalIgnoreCase))
                 throw new IOException("바로가기 대상 검증에 실패했습니다.");
+            if (desktop is not null)
+            {
+                Directory.CreateDirectory(Path.GetDirectoryName(desktop)!);
+                if (desktopShortcut)
+                {
+                    platform.CreateShortcut(desktop, executable);
+                    if (platform.ShortcutTarget(desktop) != executable)
+                        throw new IOException("바탕화면 바로가기 대상 검증에 실패했습니다.");
+                }
+                else if (previous is not null && platform.ShortcutTarget(desktop) == previous.Executable)
+                    RestoreFile(desktop, previous.PreviousDesktopShortcut);
+            }
             Atomic(Marker, JsonSerializer.SerializeToUtf8Bytes(record));
             File.Delete(Journal);
         }
@@ -142,13 +197,15 @@ internal sealed class InstallationService(string root, IInstallationPlatform pla
         var rollback = record.Registrations.Where(change => Equal(platform.Read(change.Key, change.Name), change.After))
             .Select(change => new RegistrationChange(change.Key, change.Name, change.After, change.Before)).ToArray();
         var previousShortcut = File.Exists(record.Shortcut) ? File.ReadAllBytes(record.Shortcut) : null;
-        Atomic(Journal, JsonSerializer.SerializeToUtf8Bytes(new InstallationJournal(record, File.ReadAllBytes(Marker), previousShortcut, rollback, true)));
+        Atomic(Journal, JsonSerializer.SerializeToUtf8Bytes(new InstallationJournal(record, File.ReadAllBytes(Marker), previousShortcut, rollback, true, record.DesktopShortcut is string desktopPathBefore && File.Exists(desktopPathBefore) ? File.ReadAllBytes(desktopPathBefore) : null)));
         try
         {
             foreach (var change in rollback.Reverse())
                 platform.Write(change.Key, change.Name, change.After);
             if (platform.ShortcutTarget(record.Shortcut) is string target && Path.GetFullPath(target).Equals(record.Executable, StringComparison.OrdinalIgnoreCase))
                 RestoreFile(record.Shortcut, record.PreviousShortcut);
+            if (record.DesktopShortcut is string desktopPath && platform.ShortcutTarget(desktopPath) == record.Executable)
+                RestoreFile(desktopPath, record.PreviousDesktopShortcut);
             File.Delete(Journal);
         }
         catch { Recover(); throw; }
@@ -163,14 +220,23 @@ internal sealed class InstallationService(string root, IInstallationPlatform pla
         };
     }
 
-    private RegistrationChange[] Registrations(string executable, bool associate, InstallationRecord? previous, string version)
+    private RegistrationChange[] Registrations(string executable, bool associate, InstallationRecord? previous, string version, bool? startAtSignIn)
     {
-        var values = new List<(string Key, string Name, RegistrationValue Value)>();
+        var values = new List<(string Key, string Name, RegistrationValue? Value)>();
         RegistrationValue Text(string value) => new("String", JsonValue.Create(value)!);
         void Add(string key, string name, string value) => values.Add((key, name, Text(value)));
         var current = platform.Read(UninstallKey, "UninstallString");
         if (current is not null && (previous is null || !Equal(current, Text(Quote(previous.Executable) + " --uninstall"))))
             throw new InvalidDataException("기존 설치 등록의 소유권을 확인하지 못했습니다.");
+        var startup = platform.Read(StartupKey, StartupName);
+        if (startup is not null)
+        {
+            if (previous is null || !Equal(startup, Text(SignInStartup.Command(previous.Executable))))
+                throw new InvalidDataException("자동 시작 등록의 소유권을 확인하지 못했습니다.");
+            values.Add((StartupKey, StartupName, startAtSignIn == false ? null : Text(SignInStartup.Command(executable))));
+        }
+        else if (startAtSignIn == true)
+            Add(StartupKey, StartupName, SignInStartup.Command(executable));
         Add(UninstallKey, "DisplayName", "CoSkin");
         Add(UninstallKey, "DisplayVersion", version);
         Add(UninstallKey, "Publisher", "CoSkin");
@@ -211,6 +277,8 @@ internal sealed class InstallationService(string root, IInstallationPlatform pla
         var shortcut = transaction.Proposed.Shortcut;
         if (platform.ShortcutTarget(shortcut) == transaction.Proposed.Executable || (transaction.Removing && !File.Exists(shortcut)))
             RestoreFile(shortcut, transaction.PreviousShortcut);
+        if (transaction.Proposed.DesktopShortcut is string desktopPath && (platform.ShortcutTarget(desktopPath) == transaction.Proposed.Executable || !File.Exists(desktopPath)))
+            RestoreFile(desktopPath, transaction.DesktopRollback);
         RestoreFile(Marker, transaction.PreviousMarker);
         File.Delete(Journal);
     }
@@ -229,17 +297,19 @@ internal sealed class InstallationService(string root, IInstallationPlatform pla
             var separator = version?.LastIndexOf('-') ?? -1;
             if (version is null || separator < 1 || version.Length - separator - 1 != 20 || version[(separator + 1)..].Any(character => !Uri.IsHexDigit(character)))
                 throw new InvalidDataException("설치 버전 폴더 기록 오류");
-            StableVersion.Parse(version[..separator]);
+            ReleaseVersion.Parse(version[..separator]);
             if (!BundleFiles.Contains(Path.GetFileName(file.Path)) || file.Hash.Length != 64 || file.Hash.Any(character => !Uri.IsHexDigit(character)))
                 throw new InvalidDataException("설치 파일 기록 오류");
         }
         if (Path.GetFullPath(record.Shortcut) != Path.GetFullPath(platform.ShortcutPath))
             throw new InvalidDataException("바로가기 기록 경로 오류");
+        if (record.DesktopShortcut is not null && Path.GetFullPath(record.DesktopShortcut) != Path.GetFullPath(platform.DesktopShortcutPath))
+            throw new InvalidDataException("바탕화면 바로가기 기록 경로 오류");
         foreach (var change in record.Registrations)
         {
-            var allowed = change.Key == UninstallKey
+            var allowed = change.Key == StartupKey && change.Name == StartupName || (change.Key == UninstallKey
                 ? new[] { "DisplayName", "DisplayVersion", "Publisher", "InstallLocation", "UninstallString", "NoModify", "NoRepair" }.Contains(change.Name)
-                : change.Name == "" && new[] { @"Software\Classes\.coskin", @"Software\Classes\CoSkin.ThemeFile", @"Software\Classes\CoSkin.ThemeFile\shell\open\command" }.Contains(change.Key);
+                : change.Name == "" && new[] { @"Software\Classes\.coskin", @"Software\Classes\CoSkin.ThemeFile", @"Software\Classes\CoSkin.ThemeFile\shell\open\command" }.Contains(change.Key));
             if (!allowed)
                 throw new InvalidDataException("설치 등록 경로 오류");
         }
@@ -290,6 +360,19 @@ internal sealed class InstallationService(string root, IInstallationPlatform pla
     {
         using var stream = File.OpenRead(path);
         return Convert.ToHexString(SHA256.HashData(stream));
+    }
+    private static bool OwnsExecutable(InstallationRecord? installation, string target)
+    {
+        if (installation is null || !Path.GetFileName(target).Equals("CoSkin.Loader.exe", StringComparison.OrdinalIgnoreCase))
+            return false;
+        var resolved = Path.GetFullPath(target);
+        foreach (var artifact in installation.Files)
+            if (resolved.Equals(artifact.Path, StringComparison.OrdinalIgnoreCase))
+            {
+                RejectLinks(resolved);
+                return File.Exists(resolved) && Hash(resolved) == artifact.Hash;
+            }
+        return false;
     }
     private static void RestoreFile(string path, byte[]? bytes)
     {

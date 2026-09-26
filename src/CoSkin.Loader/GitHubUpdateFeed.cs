@@ -13,7 +13,7 @@ internal sealed class GitHubUpdateFeed : IUpdateFeed, IDisposable
     {
         client = new HttpClient(handler ?? new HttpClientHandler { AllowAutoRedirect = false });
         client.Timeout = TimeSpan.FromMinutes(3);
-        client.DefaultRequestHeaders.UserAgent.ParseAdd("CoSkin/0.1.0");
+        client.DefaultRequestHeaders.UserAgent.ParseAdd("CoSkin/" + ProductVersion.Display);
     }
 
     public async Task<UpdateFeedResult> Check(string? etag, CancellationToken cancellationToken)
@@ -22,6 +22,7 @@ internal sealed class GitHubUpdateFeed : IUpdateFeed, IDisposable
         deadline.CancelAfter(TimeSpan.FromSeconds(30));
         cancellationToken = deadline.Token;
         using var response = await Send(Manifest, etag, cancellationToken);
+        if (response.StatusCode == HttpStatusCode.NotFound) return new(null, null, false);
         if (response.StatusCode == HttpStatusCode.NotModified)
             return new(null, response.Headers.ETag?.ToString() ?? etag);
         response.EnsureSuccessStatusCode();

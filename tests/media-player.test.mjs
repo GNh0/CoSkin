@@ -112,6 +112,17 @@ test("실제 미디어 재생기는 스크롤 정지와 맞춤·크기 변경에
   assert.equal(player.canvas, canvas);
   assert.equal(canvas.width, 200);
   assert.equal(player.index, 1);
+  const row = new MediaPlayer(media, parent);
+  row.setPlaying(true);
+  row.pause(true);
+  assert.equal(timers.size, 1);
+  now = 1200;
+  const sharedTick = [...timers.values()][0];
+  timers.clear();
+  sharedTick();
+  assert.equal(player.index, 0, "행 정지 동안 동일 GIF의 배경 시계는 진행");
+  assert.equal(timers.size, 1, "공유 미디어는 단일 시계를 유지");
+  row.dispose();
   player.dispose();
   assert.equal(timers.size, 0);
 });

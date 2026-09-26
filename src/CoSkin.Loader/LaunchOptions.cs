@@ -2,10 +2,10 @@ namespace CoSkin;
 
 internal enum LaunchCommand
 {
-    Connect, Coupled, Prepare, Install, Uninstall, Import
+    Connect, Coupled, Prepare, Install, Uninstall, Import, Update, Quit
 }
 
-internal sealed record LaunchOptions(LaunchCommand Command, string Store, int? Port, string? ImportPath, bool Associate)
+internal sealed record LaunchOptions(LaunchCommand Command, string Store, int? Port, string? ImportPath, bool Associate, int? CodexProcess)
 {
     internal static LaunchOptions Parse(string[] arguments)
     {
@@ -13,6 +13,7 @@ internal sealed record LaunchOptions(LaunchCommand Command, string Store, int? P
         var commandSeen = false;
         var store = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "CoSkin");
         int? port = null;
+        int? codexProcess = null;
         string? importPath = null;
         var associate = false;
         var seen = new HashSet<string>(StringComparer.Ordinal);
@@ -44,6 +45,9 @@ internal sealed record LaunchOptions(LaunchCommand Command, string Store, int? P
                         throw new InvalidDataException("연결 포트 범위는 1024~65535입니다.");
                     port = number;
                     break;
+                case "--resident":
+                    Select(LaunchCommand.Connect);
+                    break;
                 case "--with-codex":
                     Select(LaunchCommand.Coupled);
                     break;
@@ -60,6 +64,18 @@ internal sealed record LaunchOptions(LaunchCommand Command, string Store, int? P
                     Select(LaunchCommand.Import);
                     importPath = Path.GetFullPath(Value());
                     break;
+                case "--quit":
+                    Select(LaunchCommand.Quit);
+                    break;
+                case "--codex-pid":
+                    if (!int.TryParse(Value(), out var processId) || processId <= 0)
+                        throw new InvalidDataException("Codex 프로세스 번호는 양수여야 합니다.");
+                    codexProcess = processId;
+                    break;
+                case "--apply-update":
+                    Select(LaunchCommand.Update);
+                    importPath = Path.GetFullPath(Value());
+                    break;
                 case "--associate":
                     associate = true;
                     break;
@@ -73,6 +89,8 @@ internal sealed record LaunchOptions(LaunchCommand Command, string Store, int? P
             throw new InvalidDataException("이 명령에서는 연결 포트를 지정할 수 없습니다.");
         if (seen.Contains("--store") && command is LaunchCommand.Install or LaunchCommand.Uninstall)
             throw new InvalidDataException("설치 등록 명령에서는 별도 저장소를 지정할 수 없습니다.");
-        return new(command, Path.TrimEndingDirectorySeparator(Path.GetFullPath(store)), port, importPath, associate);
+        if (codexProcess is not null && (port is not null || command is not (LaunchCommand.Connect or LaunchCommand.Import)))
+            throw new InvalidDataException("대상 Codex 지정은 독립 연결 명령에서만 사용할 수 있습니다.");
+        return new(command, Path.TrimEndingDirectorySeparator(Path.GetFullPath(store)), port, importPath, associate, codexProcess);
     }
 }

@@ -2,73 +2,77 @@
 
 [한국어](README.md) · [English](README.en.md) · [日本語](README.ja.md) · [简体中文](README.zh-CN.md)
 
-Windows 扩展：从 Codex 左侧图标栏中的 **CoSkin** 打开内部管理的主题皮肤库，进行选择、预览、编辑和应用。
+让Codex成为个人空间的Windows主题库。选择图片、GIF及效果，在真实界面中预览、编辑和应用。
 
-**0.1.0-beta.1为测试预发布版本**。这是非官方扩展，不代表正式产品已完成。
-
-[下载 Windows x64 版本](https://github.com/GNh0/CoSkin/releases/tag/v0.1.0-beta.1) · [发布说明（韩语）](docs/release-0.1.0-beta.1.md)
+[下载Windows x64](https://github.com/GNh0/CoSkin/releases/tag/v0.1.0) · [支持与验证范围](docs/support-matrix.md)
 
 ## 安装与启动
 
-解压Windows x64 ZIP，双击`CoSkin.Loader.exe`打开当前用户安装界面。请保留同一文件夹中的三个文件，无需另行安装Node或.NET。安装后从开始菜单的 **Codex + CoSkin** 启动。如果原版Codex正在运行，请保存工作并正常退出。CoSkin不会强制关闭它。
+解压ZIP并运行 **CoSkin.Loader.exe**。请将执行文件、renderer.js和THIRD-PARTY-NOTICES.txt放在同一目录。用户不需要单独安装Node或.NET。
 
-当前测试版使用已验证的专用快捷方式。暂不支持自动连接通过普通方式启动的原版Codex，也不支持在Windows登录时自动启动CoSkin。
+安装时可选择Windows登录启动、随Codex退出、桌面快捷方式、.coskin文件关联和自动更新。保留现有主题和Codex数据。
 
-联动启动和联动退出可分别选择。系统托盘提供主题应用、装饰开关、主题列表、设置和退出。通过Windows应用列表卸载，保留主题和素材。正在运行的安装文件残余清理仍待检查。
+**CoSkin → Codex或Codex → CoSkin，任意启动顺序都可以连接。** CoSkin先启动时在托盘等待，也可连接已经运行的支持版本Codex，无需重启。桌面 **CoSkin** 单独启动，开始菜单 **Codex + CoSkin** 同时启动。不会强制关闭Codex。
 
-## 已知限制
+已验证普通启动连接的Windows包版本为 **26.924.2738.0**，内部应用版本为 **26.924.22138**。连接模块验证执行文件、OpenAI签名、ASAR及chrome.dll。其他版本需先验证兼容性。两个应用需要相同的Windows权限级别。[常驻结构](docs/resident-architecture.md)
 
-- **使用大型GIF背景时，聊天滚动可能导致GIF暂停或卡顿。** 此测试版本发布后再改进。内置主题使用静态背景。
-- 验证基准为Codex Windows包 **26.924.1866.0**、内部应用 **26.924.20706**。其他版本可能停止连接。
-- 自动更新设置已提供，但正式签名密钥、发布版本及实际主机自动切换尚未准备好。目前请手动安装新版。
-- 多窗口生命周期、新Windows用户安装、全部效果组合和最大主题包内存仍在验证。
+## 主题与效果
 
-## 实际应用示例
+- 从左侧图标栏打开 **CoSkin**。卡片列表支持创建、导入、删除、预览和直接应用。
+- 点击卡片进入详情页面，提供预览、编辑、复制、导出和主题信息编辑。
+- 在实际界面的编辑模式中右键目标。项目行与聊天行默认编辑 **同类全部行**，也可使用单独指定覆盖一行。
+- 选择整个应用、项目或聊天范围。保存和应用是独立操作；取消预览保留之前的应用状态。
+- 支持PNG、JPEG和GIF。图片不透明度与文字分开调整。可编辑默认、悬停、选中状态及进入、退出、点击和循环效果。
+- [自定义效果](docs/custom-effects.md)通过声明式JSON关键帧注册和共享。渲染器使用JavaScript/TypeScript、CSS和Web Animations API，效果包不会执行任意JavaScript。
 
-独立生成的鸣潮守岸人非官方同人示例，并非内置默认主题。不包含私人聊天或用户上传。[素材来源与生成说明](docs/media/wuthering-waves/ASSET-NOTES.md)。
+列表是与聊天分离的专用页面。共同背景覆盖Codex应用表面、标签页以及文件/浏览器工具的应用区域。外部网页内容与Windows对话框是独立表面。
 
-![主题列表](docs/media/wuthering-waves/shorekeeper-theme-library.png)
-![实际主题应用](docs/media/wuthering-waves/shorekeeper-live-applied.png)
+## 托盘与更新
+
+托盘提供主题库、设置、主题选择、装饰开关、重新连接和退出。主题合并为子菜单，菜单跟随Codex语言。登录启动与随Codex退出为独立选项。
+
+自动更新检查 **GitHub Releases中的更高稳定版本**。验证发布者签名、SHA-256和包结构；编辑或预览期间推迟替换。新版CoSkin无法就绪时恢复之前的安装。Codex和主题数据不属于更新内容。关闭自动更新后不在后台检查，仍可在设置中手动检查。[发布更新](docs/updates.md)
+
+## 实际界面
+
+![0.1.0 主题库](docs/media/theme-library-0.1.0.png)
+
+独立生成的鸣潮守岸人非官方同人示例，不包含在运行ZIP中。[媒体来源](docs/media/wuthering-waves/ASSET-NOTES.md)
+
+![主题库](docs/media/wuthering-waves/shorekeeper-theme-library.png)
 ![主题详情](docs/media/wuthering-waves/shorekeeper-theme-detail.png)
 ![效果编辑](docs/media/wuthering-waves/shorekeeper-effect-editor.png)
+![应用背景](docs/media/wuthering-waves/shorekeeper-live-applied.png)
 ![行悬停效果](docs/media/wuthering-waves/shorekeeper-hover.gif)
-![实际应用中的GIF背景](docs/media/wuthering-waves/shorekeeper-live-gif.gif)
+![实际GIF背景](docs/media/wuthering-waves/shorekeeper-live-gif.gif)
 
-动态图示例来自实际应用的间隔采样，不代表已验证流畅播放。请查看上述GIF滚动限制。
+部分示例录制于首个测试版。它们不是帧率保证或性能基准。
 
-## 使用流程
+## 性能与语言
 
-直接在卡片上预览、应用或删除，或点击卡片主体打开独立的详情页面。进入编辑后会返回真实的 Codex 界面。仅在编辑模式下将目标的右键菜单替换为 CoSkin 设置，退出时恢复原菜单。保存和应用是两个独立操作。取消预览会保留先前的应用状态。
+界面优先跟随Codex语言，支持 **韩语、英语、日语和简体中文**。其他语言回退为英语。
 
-支持 PNG、JPEG 和动态 GIF。图片不透明度独立于原有文字和输入操作。减少动态效果、隐藏、最小化或移到显示器之外时会暂停动画。`.coskin` 用于导入和导出。导入的主题与资源存储在内部主题库中，即使外部原文件被删除也能继续使用。
+固定GIF背景在滚轮滚动期间继续播放。移动的侧栏行效果及GIF会短暂暂停，以优先保证列表响应。隐藏、最小化或离开屏幕时停止动画。可跟随Windows减少动态效果设置，或选择允许/关闭。大型GIF和多个高分辨率背景仍会带来开销。
 
-## 实现和验证范围
-
-验证副本已确认左侧栏右方完整专用页面、响应式卡片和详情、主题库操作、实际编辑及菜单恢复、PNG/JPEG/GIF解码与独立不透明度、GIF原始循环数、最小化及显示器外暂停和恢复，以及图片和主题包分块传输。自定义效果注册、播放和主题包往返、主题信息编辑、连续过渡、结果及文件树背景恢复和列表上方滚轮操作也已验证。最终视觉验收、多窗口、所有效果语义、最大包内存、普通启动、安装和文件关联尚未完成。请查看[实现状态](docs/support-matrix.md)。
-
-界面优先跟随Codex应用语言，已实现韩语、英语、日语和简体中文的UI、无障碍及错误字典。中文地区变体回退为简体中文，其他不支持的语言回退为英语。通过临时改变文档lang已检查主题库、详情和编辑的切换及横向溢出；实际账户语言设置下的所有目标与错误路径仍未全面验证。
+通过 **47项Node测试、171项主机检查**以及ESLint和TypeScript检查。验证了真实安装更新、连接正在运行的Codex和数据保留。[验证范围](docs/support-matrix.md)区分了测试条件与尚未验证的环境。
 
 ## 开发
 
-使用 Node 24 LTS 和 .NET 10 LTS SDK。最终用户主机设计为无需 Node 即可运行。依赖使用精确版本和锁定文件。
+需要Node 24、.NET 10及用于原生模块的Visual Studio 2022 C++ x64工具。
 
 ```powershell
 npm ci --ignore-scripts
 npm test
-node scripts/bundle.mjs
-dotnet build src/CoSkin.Loader/CoSkin.Loader.csproj
-dotnet run --project tests/CoSkin.HostTests/CoSkin.HostTests.csproj
+npm run lint
+npm run typecheck
+./scripts/build.ps1 -Portable
+dotnet run --project tests/CoSkin.HostTests
 ```
 
-请勿放宽执行策略。在脚本受限的环境中使用以上直接命令。不修改原始 Codex 可执行文件、ASAR 或完整性设置。
+不修改原版Codex文件、ASAR及快捷方式。个人日志、用户界面、存储和发布者私钥不会公开。
 
-[产品设计](docs/CoSkin-설계서.md) · [包格式契约](docs/coskin-package-v1.md) · [架构与修改方法](docs/architecture.md)
+[设计](docs/CoSkin-설계서.md) · [结构](docs/architecture.md) · [.coskin协议](docs/coskin-package-v1.md)
 
-个人环境的原始日志和截图不包含在公开发布中。在线图库和高级关键帧属于后续范围。
+## 许可证
 
-
-[自定义效果开发](docs/custom-effects.zh-CN.md)。已在验证副本确认注册、播放、主题包往返、主题信息编辑和连续悬停过渡；这不代表所有效果组合均已验证。
-
-## 许可
-
-CoSkin自身源代码许可尚未指定，授权范围仍待决定。第三方组件遵循各自许可。[第三方声明](THIRD-PARTY-NOTICES.txt)包含gifuct-js、parser及捆绑.NET运行时的完整许可和声明。示例同人媒体为独立生成内容，并非官方角色图片再发布。
+CoSkin源码尚未指定许可证。依赖组件采用各自的许可证，请参阅[第三方声明](THIRD-PARTY-NOTICES.txt)。角色相关权利属于相应权利人。

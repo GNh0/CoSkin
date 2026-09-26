@@ -4,10 +4,12 @@ namespace CoSkin;
 /// <summary>Event-driven native painting; the real checkbox retains keyboard and accessibility behavior.</summary>
 internal sealed class SetupDrawing(string locale) : IDisposable
 {
+    [DllImport("user32.dll")] private static extern bool IsWindowEnabled(IntPtr window);
     private readonly Dictionary<int, IntPtr> brushes = [];
     private readonly Dictionary<int, IntPtr> pens = [];
     private readonly Dictionary<(int Size, int Weight), IntPtr> fonts = [];
     private uint dpi = 96;
+    private IntPtr brand;
     private readonly string unavailable = locale.Split('-', '_')[0].ToLowerInvariant() switch
     {
         "ko" => "준비 중",
@@ -15,8 +17,8 @@ internal sealed class SetupDrawing(string locale) : IDisposable
         "zh" => "准备中",
         _ => "Preparing"
     };
-    private readonly int background = Palette(5, Color(20, 20, 29)), card = Palette(5, Color(30, 29, 42)), edge = Palette(8, Color(61, 55, 78));
-    private readonly int foreground = Palette(8, Color(245, 242, 252)), muted = Palette(8, Color(170, 164, 185)), accent = Palette(13, Color(194, 165, 245));
+    private readonly int background = Palette(5, Color(16, 17, 22)), card = Palette(5, Color(26, 27, 35)), edge = Palette(8, Color(45, 45, 57));
+    private readonly int foreground = Palette(8, Color(242, 241, 246)), muted = Palette(8, Color(166, 165, 182)), accent = Palette(13, Color(201, 187, 255));
     private readonly int accentInk = Palette(14, Color(28, 19, 43));
 
     internal IntPtr? Handle(IntPtr window, uint message, UIntPtr wParam, IntPtr lParam)
@@ -32,7 +34,12 @@ internal sealed class SetupDrawing(string locale) : IDisposable
             var dark = 1;
             DwmSetWindowAttribute(window, 20, ref dark, 4);
             foreach (var id in new[] { 100, 101, 102, 103 })
-                SendMessage(GetDlgItem(window, id), 0x0030, Font(id == 100 ? 28 : id == 101 ? 16 : 12, id <= 101 ? 600 : 400), new IntPtr(1));
+                SendMessage(GetDlgItem(window, id), 0x0030, Font(id == 100 ? 16 : id == 101 ? 26 : 12, id <= 101 ? 600 : 400), new IntPtr(1));
+            if (brand == IntPtr.Zero)
+                brand = BrandIcon.Load(32);
+            SendMessage(GetDlgItem(window, 104), 0x0170, brand, IntPtr.Zero);
+            SendMessage(window, 0x0080, new IntPtr(1), brand);
+            SendMessage(window, 0x0080, IntPtr.Zero, brand);
             return null;
         }
         if (message is 0x0136 or 0x0138 or 0x0135)
@@ -46,7 +53,7 @@ internal sealed class SetupDrawing(string locale) : IDisposable
         if (message == 0x004e)
         {
             var draw = Marshal.PtrToStructure<CustomDraw>(lParam);
-            if (draw.Header.Code != unchecked((uint)-12) || draw.Header.Id.ToUInt64() is < 11 or > 14)
+            if (draw.Header.Code != unchecked((uint)-12) || draw.Header.Id.ToUInt64() is < 11 or > 16)
                 return null;
             if (draw.Stage is 1 or 3)
             {
@@ -66,7 +73,7 @@ internal sealed class SetupDrawing(string locale) : IDisposable
                 return new IntPtr(1);
             }
         }
-        if (message == 0x0111 && (wParam.ToUInt64() & 0xffff) is >= 11 and <= 14)
+        if (message == 0x0111 && (wParam.ToUInt64() & 0xffff) is >= 11 and <= 16)
             InvalidateRect(GetDlgItem(window, (int)(wParam.ToUInt64() & 0xffff)), IntPtr.Zero, false);
         return null;
     }
@@ -86,10 +93,10 @@ internal sealed class SetupDrawing(string locale) : IDisposable
         var lines = text.ToString().Split('\n', 2);
         var title = rect;
         title.Left += Px(18);
-        title.Top += Px(12);
+        title.Top += Px(8);
         title.Right -= Px(76);
-        title.Bottom = title.Top + Px(22);
-        if (draw.Header.Id.ToUInt64() == 13)
+        title.Bottom = title.Top + Px(20);
+        if (draw.Header.Id.ToUInt64() == 13 && !IsWindowEnabled(draw.Header.Window))
         {
             var badge = title;
             badge.Left = badge.Right - Px(80);
@@ -99,12 +106,12 @@ internal sealed class SetupDrawing(string locale) : IDisposable
             Text(draw.Dc, unavailable, badge, 10, 500, accent, 0x1 | 0x4 | 0x20);
             title.Right = badge.Left - Px(8);
         }
-        Text(draw.Dc, lines[0], title, 14, 600, foreground, 0x20 | 0x4 | 0x8000);
+        Text(draw.Dc, lines[0], title, 13, 600, foreground, 0x20 | 0x4 | 0x8000);
         var description = title;
-        description.Top += Px(26);
+        description.Top += Px(22);
         description.Bottom = rect.Bottom - Px(8);
         description.Right = rect.Right - Px(76);
-        Text(draw.Dc, lines.ElementAtOrDefault(1) ?? "", description, 12, 400, muted, 0x10 | 0x800);
+        Text(draw.Dc, lines.ElementAtOrDefault(1) ?? "", description, 11, 400, muted, 0x10 | 0x800);
         var toggle = new Rect { Left = rect.Right - Px(58), Right = rect.Right - Px(18), Top = (rect.Top + rect.Bottom) / 2 - Px(11), Bottom = (rect.Top + rect.Bottom) / 2 + Px(11) };
         Rounded(draw.Dc, toggle, enabled ? accent : edge, enabled ? accent : edge, 22);
         var knobX = enabled ? toggle.Right - Px(19) : toggle.Left + Px(3);
@@ -188,6 +195,8 @@ internal sealed class SetupDrawing(string locale) : IDisposable
     }
     public void Dispose()
     {
+        if (brand != IntPtr.Zero)
+            BrandIcon.DestroyIcon(brand);
         foreach (var resource in brushes.Values.Concat(pens.Values).Concat(fonts.Values))
             DeleteObject(resource);
     }

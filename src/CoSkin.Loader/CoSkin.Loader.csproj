@@ -1,11 +1,12 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <OutputType>WinExe</OutputType>
-    <Version>0.1.0-beta.1</Version>
+    <Version>0.1.0</Version>
     <AssemblyVersion>0.1.0.0</AssemblyVersion>
     <FileVersion>0.1.0.0</FileVersion>
     <Product>CoSkin</Product>
     <Description>Codex theme library and editor</Description>
+    <ApplicationIcon>../../assets/coskin.ico</ApplicationIcon>
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <TargetFramework>net10.0-windows</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
@@ -18,7 +19,13 @@
     <DebugType Condition="'$(Configuration)' == 'Release'">none</DebugType>
   </PropertyGroup>
   <ItemGroup>
+    <EmbeddedResource Include="../../assets/native/CoSkin.Native.dll" LogicalName="CoSkin.Native.dll" Condition="Exists('../../assets/native/CoSkin.Native.dll')" />
+    <EmbeddedResource Include="native-renderer-bridge.js" LogicalName="CoSkin.NativeRendererBridge.js" />
+    <EmbeddedResource Include="../../assets/update-publisher.spki" LogicalName="CoSkin.UpdatePublisher.spki" Condition="Exists('../../assets/update-publisher.spki')" />
     <Content Include="../../dist/renderer.js" Link="renderer.js" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" ExcludeFromSingleFile="true" />
     <Content Include="../../THIRD-PARTY-NOTICES.txt" Link="THIRD-PARTY-NOTICES.txt" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" ExcludeFromSingleFile="true" />
   </ItemGroup>
+  <Target Name="RequireNativeBridge" BeforeTargets="PrepareForBuild" Condition="'$(Configuration)' == 'Release'">
+    <Error Condition="!Exists('../../assets/native/CoSkin.Native.dll')" Text="Run scripts/build-native.ps1 before building a CoSkin release." />
+  </Target>
 </Project>

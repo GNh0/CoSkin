@@ -22,6 +22,8 @@ internal static class NativeWindow
     private static extern bool EnumWindows(EnumWindowsCallback callback, IntPtr value);
     [DllImport("user32.dll")]
     private static extern uint GetWindowThreadProcessId(IntPtr window, out uint processId);
+    [DllImport("user32.dll", CharSet = CharSet.Unicode)]
+    private static extern int GetClassName(IntPtr window, System.Text.StringBuilder name, int length);
     [DllImport("dwmapi.dll")]
     private static extern int DwmGetWindowAttribute(IntPtr window, uint attribute, out int value, int size);
     private delegate bool EnumWindowsCallback(IntPtr window, IntPtr value);
@@ -88,6 +90,13 @@ internal static class NativeWindow
         // Never substitute an overlay or another same-process window for an ambiguous renderer.
         return candidates.Count == 1 ? candidates[0] : IntPtr.Zero;
     }
+    internal static IntPtr RendererWindow(int processId, JsonNode target)
+    {
+        if (!ulong.TryParse(target["nativeWindow"]?.GetValue<string>(), System.Globalization.NumberStyles.AllowHexSpecifier, System.Globalization.CultureInfo.InvariantCulture, out var value)) return IntPtr.Zero;
+        var window = new IntPtr(unchecked((long)value));
+        GetWindowThreadProcessId(window, out var owner);
+        return owner == processId ? window : IntPtr.Zero;
+    }
     internal static bool Visible(IntPtr window, int processId)
     {
         if (window == IntPtr.Zero)
@@ -108,5 +117,20 @@ internal static class NativeWindow
         if (!Path.GetFileName(path).Equals("ChatGPT.exe", StringComparison.OrdinalIgnoreCase))
             throw new IOException("연결 포트를 Codex가 사용하고 있지 않습니다.");
         return path;
+    }
+    internal static IntPtr AttachmentWindow(int processId)
+    {
+        var windows = new List<(IntPtr Handle, uint Thread)>();
+        EnumWindows((window, _) =>
+        {
+            var thread = GetWindowThreadProcessId(window, out var owner);
+            if (owner != processId) return true;
+            var name = new System.Text.StringBuilder(128);
+            GetClassName(window, name, name.Capacity);
+            if (name.ToString().StartsWith("Chrome_WidgetWin_", StringComparison.Ordinal)) windows.Add((window, thread));
+            return true;
+        }, IntPtr.Zero);
+        // All supported top-level Codex windows share its main event-loop thread.
+        return windows.Count > 0 && windows.Select(value => value.Thread).Distinct().Count() == 1 ? windows[0].Handle : IntPtr.Zero;
     }
 }

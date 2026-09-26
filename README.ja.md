@@ -2,73 +2,77 @@
 
 [한국어](README.md) · [English](README.en.md) · [日本語](README.ja.md) · [简体中文](README.zh-CN.md)
 
-Codex の左アイコンバーにある **CoSkin** から、管理されたテーマスキン一覧を開き、選択・プレビュー・編集・適用を行う Windows 拡張です。
+Codexを自分だけの空間にするWindows用テーマライブラリです。画像・GIF・エフェクトを選び、実際の画面でプレビュー・編集・適用できます。
 
-**0.1.0-beta.1はテスト用プレリリース**です。非公式拡張であり、正式版の完成を意味しません。
-
-[Windows x64 ダウンロード](https://github.com/GNh0/CoSkin/releases/tag/v0.1.0-beta.1) · [リリースノート（韓国語）](docs/release-0.1.0-beta.1.md)
+[Windows x64をダウンロード](https://github.com/GNh0/CoSkin/releases/tag/v0.1.0) · [対応・検証範囲](docs/support-matrix.md)
 
 ## インストールと起動
 
-Windows x64 ZIPを展開し、`CoSkin.Loader.exe`をダブルクリックしてユーザー単位のセットアップを開きます。3ファイルを同じフォルダーに保持してください。Nodeや.NETの別途インストールは不要です。スタートメニューの **Codex + CoSkin** から起動します。元のCodexが起動中なら、作業を保存して通常終了してください。強制終了はしません。
+ZIPを展開して **CoSkin.Loader.exe** を起動してください。実行ファイル・renderer.js・THIRD-PARTY-NOTICES.txtの3ファイルを同じフォルダーに置きます。利用者はNodeや.NETを別途インストールする必要はありません。
 
-現在のベータは検証済みの専用ショートカットを使用します。通常起動した元のCodexへの自動接続と、Windowsサインイン時のCoSkin自動起動はまだ対応していません。
+Windowsサインイン時の起動、Codexと同時に終了、デスクトップショートカット、.coskinの関連付け、自動更新を選択できます。既存のテーマとCodexデータを保持します。
 
-連動起動と連動終了は独立して選択できます。トレイからテーマ適用、装飾切替、一覧・設定、終了を操作できます。Windowsアプリ一覧から削除し、テーマと素材を保持します。起動中の配布ファイル残余の削除は追加検証中です。
+**CoSkin → Codex、Codex → CoSkinのどちらの順序でも接続できます。** CoSkinを先に起動するとトレイで待機し、起動中の対応Codexには再起動せずに接続します。デスクトップの **CoSkin** は単独起動、スタートメニューの **Codex + CoSkin** は同時起動です。Codexを強制終了しません。
 
-## 既知の制限
+通常起動への接続を検証したバージョンはWindowsパッケージ **26.924.2738.0**、内部アプリ **26.924.22138** です。実行ファイル・OpenAI署名・ASAR・chrome.dllを確認します。他のバージョンは互換性の検証が必要です。両アプリのWindows権限レベルを揃えてください。[常駐構造](docs/resident-architecture.md)
 
-- **大きなGIF背景を使うチャットでは、スクロール時にGIFが停止・カクつく場合があります。** テスト配信後に改善予定です。標準テーマは静止背景です。
-- 検証対象はCodex Windowsパッケージ **26.924.1866.0**、内部アプリ **26.924.20706** です。他の版では接続を停止する場合があります。
-- 自動更新の設定はありますが、正式署名鍵・リリースとホスト自動切替は未準備です。当面は新しいパッケージを手動でインストールしてください。
-- 複数ウィンドウ、新規ユーザー環境、全効果の組合せ、最大パッケージメモリは検証を継続しています。
+## テーマとエフェクト
 
-## 実際の適用例
+- 左のアイコンバーから **CoSkin** を開きます。カード一覧で作成・取り込み・削除・プレビュー・即時適用できます。
+- カードを開くと詳細ページでプレビュー・編集・複製・書き出し・テーマ情報の編集ができます。
+- 実画面の編集モードで対象を右クリックします。プロジェクト・チャット行は標準で **同じ種類の全行** を編集し、個別指定で1行だけを上書きできます。
+- アプリ全体・プロジェクト・チャットの適用範囲を選択します。保存と適用は別操作です。プレビューのキャンセルは元の適用状態を保持します。
+- PNG・JPEG・GIFに対応します。画像の不透明度を文字と別に調整できます。通常・ホバー・選択状態と、開始・終了・クリック・繰り返しエフェクトを編集できます。
+- [カスタムエフェクト](docs/custom-effects.md)は宣言型JSONキーフレームを登録・共有します。レンダラーはJavaScript/TypeScript・CSS・Web Animations APIを使用し、任意のJavaScriptを実行するパッケージではありません。
 
-別途生成した鳴潮・ショアキーパーの非公式ファンアート例です。標準同梱テーマではありません。個人チャット・ユーザー素材は含みません。[素材の出典・生成情報](docs/media/wuthering-waves/ASSET-NOTES.md)。
+一覧はチャットから分離した専用ページです。共通背景はCodexのアプリ表面、タブ、ファイル・ブラウザーツールのアプリ領域に適用されます。外部サイトの内容とWindowsダイアログは別の表面です。
+
+## トレイと更新
+
+トレイから一覧・設定・テーマ選択・装飾の切り替え・再接続・終了を操作できます。テーマはサブメニューにまとめ、メニューはCodexの言語に従います。サインイン起動と同時終了は独立した設定です。
+
+自動更新は **GitHub Releasesの新しい安定版** を確認します。発行者署名・SHA-256・パッケージ構成を検証し、編集・プレビュー中は置き換えを延期します。新しいCoSkinが準備できなければ前のインストールを復元します。Codexとテーマデータは更新対象ではありません。無効化するとバックグラウンド確認を止めます。設定から手動確認もできます。[更新の公開方法](docs/updates.md)
+
+## 実際の画面
+
+![0.1.0 テーマ一覧](docs/media/theme-library-0.1.0.png)
+
+別途生成した鳴潮のショアキーパーの非公式ファンアート例です。実行ZIPには同梱していません。[メディア出典](docs/media/wuthering-waves/ASSET-NOTES.md)
 
 ![テーマ一覧](docs/media/wuthering-waves/shorekeeper-theme-library.png)
-![実際のテーマ適用](docs/media/wuthering-waves/shorekeeper-live-applied.png)
 ![テーマ詳細](docs/media/wuthering-waves/shorekeeper-theme-detail.png)
-![効果編集](docs/media/wuthering-waves/shorekeeper-effect-editor.png)
-![行のホバー効果](docs/media/wuthering-waves/shorekeeper-hover.gif)
-![実際のアプリのGIF背景](docs/media/wuthering-waves/shorekeeper-live-gif.gif)
+![エフェクト編集](docs/media/wuthering-waves/shorekeeper-effect-editor.png)
+![背景の適用](docs/media/wuthering-waves/shorekeeper-live-applied.png)
+![行のホバー](docs/media/wuthering-waves/shorekeeper-hover.gif)
+![実際のGIF背景](docs/media/wuthering-waves/shorekeeper-live-gif.gif)
 
-動く背景は実際のアプリから間隔を置いて撮影した例です。滑らかさの保証ではなく、上記のGIFスクロール制限をご確認ください。
+一部の例は最初のベータ版で撮影しました。フレームレートの保証や性能ベンチマークではありません。
 
-## 操作の流れ
+## 性能と言語
 
-カードから直接プレビュー・適用・削除するか、カード本体を押して詳細ページを開きます。編集すると実際の Codex 画面に戻ります。編集モード中だけ対象の右クリックメニューを CoSkin 設定に切り替え、終了時に元のメニューを復元します。保存と適用は別の操作です。プレビューを取り消すと以前の適用状態を維持します。
+UIはCodexの言語に従い、**韓国語・英語・日本語・簡体字中国語**を提供します。他の言語は英語に置き換えます。
 
-PNG・JPEG・動く GIF に対応します。画像の不透明度は元の文字や入力操作と独立しています。動きを減らす設定、非表示、最小化、モニター外では動きを停止します。`.coskin` は読み込み・書き出し形式です。読み込んだテーマと画像は内部一覧に保存され、外部の元ファイルを削除しても利用できます。
+固定GIF背景はホイールスクロール中も再生します。移動するサイドバー行のエフェクトとGIFは短く停止して一覧の応答を優先します。非表示・最小化・画面外では動きを停止します。Windowsの動きを減らす設定に従うか、許可・停止を選べます。大きいGIFや複数の高解像度背景には負荷が残ります。
 
-## 実装と検証の範囲
-
-検証用コピーで左バー右側の専用ページ、可変幅のカード・詳細、一覧操作、実画面の編集とメニュー復元、PNG/JPEG/GIFのデコードと独立した不透明度、GIFの元の反復数、最小化・画面外での停止と復帰、画像・パッケージの分割転送を確認しました。カスタム効果の登録・再生・往復、テーマ情報編集、連続遷移、結果/ファイルツリー背景復元と一覧上のホイール操作も検証済みです。最終デザイン承認、複数ウィンドウ、全効果の意味、最大パッケージのメモリ、通常起動・インストール・関連付けは未完了です。[実装状況](docs/support-matrix.md)を参照してください。
-
-UIはCodexのアプリ言語を優先します。韓国語・英語・日本語・中国語簡体字のUI・アクセシビリティ・エラー辞書を実装済みです。中国語の地域値は簡体字、その他の未対応言語は英語に切り替えます。文書langの一時変更で一覧・詳細・編集の切替と横方向のはみ出しを確認しました。実際のアカウント言語設定による全対象・エラー経路の検証は未完了です。
+**Node 47テスト、ホスト171検査**とESLint・TypeScript検査が通過しました。実際のインストール更新、起動中Codexへの接続、データ保持を確認しました。[検証範囲](docs/support-matrix.md)に条件と未検証環境を記載しています。
 
 ## 開発
 
-Node 24 LTS と .NET 10 LTS SDK を使用します。利用者向けホストは Node なしで動作する設計です。依存関係は正確なバージョンとロックファイルで固定します。
+Node 24、.NET 10、ネイティブモジュール用のVisual Studio 2022 C++ x64ツールが必要です。
 
 ```powershell
 npm ci --ignore-scripts
 npm test
-node scripts/bundle.mjs
-dotnet build src/CoSkin.Loader/CoSkin.Loader.csproj
-dotnet run --project tests/CoSkin.HostTests/CoSkin.HostTests.csproj
+npm run lint
+npm run typecheck
+./scripts/build.ps1 -Portable
+dotnet run --project tests/CoSkin.HostTests
 ```
 
-実行ポリシーを緩和しないでください。スクリプトが制限された環境では上記の直接コマンドを使用します。元の Codex 実行ファイル、ASAR、整合性設定は変更しません。
+元のCodexファイル・ASAR・ショートカットは変更しません。個人ログ・利用者画面・保存先・発行者の秘密鍵は公開しません。
 
-[製品設計](docs/CoSkin-설계서.md) · [パッケージ仕様](docs/coskin-package-v1.md) · [構造と変更方法](docs/architecture.md)
-
-個人環境の生ログと画面は公開配布に含めません。オンラインギャラリーと高度なキーフレームは後続の範囲です。
-
-
-[カスタム効果開発](docs/custom-effects.ja.md)。実際の登録・再生・パッケージ往復、テーマ情報編集、連続ホバー遷移は検証用アプリで確認済みです。すべての効果の組み合わせを保証するものではありません。
+[設計](docs/CoSkin-설계서.md) · [構造](docs/architecture.md) · [.coskin仕様](docs/coskin-package-v1.md)
 
 ## ライセンス
 
-CoSkin自体のソースライセンスは未指定で、許諾範囲は未決定です。外部コンポーネントには個別のライセンスが適用されます。[第三者通知](THIRD-PARTY-NOTICES.txt)にはgifuct-js、parser、同梱.NETランタイムの全文を含みます。ファンアート例は別途生成したメディアで、公式キャラクター画像の再配布ではありません。
+CoSkinソースのライセンスは未指定です。依存要素には個別のライセンスが適用されます。[第三者通知](THIRD-PARTY-NOTICES.txt)を参照してください。キャラクターに関する権利は各権利者に帰属します。

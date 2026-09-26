@@ -5,6 +5,17 @@ namespace CoSkin;
 internal static class WindowsInstaller
 {
     private static string Root => Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "CoSkin");
+    internal static bool IsInstalledStore(Library library)
+    {
+        if (!Path.GetFullPath(library.StorePath).Equals(Path.GetFullPath(Root), StringComparison.OrdinalIgnoreCase) || ShouldOfferSetup())
+            return false;
+        var record = new InstallationService(Root, new WindowsInstallationPlatform()).Current();
+        if (!record.Executable.Equals(Environment.ProcessPath, StringComparison.OrdinalIgnoreCase))
+            return false;
+        using var executable = File.OpenRead(record.Executable);
+        var hash = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(executable));
+        return record.Files.Any(file => file.Path == record.Executable && file.Hash == hash);
+    }
     internal static bool ShouldOfferSetup()
     {
         var executable = Environment.ProcessPath;
@@ -26,7 +37,7 @@ internal static class WindowsInstaller
         preferences.Write(choice.Preferences);
         try
         {
-            var installed = new InstallationService(Root, new WindowsInstallationPlatform()).Install(AppContext.BaseDirectory, choice.Associate);
+            var installed = new InstallationService(Root, new WindowsInstallationPlatform()).Install(AppContext.BaseDirectory, choice.Associate, ProductVersion.Display, desktopShortcut: choice.DesktopShortcut, startAtSignIn: choice.Preferences.StartAtSignIn);
             Console.WriteLine("CoSkin 설치 완료: " + installed.Executable);
             SetupDialog.Completed();
         }

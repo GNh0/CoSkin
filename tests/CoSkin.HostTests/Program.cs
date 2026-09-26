@@ -12,6 +12,45 @@ Task Validate(JsonObject _) => Task.CompletedTask; // Contract/decoder behavior 
 Task Decode(byte[] _, string __) => Task.CompletedTask;
 try
 {
+    var codexLaunches = 0;
+    var probeStore = Path.Combine(scratch, "update-readiness-probe");
+    await using (var probeClient = new InstanceChannel(probeStore, claimOwnership: false))
+    await using (var candidateOwner = new InstanceChannel(probeStore))
+    {
+        Check(!probeClient.IsOwner && candidateOwner.IsOwner, "업데이트 준비 검사 클라이언트는 새 호스트의 실행 소유권을 선점하지 않음");
+        candidateOwner.Start((_, _) => Task.FromResult(new JsonObject { ["ok"] = true, ["pid"] = 123 }));
+        using var probeDeadline = new CancellationTokenSource(2000);
+        Check((await probeClient.Send(new JsonObject { ["op"] = "health" }, probeDeadline.Token))["pid"]?.GetValue<int>() == 123, "소유권 없는 업데이트 클라이언트가 실제 명명된 파이프 준비 응답 수신");
+    }
+    var currentBuild = CodexBuilds.Find("26.924.2738.0")!;
+    Check(CodexBuilds.Find("26.924.1866.0")?.AppVersion == "26.924.20706" && currentBuild.AppVersion == "26.924.22138", "검토한 Codex 패키지와 내부 앱 버전의 정확한 대응");
+    Check(CodexBuilds.Find("26.924.2739.0") is null && CodexBuilds.Find("26.924.2738") is null, "검토하지 않은 인접·축약 버전은 자동 지원하지 않음");
+    Check(CodexBuilds.Matches(currentBuild, "26.924.22138", currentBuild.ArchiveHash!) && !CodexBuilds.Matches(currentBuild, "26.924.20706", currentBuild.ArchiveHash!) && !CodexBuilds.Matches(currentBuild, "26.924.22138", new string('0', 64)), "새 Codex는 내부 앱 버전과 검토한 ASAR 해시가 모두 일치해야 함");
+    Task<int> LaunchCodex() { codexLaunches++; return Task.FromResult(61234); }
+    var residentOnly = await ResidentLaunch.Try(false, new RuntimePreferences(), LaunchCodex);
+    var disabledLaunch = await ResidentLaunch.Try(true, new RuntimePreferences(LaunchWithCodex: false), LaunchCodex);
+    Check(codexLaunches == 0 && residentOnly.Port is null && disabledLaunch.Port is null, "독립 실행·함께 실행 끄기는 Codex를 실행하지 않음");
+    var launched = await ResidentLaunch.Try(true, new RuntimePreferences(), LaunchCodex);
+    Check(codexLaunches == 1 && launched.Port == 61234 && launched.Error is null, "명시적 함께 실행만 확인된 연결 포트를 전달");
+    var launchFailure = new TrayActionException("unsupported-codex");
+    var waiting = await ResidentLaunch.Try(true, new RuntimePreferences(), () => Task.FromException<int>(launchFailure));
+    Check(waiting.Port is null && ReferenceEquals(waiting.Error, launchFailure), "Codex 지원 실패는 CoSkin 상주 종료 대신 안내 결과로 반환");
+    var invalidPort = await ResidentLaunch.Try(true, new RuntimePreferences(), () => Task.FromResult(80));
+    Check(invalidPort.Port is null && invalidPort.Error is InvalidDataException, "잘못된 포트로 연결하지 않고 상주 상태 유지");
+    try
+    {
+        await ResidentLaunch.Try(true, new RuntimePreferences(), () => Task.FromCanceled<int>(new CancellationToken(true)));
+        throw new Exception("취소가 상주 오류로 흡수됨");
+    }
+    catch (OperationCanceledException) { Check(true, "명시적 실행 취소는 대기 상태로 흡수하지 않음"); }
+    var detectionRoot = Path.Combine(scratch, "Program Files");
+    string Original(string package) => Path.Combine(detectionRoot, "WindowsApps", package, "app", "ChatGPT.exe");
+    Check(ResidentDetection.IsOriginalPath(Original("OpenAI.Codex_26.924.2738.0_x64__2p2nqsd0c76g0"), detectionRoot), "새 패키지 원본 경로 감지는 연결 허가와 독립");
+    Check(!ResidentDetection.IsOriginalPath(Original("OpenAI.Codex_26.924.2738.0_x64__foreign"), detectionRoot), "다른 게시자 패키지 감지 거절");
+    Check(!ResidentDetection.IsOriginalPath(Path.Combine(scratch, "ChatGPT.exe"), detectionRoot), "동명 실행파일은 원본 감지 아님");
+    Check(!ResidentDetection.IsOriginalPath(Original("OpenAI.Codex_26.924.2738.0_x64__2p2nqsd0c76g0") + ".copy", detectionRoot), "실행파일 경로 전체 일치 필요");
+    foreach (var language in new[] { "ko", "en", "ja", "zh-CN" })
+        Check(!TrayMessages.Error(language, "not-connected").Contains("shortcut", StringComparison.OrdinalIgnoreCase), "미연결 안내는 무조건 전용 바로가기 재실행을 요구하지 않음 " + language);
     var nativeDraw = typeof(SetupDrawing).GetNestedType("DrawItem", System.Reflection.BindingFlags.NonPublic)!;
     var nativeCustomDraw = typeof(SetupDrawing).GetNestedType("CustomDraw", System.Reflection.BindingFlags.NonPublic)!;
     Check(IntPtr.Size == 8 && System.Runtime.InteropServices.Marshal.SizeOf(nativeDraw) == 64, "Win64 DRAWITEMSTRUCT는 itemID 포함 64바이트 계약");
@@ -19,24 +58,87 @@ try
     Check(System.Runtime.InteropServices.Marshal.SizeOf(nativeCustomDraw) == 80 && System.Runtime.InteropServices.Marshal.OffsetOf(nativeCustomDraw, "Dc").ToInt32() == 32, "실제 체크박스 custom-draw Win64 ABI 계약");
     Check(CodexPageContract.Supports("app://-/index.html") && CodexPageContract.Supports("app://-/detached-window.html?initialRoute=%2Fdetached-window"), "검증된 main 및 detached 앱 문서 허용");
     Check(!CodexPageContract.Supports("https://example.com/index.html") && !CodexPageContract.Supports("app://-/detached-window.html?initialRoute=https://example.com") && !CodexPageContract.Supports("app://-/index.html?extra=1"), "외부 페이지 및 미지원 내부 라우트 주입 금지");
+    Check(UiLocale.Normalize("ko-KR") == "ko" && UiLocale.Normalize("ja-JP") == "ja" && UiLocale.Normalize("zh-TW") == "zh-CN" && UiLocale.Normalize(null) == "en", "호스트 앱 언어 및 지역 fallback 계약");
+    Check(!new RuntimePreferences().ExitWithCodex && !new RuntimePreferences().StartAtSignIn, "새 상주 기본은 종료 후 대기·자동 시작 opt-in");
+    var registration = new FakeSignInRegistration();
+    var startupService = new SignInStartup(registration);
+    var startupExe = Path.Combine(scratch, "CoSkin.Loader.exe");
+    startupService.Set(true, startupExe);
+    Check(registration.Command == "\"" + startupExe + "\" --resident", "로그인 시작은 직접 상주 명령만 등록");
+    startupService.Set(false, startupExe);
+    Check(registration.Command is null, "소유 로그인 시작 항목만 제거");
+    registration.Command = "foreign-command";
+    Reject(() => startupService.Set(true, startupExe), "다른 로그인 시작 등록 덮어쓰기 거절");
+    Check(registration.Command == "foreign-command", "거절 뒤 다른 등록 유지");
+    var signalStore = Path.Combine(scratch, "resident-idle");
+    Directory.CreateDirectory(signalStore);
+    using (var signal = new ResidentConnectionSignal(signalStore))
+    {
+        Check(await signal.FindReadyPort(CancellationToken.None) is null, "연결 기록 없는 대기는 외부 도구 없이 반환");
+        using var canceledWait = new CancellationTokenSource(25);
+        try { await signal.Wait(canceledWait.Token); throw new Exception("취소 실패"); }
+        catch (OperationCanceledException) { Check(true, "유휴 신호 대기 취소·정리"); }
+        File.WriteAllText(Path.Combine(signalStore, "managed-connection.json"), "{}");
+        using var signalDeadline = new CancellationTokenSource(2000);
+        await signal.Wait(signalDeadline.Token);
+        Check(true, "별도 저장소 manifest 생성 이벤트로 깨우기");
+    }
+    var retryWindow = new EndpointRetry();
+    for (var attempt = 0; attempt < 6; attempt++) Check(retryWindow.TryAttempt(), "준비 지연 재시도 예산 " + attempt);
+    Check(!retryWindow.TryAttempt() && retryWindow.Delay is null, "재시도 소진 후 타이머 없는 대기");
+    retryWindow.WakeAfterExhaustion();
+    Check(retryWindow.TryAttempt(), "늦은 대상창 생성 신호가 소진된 준비 예산 재개");
+    retryWindow.Reset();
+    retryWindow.Block();
+    retryWindow.WakeAfterExhaustion();
+    Check(!retryWindow.TryAttempt() && retryWindow.Delay is null, "잘못된 정체성은 재시도 금지");
+    var pendingAttempts = 0;
+    using (var delayedEndpoint = new ResidentConnectionSignal(signalStore, probe: _ => Task.FromResult<int?>(++pendingAttempts == 1 ? null : 60600)))
+    {
+        Check(await delayedEndpoint.FindReadyPort(CancellationToken.None) is null, "manifest보다 listener가 늦은 첫 검사");
+        using var deadline = new CancellationTokenSource(2000);
+        await delayedEndpoint.Wait(deadline.Token);
+        Check(await delayedEndpoint.FindReadyPort(deadline.Token) == 60600 && pendingAttempts == 2, "파일 변경 없이 listener 준비 재시도");
+    }
+    using (var explicitEndpoint = new ResidentConnectionSignal(signalStore, 60600))
+    {
+        explicitEndpoint.Connected(60600);
+        explicitEndpoint.BeginRecovery(60600);
+        using var deadline = new CancellationTokenSource(2000);
+        await explicitEndpoint.Wait(deadline.Token);
+        Check(await explicitEndpoint.FindReadyPort(deadline.Token) == 60600, "명시 포트 일시 단절 뒤 포트 보존 재연결");
+    }
     var runtimeStore = new RuntimePreferenceStore(Path.Combine(scratch, "runtime-settings"));
     Check(runtimeStore.Read() == new RuntimePreferences(), "실행 설정 초기값은 테마와 독립");
     using (var updateLibrary = new Library(Path.Combine(scratch, "manual-update-library")))
     {
         var unavailable = await updateLibrary.Handle(new JsonObject { ["op"] = "runtime-update-check" }, Validate, Decode);
         Check(unavailable["status"]?.GetValue<string>() == "unavailable", "실제 설정 수동 확인은 배포 키 미설정을 명확하게 반환");
+        var settings = Library.PreferenceDocument(new RuntimePreferences(StartAtSignIn: true));
+        try { await updateLibrary.Handle(new JsonObject { ["op"] = "runtime-settings-write", ["settings"] = settings.DeepClone() }, Validate, Decode); throw new Exception("미설치 로그인 시작 승인"); }
+        catch (TrayActionException error) { Check(error.Code == "not-installed" && !updateLibrary.Preferences.Read().StartAtSignIn, "미설치 UI 로그인 시작 거절 및 설정 보존"); }
+        var startupRegistered = false; updateLibrary.SetStartup = enabled => startupRegistered = enabled;
+        await updateLibrary.Handle(new JsonObject { ["op"] = "runtime-settings-write", ["settings"] = settings.DeepClone() }, Validate, Decode);
+        Check(startupRegistered && updateLibrary.Preferences.Read().StartAtSignIn, "설치된 UI 로그인 시작은 등록과 설정을 함께 저장");
+        updateLibrary.SetStartup = _ => throw new IOException("fixture registration failure");
+        settings["startAtSignIn"] = false;
+        try { await updateLibrary.Handle(new JsonObject { ["op"] = "runtime-settings-write", ["settings"] = settings.DeepClone() }, Validate, Decode); throw new Exception("등록 실패 무시"); }
+        catch (IOException) { Check(updateLibrary.Preferences.Read().StartAtSignIn, "로그인 등록 실패는 기존 사용자 설정 보존"); }
     }
     runtimeStore.Write(new RuntimePreferences(false, true));
     Check(runtimeStore.Read() == new RuntimePreferences(false, true), "두 실행 연동 옵션 독립 저장");
     runtimeStore.Write(new RuntimePreferences(true, false));
     Check(runtimeStore.Read() == new RuntimePreferences(true, false), "직접 종료 뒤 재실행 설정 보존");
     var lifetime = new TargetLifetime();
+    Check(ReleaseVersion.Parse("0.1.0-beta.2").CompareTo(ReleaseVersion.Parse("0.1.0")) < 0 && ReleaseVersion.Parse("0.1.0-beta.10").CompareTo(ReleaseVersion.Parse("0.1.0-beta.2")) > 0, "beta에서 안정 버전 및 숫자 prerelease 우선순위");
+    Check(ReleaseVersion.Parse("0.1.0+build.a").CompareTo(ReleaseVersion.Parse("0.1.0+build.b")) == 0, "빌드 메타데이터는 업데이트 우선순위를 바꾸지 않음");
+    Reject(() => ReleaseVersion.Parse("0.1.0-beta.02"), "비정규 숫자 prerelease 거절");
     lifetime.Connected(101);
     lifetime.Connected(102);
     lifetime.Connected(102);
     Check(!lifetime.Exited(999, new()), "검증하지 않은 프로세스 종료는 무시");
     Check(!lifetime.Exited(101, new()), "다른 Codex 프로세스가 있으면 상주 유지");
-    Check(lifetime.Exited(102, new()), "마지막 검증 대상 종료 때만 함께 종료");
+    Check(lifetime.Exited(102, new(ExitWithCodex: true)), "마지막 검증 대상 종료 때만 함께 종료");
     lifetime.Connected(103);
     Check(!lifetime.Exited(103, new(true, false)), "함께 종료 옵션 끄면 대상 종료 후 상주 유지");
     Check(StableVersion.Parse("0.10.0").CompareTo(StableVersion.Parse("0.9.99")) > 0, "안정 버전은 문자열이 아닌 숫자로 비교");
@@ -100,6 +202,14 @@ try
         return bytes.ToArray();
     }
     var stageRoot = Path.Combine(scratch, "update-stage");
+    var ticketDirectory = Path.Combine(scratch, "updates", Guid.NewGuid().ToString("N")); Directory.CreateDirectory(ticketDirectory);
+    var ticketPath = UpdateTickets.Create(scratch, ticketDirectory, deferred.Update!);
+    var readTicket = UpdateTickets.Read(scratch, ticketPath, publisher.ExportSubjectPublicKeyInfo());
+    Check(readTicket.OriginProcess == Environment.ProcessId && readTicket.Update.Hash == deferred.Update!.Hash, "서명된 업데이트 요청은 정확한 원본 프로세스와 후보를 보존");
+    var ticketBytes = File.ReadAllBytes(ticketPath);
+    var expiredTicket = JsonContract.Read(ticketBytes); expiredTicket["created"] = DateTimeOffset.UtcNow.ToUnixTimeSeconds() - 601; File.WriteAllText(ticketPath, expiredTicket.ToJsonString());
+    Reject(() => UpdateTickets.Read(scratch, ticketPath, publisher.ExportSubjectPublicKeyInfo()), "만료된 업데이트 요청 재사용 거절"); File.WriteAllBytes(ticketPath, ticketBytes);
+    Reject(() => UpdateTickets.Read(Path.Combine(scratch, "other-store"), ticketPath, publisher.ExportSubjectPublicKeyInfo()), "다른 저장소 업데이트 요청 거절");
     string StageFixture(byte[] bytes)
     {
         File.WriteAllBytes(updateFile, bytes);
@@ -117,6 +227,8 @@ try
     {
         transport.Response = _ => new System.Net.Http.HttpResponseMessage(System.Net.HttpStatusCode.NotModified);
         Check((await githubFeed.Check("\"fixture\"", CancellationToken.None)).Manifest is null && transport.LastETag == "\"fixture\"", "업데이트 ETag 조건부 확인·304 계약");
+        transport.Response = _ => new System.Net.Http.HttpResponseMessage(System.Net.HttpStatusCode.NotFound);
+        Check(!(await githubFeed.Check(null, CancellationToken.None)).Available, "안정 배포 안내가 없으면 최신 버전이라고 주장하지 않음");
         transport.Response = _ => new System.Net.Http.HttpResponseMessage(System.Net.HttpStatusCode.OK) { Content = new System.Net.Http.ByteArrayContent(new byte[8193]) };
         try
         {
@@ -167,11 +279,34 @@ try
     var installed = installer.Install(bundle, true);
     Check(File.Exists(installed.Executable) && fake.ShortcutTarget(fake.ShortcutPath) == installed.Executable, "가짜 플랫폼 설치·바로가기 연결");
     Check(fake.Read(extensionKey, "")?.Data.GetValue<string>() == "CoSkin.ThemeFile", "가짜 플랫폼 테마 파일 연결");
+    Check(installed.DesktopShortcut is not null && fake.ShortcutTarget(installed.DesktopShortcut) == installed.Executable, "바탕화면 기본 켬·대상 설치 실행파일");
+    installer.SetStartup(true);
+    Check(fake.Read(InstallationService.StartupKey, InstallationService.StartupName)?.Data.GetValue<string>() == "\"" + installed.Executable + "\" --resident", "로그인 옵션 설치 기록과 등록 일치");
+
     File.WriteAllText(Path.Combine(bundle, "renderer.js"), "renderer version two");
     var intermediate = installer.Install(bundle, false, "0.1.1");
     Check(fake.Read(@"Software\Microsoft\Windows\CurrentVersion\Uninstall\CoSkin", "DisplayVersion")?.Data.GetValue<string>() == "0.1.1", "상위 안정 버전 설치 등록 갱신");
+    Check(fake.Read(InstallationService.StartupKey, InstallationService.StartupName)?.Data.GetValue<string>() == "\"" + intermediate.Executable + "\" --resident", "새 버전 설치 때 로그인 대상 원자 전환");
+    Check(fake.ShortcutTarget(intermediate.DesktopShortcut!) == intermediate.Executable, "새 버전 설치 때 바탕화면 대상 갱신");
+
     var upgraded = installer.Install(bundle, false, "1.0.0");
     Check(installed.Executable != upgraded.Executable && intermediate.Executable != upgraded.Executable && !File.Exists(installed.Executable) && File.Exists(intermediate.Executable) && upgraded.Files.Length == 6, "0.1.0→0.1.1→1.0.0 설치 후 직전 정상 버전만 보존");
+    var repairRoot = Path.Combine(scratch, "shortcut-repair");
+    var repairPlatform = new FakeInstallationPlatform(Path.Combine(scratch, "repair-programs", "CoSkin.lnk"));
+    var repairInstaller = new InstallationService(repairRoot, repairPlatform);
+    var oldRepair = repairInstaller.Install(bundle, false, "0.1.0");
+    var currentRepair = repairInstaller.Install(bundle, false, "0.1.1");
+    repairPlatform.CreateShortcut(currentRepair.DesktopShortcut!, oldRepair.Executable);
+    var legacyRecord = currentRepair with { DesktopShortcut = null };
+    File.WriteAllBytes(Path.Combine(repairRoot, "bin", "installation.json"), System.Text.Json.JsonSerializer.SerializeToUtf8Bytes(legacyRecord));
+    repairPlatform.LegacyShortcutArguments = "--resident";
+    var repaired = repairInstaller.Install(bundle, false, "0.1.2");
+    Check(repairPlatform.ShortcutTarget(repaired.DesktopShortcut!) == repaired.Executable && repairPlatform.ShortcutTarget(repaired.Shortcut) == repaired.Executable, "구버전 설치 기록이 남긴 서로 다른 실행본의 바로가기를 하나로 복구");
+    repairPlatform.CreateShortcut(repaired.DesktopShortcut!, currentRepair.Executable);
+    File.WriteAllText(currentRepair.Executable, "changed by another program");
+    var repairMarker = File.ReadAllBytes(Path.Combine(repairRoot, "bin", "installation.json"));
+    Reject(() => repairInstaller.Install(bundle, false, "0.1.3"), "기록과 해시가 다른 구버전 대상은 소유 바로가기로 인정하지 않음");
+    Check(repairMarker.SequenceEqual(File.ReadAllBytes(Path.Combine(repairRoot, "bin", "installation.json"))), "소유권 불일치 시 기존 설치 기록 보존");
     var markerPath = Path.Combine(installationRoot, "bin", "installation.json");
     var beforeMarker = File.ReadAllBytes(markerPath);
     var beforeShortcut = File.ReadAllBytes(fake.ShortcutPath);
@@ -209,6 +344,8 @@ try
     File.WriteAllText(rendererPath, "changed independently");
     var remaining = installer.Uninstall();
     Check(remaining.Files.Length == 1 && File.Exists(rendererPath) && File.Exists(retainedAsset), "해제는 변경된 배포 파일과 개인 자산을 보존");
+    Check(fake.Read(InstallationService.StartupKey, InstallationService.StartupName) is null, "제거 시 소유 로그인 항목 해제");
+    Check(!File.Exists(upgraded.DesktopShortcut), "제거 시 소유 바탕화면 바로가기 해제");
     Check(fake.Read(extensionKey, "")?.Kind == "ExpandString" && fake.Read(extensionKey, "")?.Data.GetValue<string>() == "%ORIGINAL%", "해제는 기존 연결의 값과 형식을 복원");
     File.WriteAllBytes(rendererPath, rendererBytes);
     Check(installer.Uninstall().Files.Length == 0 && !File.Exists(markerPath), "남은 파일 재검증 후 설치 기록 정리");
@@ -393,6 +530,8 @@ sealed class FakeInstallationPlatform(string shortcutPath) : IInstallationPlatfo
         get; set;
     }
     public string ShortcutPath => shortcutPath;
+    public string? LegacyShortcutArguments { get; set; }
+    public string? ShortcutArguments(string path) => LegacyShortcutArguments;
     public RegistrationValue? Read(string key, string name) => values.GetValueOrDefault(key + "\n" + name);
     public void Write(string key, string name, RegistrationValue? value)
     {
@@ -483,4 +622,11 @@ internal sealed class FakeUpdateHosts(params bool[] readiness) : IUpdateHostLife
         Started.Add(executable);
         return Task.FromResult(responses.Dequeue());
     }
+}
+
+internal sealed class FakeSignInRegistration : ISignInRegistration
+{
+    internal string? Command;
+    public string? Read() => Command;
+    public void Write(string? command) => Command = command;
 }

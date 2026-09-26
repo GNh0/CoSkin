@@ -1,10 +1,12 @@
 import { nativeControlNames } from "./adapter-labels.js";
 import { discoverPaintSources } from "./adapter-paint.js";
-// Adapter 26.924.20706: selectors are code-owned; themes cannot supply selectors.
+// These two source-reviewed builds share the same target markers. Themes cannot supply selectors.
 export class CodexAdapter {
-  constructor(document) {
+  constructor(document, version = "26.924.20706") {
+    if (!["26.924.20706", "26.924.22138"].includes(version))
+      throw Error("Unsupported Codex adapter version");
     this.document = document;
-    this.version = "26.924.20706";
+    this.version = version;
     this.supportedTargets = [
       "app.background",
       "main.surface",

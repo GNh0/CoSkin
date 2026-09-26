@@ -1,3 +1,4 @@
+import { pauseMediaForScroll } from "./scroll-media-policy.js";
 import { t } from "./messages.js";
 import { downloadBytes } from "./file-transfer.js";
 import { isMotionPaused } from "../core/motion-policy.ts";
@@ -96,8 +97,8 @@ export class Controller {
     validateCustomEffects(value.effects);
     this._summary = value;
   }
-  constructor() {
-    this.adapter = new CodexAdapter(document);
+  constructor(appVersion) {
+    this.adapter = new CodexAdapter(document, appVersion);
     this.decorations = new Map();
     this.pending = new Map();
     this.next = 0;
@@ -215,11 +216,11 @@ export class Controller {
     document.addEventListener(
       "wheel",
       (event) => {
-        if (!event.target.closest?.("[data-coskin-ui]")) this.onScroll();
+        if (!event.target.closest?.("[data-coskin-ui]")) this.onScroll(event);
       },
       { signal, capture: true, passive: true },
     );
-    document.addEventListener("scroll", () => this.onScroll(), {
+    document.addEventListener("scroll", (event) => this.onScroll(event), {
       signal,
       capture: true,
       passive: true,
@@ -495,12 +496,13 @@ export class Controller {
     if (!this.panel.host.hidden) this.panel.render();
     return this.status();
   }
-  beginExternalUpdate() {
+  beginExternalUpdate(allowUpdateRequest = false) {
     if (
       this.externalApplying ||
       this.panel.dirty ||
       this.panel.editing ||
-      this.panel.busy ||
+      (this.panel.busy && !(allowUpdateRequest && this.panel.updateRequesting)) ||
+      (allowUpdateRequest && this.panel.runtimeSettingsDraft) ||
       this.panel.session.previewing
     )
       return false;
@@ -518,6 +520,7 @@ export class Controller {
     if (this.panel.settingsOpen) this.panel.render();
   }
   openLibrary() {
+    if (!document.querySelector('nav[data-app-navigation-rail="true"]')) return false;
     if (this.panel.editing || this.panel.dirty || this.panel.session.previewing)
       return false;
     this.panel.settingsOpen = false;
@@ -535,6 +538,7 @@ export class Controller {
     return true;
   }
   async openSettings() {
+    if (!document.querySelector('nav[data-app-navigation-rail="true"]')) return false;
     if (this.panel.editing || this.panel.dirty || this.panel.session.previewing)
       return false;
     this.panel.runtimeSettings = await this.request("runtime-settings-read");
@@ -739,7 +743,7 @@ export class Controller {
       }
     if (changed.length) this.render(changed, true);
   }
-  onScroll() {
+  onScroll(event) {
     if (!this.scrolling) {
       this.scrolling = true;
       if (this.replay) {
@@ -750,8 +754,11 @@ export class Controller {
         );
       }
       for (const decoration of this.decorations.values())
-        decoration.setScrollPaused(true);
+        decoration.setScrollPaused(true, false);
     }
+    for (const decoration of this.decorations.values())
+      if (pauseMediaForScroll(decoration.target, event?.target))
+        decoration.setScrollPaused(true, true);
     clearTimeout(this.scrollTimer);
     this.scrollTimer = setTimeout(() => {
       this.scrolling = false;

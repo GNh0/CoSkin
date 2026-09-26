@@ -26,22 +26,24 @@ internal sealed class UpdateSwitch(InstallationService installation, IUpdateHost
         var directoryName = Path.GetFileName(previousDirectory);
         var previousVersion = directoryName[..directoryName.LastIndexOf('-')];
         var association = previous.Registrations.Any(value => value.Key == @"Software\Classes\.coskin");
+        var desktop = previous.DesktopShortcut is not null;
+        var startup = previous.Registrations.Any(value => value.Key == InstallationService.StartupKey && value.Name == InstallationService.StartupName && value.After is not null);
         await hosts.WaitForExit(originProcess, cancellationToken);
         try
         {
-            var next = installation.Install(verifiedStage, association, update.Version.ToString());
+            var next = installation.Install(verifiedStage, association, update.Version.ToString(), desktop, startup);
             using var readyDeadline = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
             readyDeadline.CancelAfter(TimeSpan.FromSeconds(45));
             if (await hosts.StartAndConfirm(next.Executable, readyDeadline.Token))
                 return UpdateSwitchResult.Applied;
         }
-        catch (Exception error) when (error is IOException or InvalidDataException or OperationCanceledException or TimeoutException or System.ComponentModel.Win32Exception)
+        catch (Exception error)
         {
             Console.Error.WriteLine("새 CoSkin 준비 실패, 이전 버전 복구: " + error);
         }
         // Once the former host has exited, user cancellation must not leave it absent.
         using var recoveryDeadline = new CancellationTokenSource(TimeSpan.FromSeconds(45));
-        var restored = installation.Install(previousDirectory, association, previousVersion);
+        var restored = installation.Install(previousDirectory, association, previousVersion, desktop, startup);
         if (!await hosts.StartAndConfirm(restored.Executable, recoveryDeadline.Token))
             throw new IOException("이전 CoSkin 실행 확인을 완료하지 못했습니다. 사용자 테마와 배포 파일은 보존했습니다.");
         return UpdateSwitchResult.RolledBack;

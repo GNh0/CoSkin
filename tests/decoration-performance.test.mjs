@@ -120,4 +120,38 @@ test("행의 동일 스타일 및 불투명도 전환은 미디어 재생성과 
   decoration.set(structuredClone(iconStyle));
   assert.equal(decoration.players.has("icon"), false);
   assert.equal(decoration.icon.style.visibility, "visible");
+  const mediaPauses = [];
+  let animationPauses = 0,
+    animationResumes = 0;
+  const animation = {
+    playState: "running",
+    pause() {
+      this.playState = "paused";
+      animationPauses++;
+    },
+    play() {
+      this.playState = "running";
+      animationResumes++;
+    },
+  };
+  const alreadyPaused = {
+    playState: "paused",
+    play() {
+      throw Error("다른 이유로 정지한 효과 재개 금지");
+    },
+  };
+  context.document = { hidden: false };
+  decoration.animations = [animation, alreadyPaused];
+  decoration.players = new Map([
+    ["background", { pause: (value) => mediaPauses.push(value) }],
+  ]);
+  decoration.setScrollPaused(true, false);
+  decoration.setScrollPaused(true, false);
+  assert.equal(animationPauses, 1);
+  assert.deepEqual(mediaPauses, [false], "효과 정지와 배경 GIF 재생은 독립");
+  decoration.setScrollPaused(true, true);
+  assert.equal(animationPauses, 1, "미디어만 바뀌면 효과 재정지 없음");
+  decoration.setScrollPaused(false);
+  assert.equal(animationResumes, 1);
+  assert.deepEqual(mediaPauses, [false, true, false]);
 });

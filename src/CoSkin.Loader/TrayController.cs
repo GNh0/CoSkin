@@ -16,7 +16,7 @@ internal sealed class TrayController : IDisposable
     private readonly TargetLifetime lifetime = new();
     private readonly Dictionary<int, Process> watched = [];
     private readonly object processGate = new();
-    internal TrayController(Library library, JsonObject state, Func<Cdp[]> windows, Func<Cdp, JsonObject, Task<JsonNode>> request, Action stop, Func<Task> reconnect, Func<Cdp, Task> activate)
+    internal TrayController(Library library, JsonObject state, Func<Cdp[]> windows, Func<Cdp, JsonObject, Task<JsonNode>> request, Action stop, Func<Task> reconnect, Func<Cdp, Task> activate, Action? targetChanged = null)
     {
         this.library = library;
         this.state = state;
@@ -26,9 +26,44 @@ internal sealed class TrayController : IDisposable
         this.reconnect = reconnect;
         this.activate = activate;
         library.StateChanged += StateChanged;
-        tray = new NativeTray(Snapshot, Execute);
+        tray = new NativeTray(Snapshot, Execute, targetChanged);
+    }
+    private volatile bool originalDetected;
+    private readonly Dictionary<int, Process> originals = [];
+    internal void RefreshDetection()
+    {
+        lock (processGate)
+        {
+            foreach (var id in ResidentDetection.OriginalProcesses())
+            {
+                if (originals.ContainsKey(id))
+                    continue;
+                try
+                {
+                    var process = Process.GetProcessById(id);
+                    originals.Add(id, process);
+                    process.Exited += (_, _) =>
+                    {
+                        lock (processGate)
+                        {
+                            if (originals.TryGetValue(id, out var current) && ReferenceEquals(current, process))
+                            {
+                                originals.Remove(id);
+                                process.Dispose();
+                                originalDetected = originals.Count > 0;
+                            }
+                        }
+                    };
+                    process.EnableRaisingEvents = true;
+                }
+                catch (ArgumentException) { }
+            }
+            originalDetected = originals.Count > 0;
+        }
     }
     internal Task Ready => tray.Ready;
+    internal void ReportConnectionFailure(Exception error) => tray.ShowNotice(TrayMessages.Error(library.Locale,
+        error is TrayActionException action ? action.Code : Failure.Describe(error).Code));
     private void StateChanged(JsonObject next) => Volatile.Write(ref state, next);
     private TraySnapshot Snapshot()
     {
@@ -36,7 +71,7 @@ internal sealed class TrayController : IDisposable
         var enabled = current["enabled"]?.GetValue<bool>() == true;
         var applied = enabled ? current["bindings"]?["global"]?["id"]?.GetValue<string>() : null;
         var themes = current["themes"]!.AsObject().Select(pair => new TrayTheme(pair.Key, pair.Value?["name"]?.GetValue<string>() ?? pair.Key, pair.Key == applied)).ToArray();
-        return new(library.Locale, windows().Length > 0, enabled, false, library.Preferences.Read(), themes);
+        return new(library.Locale, windows().Length > 0, enabled, false, library.Preferences.Read(), themes, originalDetected);
     }
     internal void WatchVerifiedProcess(int id)
     {
@@ -77,6 +112,20 @@ internal sealed class TrayController : IDisposable
             stop();
             return;
         }
+        if (command.Action == TrayAction.OpenCodex)
+        {
+            await reconnect();
+            return;
+        }
+        if (command.Action == TrayAction.ToggleStartup)
+        {
+            var startup = library.Preferences.Read();
+            ApplyRuntimePreferences(startup with
+            {
+                StartAtSignIn = !startup.StartAtSignIn
+            });
+            return;
+        }
         if (command.Action is TrayAction.ToggleLaunch or TrayAction.ToggleExit or TrayAction.ToggleUpdates)
         {
             var settings = library.Preferences.Read();
@@ -91,20 +140,19 @@ internal sealed class TrayController : IDisposable
                 await window.Evaluate("window.__coskin?.receiveRuntimeSettings(" + Library.PreferenceDocument(settings).ToJsonString() + ")");
             return;
         }
-        if (participants.Length == 0 && command.Action is TrayAction.Library or TrayAction.Settings)
+        if (participants.Length == 0 && command.Action == TrayAction.Settings)
         {
-            await reconnect();
-            for (var attempt = 0; attempt < 20 && participants.Length == 0; attempt++)
-            {
-                await Task.Delay(500);
-                participants = windows();
-            }
+            var choice = SetupDialog.Show(library.Preferences.Read(), false, library.Locale, settingsOnly: true, allowStartup: WindowsInstaller.IsInstalledStore(library));
+            if (choice is not null)
+                ApplyRuntimePreferences(choice.Preferences);
+            return;
         }
-        var selected = participants.FirstOrDefault() ?? throw new TrayActionException("not-connected");
+        var selected = await RendererSelection.MainShell(participants) ?? throw new TrayActionException("not-connected");
         await activate(selected);
         if (command.Action is TrayAction.Library or TrayAction.Settings)
         {
-            await selected.Evaluate(command.Action == TrayAction.Settings ? "window.__coskin?.openSettings()" : "window.__coskin?.openLibrary()");
+            if ((await selected.Evaluate(command.Action == TrayAction.Settings ? "window.__coskin?.openSettings()" : "window.__coskin?.openLibrary()"))?.GetValue<bool>() != true)
+                throw new TrayActionException("not-connected");
             return;
         }
         foreach (var window in participants)
@@ -151,6 +199,24 @@ internal sealed class TrayController : IDisposable
                 catch (Exception error) { Console.Error.WriteLine(Failure.Describe(error).Message); }
         }
     }
+    private void ApplyRuntimePreferences(RuntimePreferences next)
+    {
+        var previous = library.Preferences.Read();
+        var startupChanged = previous.StartAtSignIn != next.StartAtSignIn;
+        if (startupChanged && !WindowsInstaller.IsInstalledStore(library))
+            throw new TrayActionException("not-installed");
+        library.Preferences.Write(next);
+        try
+        {
+            if (startupChanged)
+                new InstallationService(library.StorePath, new WindowsInstallationPlatform()).SetStartup(next.StartAtSignIn);
+        }
+        catch
+        {
+            library.Preferences.Write(previous);
+            throw;
+        }
+    }
     public void Dispose()
     {
         library.StateChanged -= StateChanged;
@@ -160,6 +226,9 @@ internal sealed class TrayController : IDisposable
             foreach (var process in watched.Values)
                 process.Dispose();
             watched.Clear();
+            foreach (var process in originals.Values)
+                process.Dispose();
+            originals.Clear();
         }
     }
 }

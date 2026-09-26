@@ -15,6 +15,8 @@ internal interface IInstallationPlatform
     {
         get;
     }
+    string DesktopShortcutPath => Path.Combine(Path.GetDirectoryName(ShortcutPath)!, "desktop", "CoSkin.lnk");
+    string? ShortcutArguments(string path) => null;
     string? ShortcutTarget(string path);
     void CreateShortcut(string path, string executable);
 }
@@ -22,6 +24,7 @@ internal interface IInstallationPlatform
 /// <summary>Current-user integration only. UserChoice and machine-wide registry are never changed.</summary>
 internal sealed class WindowsInstallationPlatform : IInstallationPlatform
 {
+    public string DesktopShortcutPath => Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.DesktopDirectory), "CoSkin.lnk");
     public string ShortcutPath => Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Programs), "Codex + CoSkin.lnk");
 
     public RegistrationValue? Read(string path, string name)
@@ -59,6 +62,7 @@ internal sealed class WindowsInstallationPlatform : IInstallationPlatform
         key.SetValue(name, data, kind);
     }
 
+    public string? ShortcutArguments(string path) => File.Exists(path) ? WithShortcut(path, shortcut => (string)shortcut.Arguments) : null;
     public string? ShortcutTarget(string path)
     {
         if (!File.Exists(path))
@@ -73,7 +77,7 @@ internal sealed class WindowsInstallationPlatform : IInstallationPlatform
             shortcut.TargetPath = executable;
             shortcut.WorkingDirectory = Path.GetDirectoryName(executable);
             shortcut.Description = "Codex + CoSkin";
-            shortcut.Arguments = "--with-codex";
+            shortcut.Arguments = Path.GetFileName(path).Equals("CoSkin.lnk", StringComparison.OrdinalIgnoreCase) ? "--resident" : "--with-codex";
             shortcut.Save();
             return true;
         });

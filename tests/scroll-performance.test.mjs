@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { mutationNeedsDiscovery } from "../src/renderer/mutation-impact.js";
+import { pauseMediaForScroll } from "../src/renderer/scroll-media-policy.js";
 import {
   createTimeline,
   advanceTimeline,
@@ -18,6 +19,47 @@ const node = ({
   closest: () => (owned ? {} : null),
   matches: () => relevant,
   querySelector: () => (descendant ? {} : null),
+});
+test("대화 스크롤은 배경과 목록 GIF를 멈추지 않고 위치 측정을 하지 않는다", () => {
+  const eventTarget = {
+    closest: () => null,
+    getBoundingClientRect() {
+      throw Error("스크롤 정책의 위치 측정 금지");
+    },
+  };
+  for (const target of [
+    "app.background",
+    "main.surface",
+    "sidebar.surface",
+    "sidebar.project-row",
+    "sidebar.thread-row",
+  ])
+    assert.equal(pauseMediaForScroll({ target, el: {} }, eventTarget), false);
+});
+test("왼쪽 목록 스크롤은 그 목록의 움직이는 행만 정지하고 고정 배경은 유지한다", () => {
+  const row = {};
+  const unrelated = {};
+  const eventTarget = {
+    closest: () => ({ contains: (element) => element === row }),
+  };
+  assert.equal(
+    pauseMediaForScroll({ target: "sidebar.thread-row", el: row }, eventTarget),
+    true,
+  );
+  assert.equal(
+    pauseMediaForScroll(
+      { target: "sidebar.project-row", el: unrelated },
+      eventTarget,
+    ),
+    false,
+  );
+  for (const target of [
+    "app.background",
+    "main.surface",
+    "sidebar.surface",
+    "navigation.home",
+  ])
+    assert.equal(pauseMediaForScroll({ target, el: row }, eventTarget), false);
 });
 test("본문 텍스트 및 자체 장식 변경은 전체 대상 재탐색을 일으키지 않는다", () => {
   const body = node();
