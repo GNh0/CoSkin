@@ -1,0 +1,112 @@
+using System.Text.Json.Nodes;
+using System.Diagnostics;
+using System.Runtime.InteropServices;
+namespace CoSkin;
+
+/// <summary>Only the process which owns the configured loopback listener is inspected.</summary>
+internal static class NativeWindow
+{
+    private const int AfInet = 2;
+    private const int OwnerPidListener = 3;
+    [DllImport("iphlpapi.dll", SetLastError = true)]
+    private static extern uint GetExtendedTcpTable(IntPtr table, ref int size, bool order, int family, int tableClass, int reserved);
+    [DllImport("user32.dll")]
+    private static extern bool IsIconic(IntPtr window);
+    [DllImport("user32.dll")]
+    private static extern bool IsWindowVisible(IntPtr window);
+    [DllImport("user32.dll")]
+    private static extern bool GetWindowRect(IntPtr window, out Rect rectangle);
+    [DllImport("user32.dll")]
+    private static extern IntPtr MonitorFromRect(ref Rect rectangle, uint flags);
+    [DllImport("user32.dll")]
+    private static extern bool EnumWindows(EnumWindowsCallback callback, IntPtr value);
+    [DllImport("user32.dll")]
+    private static extern uint GetWindowThreadProcessId(IntPtr window, out uint processId);
+    [DllImport("dwmapi.dll")]
+    private static extern int DwmGetWindowAttribute(IntPtr window, uint attribute, out int value, int size);
+    private delegate bool EnumWindowsCallback(IntPtr window, IntPtr value);
+    [StructLayout(LayoutKind.Sequential)]
+    private struct Rect
+    {
+        public int Left, Top, Right, Bottom;
+    }
+
+    [DllImport("user32.dll")] private static extern bool ShowWindowAsync(IntPtr window, int command);
+    [DllImport("user32.dll")] private static extern bool SetForegroundWindow(IntPtr window);
+    internal static bool Activate(IntPtr window, int verifiedProcess)
+    {
+        if (window == IntPtr.Zero || verifiedProcess <= 0)
+            return false;
+        GetWindowThreadProcessId(window, out var owner);
+        if (owner != verifiedProcess)
+            return false;
+        if (IsIconic(window))
+            ShowWindowAsync(window, 9);
+        return SetForegroundWindow(window);
+    }
+    internal static int ListenerProcess(int port)
+    {
+        var size = 0;
+        GetExtendedTcpTable(IntPtr.Zero, ref size, true, AfInet, OwnerPidListener, 0);
+        var table = Marshal.AllocHGlobal(size);
+        try
+        {
+            if (GetExtendedTcpTable(table, ref size, true, AfInet, OwnerPidListener, 0) != 0)
+                throw new IOException("연결 프로세스를 확인하지 못했습니다.");
+            var count = Marshal.ReadInt32(table);
+            for (var i = 0; i < count; i++)
+            {
+                var row = table + 4 + i * 24;
+                var address = unchecked((uint)Marshal.ReadInt32(row, 4));
+                var currentPort = Marshal.ReadByte(row, 8) * 256 + Marshal.ReadByte(row, 9);
+                if (address == 0x0100007f && currentPort == port)
+                    return Marshal.ReadInt32(row, 20);
+            }
+            throw new IOException("로컬 연결을 기다립니다.");
+        }
+        finally { Marshal.FreeHGlobal(table); }
+    }
+
+    internal static IntPtr MatchWindow(int processId, JsonObject geometry)
+    {
+        var left = geometry["x"]!.GetValue<double>();
+        var top = geometry["y"]!.GetValue<double>();
+        var width = geometry["width"]!.GetValue<double>();
+        var height = geometry["height"]!.GetValue<double>();
+        var candidates = new List<IntPtr>();
+        EnumWindows((window, _) =>
+        {
+            GetWindowThreadProcessId(window, out var owner);
+            if (owner != processId || !GetWindowRect(window, out var rectangle))
+                return true;
+            const double tolerance = 4;
+            if (Math.Abs(rectangle.Left - left) <= tolerance && Math.Abs(rectangle.Top - top) <= tolerance &&
+                Math.Abs(rectangle.Right - rectangle.Left - width) <= tolerance && Math.Abs(rectangle.Bottom - rectangle.Top - height) <= tolerance)
+                candidates.Add(window);
+            return true;
+        }, IntPtr.Zero);
+        // Never substitute an overlay or another same-process window for an ambiguous renderer.
+        return candidates.Count == 1 ? candidates[0] : IntPtr.Zero;
+    }
+    internal static bool Visible(IntPtr window, int processId)
+    {
+        if (window == IntPtr.Zero)
+            return false;
+        GetWindowThreadProcessId(window, out var owner);
+        if (owner != processId || !IsWindowVisible(window) || IsIconic(window))
+            return false;
+        if (DwmGetWindowAttribute(window, 14, out var cloaked, sizeof(int)) == 0 && cloaked != 0)
+            return false;
+        if (!GetWindowRect(window, out var rectangle) || rectangle.Right <= rectangle.Left || rectangle.Bottom <= rectangle.Top)
+            return false;
+        return MonitorFromRect(ref rectangle, 0) != IntPtr.Zero;
+    }
+    internal static string VerifyExecutable(int processId)
+    {
+        using var process = Process.GetProcessById(processId);
+        var path = process.MainModule?.FileName ?? throw new IOException("Codex 실행 파일을 확인하지 못했습니다.");
+        if (!Path.GetFileName(path).Equals("ChatGPT.exe", StringComparison.OrdinalIgnoreCase))
+            throw new IOException("연결 포트를 Codex가 사용하고 있지 않습니다.");
+        return path;
+    }
+}

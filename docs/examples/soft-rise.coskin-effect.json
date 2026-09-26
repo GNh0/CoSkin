@@ -1,0 +1,16 @@
+{
+  "format": "coskin.effect",
+  "formatVersion": 1,
+  "definition": {
+    "id": "custom.soft-rise",
+    "version": 1,
+    "name": "Soft Rise",
+    "description": "A small upward movement with a layer-relative fade.",
+    "layers": ["background", "decoration", "icon"],
+    "frames": [
+      { "offset": 0, "values": { "opacity": 0, "translateYPx": 12 } },
+      { "offset": 0.65, "values": { "opacity": 0.8, "translateYPx": 2 } },
+      { "offset": 1, "values": { "opacity": 1, "translateYPx": 0 } }
+    ]
+  }
+}

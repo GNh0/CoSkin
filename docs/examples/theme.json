@@ -1,0 +1,108 @@
+{
+  "profiles": [
+    {
+      "id": "default",
+      "name": "Aurora",
+      "rules": [
+        {
+          "id": "thread-row",
+          "target": "sidebar.thread-row",
+          "states": {
+            "base": {
+              "style": {
+                "background": {
+                  "color": "#ffffff",
+                  "opacity": 0.04
+                }
+              },
+              "motion": {
+                "mode": "none"
+              }
+            },
+            "selected": {
+              "style": {
+                "background": {
+                  "color": "#6d9eff",
+                  "opacity": 0.2
+                }
+              }
+            },
+            "hover": {
+              "style": {
+                "background": {
+                  "color": "#ffffff",
+                  "opacity": 0.12
+                }
+              },
+              "motion": {
+                "mode": "effects",
+                "events": {
+                  "enter": [
+                    {
+                      "id": "reveal-hover",
+                      "layer": "background",
+                      "effect": "reveal.edge",
+                      "effectVersion": 1,
+                      "durationMs": 220,
+                      "delayMs": 0,
+                      "easing": "ease-out",
+                      "iterations": 1,
+                      "reverse": false,
+                      "parameters": {
+                        "direction": "left-to-right"
+                      }
+                    }
+                  ],
+                  "exit": [
+                    {
+                      "id": "close-hover",
+                      "layer": "background",
+                      "effect": "reveal.edge",
+                      "effectVersion": 1,
+                      "durationMs": 160,
+                      "delayMs": 0,
+                      "easing": "ease-out",
+                      "iterations": 1,
+                      "reverse": true,
+                      "parameters": {
+                        "direction": "left-to-right"
+                      }
+                    }
+                  ]
+                }
+              }
+            },
+            "selectedHover": {
+              "style": {
+                "background": {
+                  "color": "#6d9eff",
+                  "opacity": 0.3
+                }
+              }
+            }
+          }
+        },
+        {
+          "id": "search-icon",
+          "target": "navigation.search",
+          "states": {
+            "base": {
+              "style": {
+                "icon": {
+                  "image": "assets/search.png",
+                  "sizePx": 20,
+                  "opacity": 1,
+                  "fit": "contain",
+                  "paddingPx": 2
+                }
+              },
+              "motion": {
+                "mode": "none"
+              }
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

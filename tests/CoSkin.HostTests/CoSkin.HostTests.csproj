@@ -1,0 +1,6 @@
+<Project Sdk="Microsoft.NET.Sdk">
+ <PropertyGroup><OutputType>Exe</OutputType><TargetFramework>net10.0-windows</TargetFramework><ImplicitUsings>enable</ImplicitUsings><Nullable>enable</Nullable><TreatWarningsAsErrors>true</TreatWarningsAsErrors></PropertyGroup>
+ <ItemGroup><Compile Include="../../src/CoSkin.Loader/CodexPageContract.cs;../../src/CoSkin.Loader/UpdateService.cs;../../src/CoSkin.Loader/SetupDrawing.cs;../../src/CoSkin.Loader/UpdateSwitch.cs;../../src/CoSkin.Loader/GitHubUpdateFeed.cs;../../src/CoSkin.Loader/UpdateStaging.cs;../../src/CoSkin.Loader/RuntimePreferences.cs;../../src/CoSkin.Loader/InstallationPlatform.cs;../../src/CoSkin.Loader/InstallationService.cs;../../src/CoSkin.Loader/ImportFile.cs;../../src/CoSkin.Loader/LaunchOptions.cs;../../src/CoSkin.Loader/InstanceChannel.cs;../../src/CoSkin.Loader/EffectLibrary.cs;../../src/CoSkin.Loader/TransferStore.cs;../../src/CoSkin.Loader/Library.cs;../../src/CoSkin.Loader/Package.cs;../../src/CoSkin.Loader/ImageProbe.cs;../../src/CoSkin.Loader/JsonContract.cs;../../src/CoSkin.Loader/Failure.cs" Link="%(Filename)%(Extension)" /></ItemGroup>
+</Project>
+
+

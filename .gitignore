@@ -1,0 +1,38 @@
+node_modules/
+dist/
+**/bin/
+**/obj/
+*.user
+*.suo
+.vs/
+.env
+.env.*
+!.env.example
+
+# Local libraries, imported media, backups and generated packages are private.
+library*.json
+revision-*.json
+draft*.json
+asset-*
+*.coskin
+backups/
+private/
+runtime/
+profile/
+logs/
+
+# Retain local feasibility evidence without publishing user screens or identities.
+integration/native-*.png
+integration/native-results.json
+integration/run-state.json
+integration/restoration.json
+integration/installed.json
+integration/*.log
+
+# Local investigation scripts and raw review evidence are never release sources.
+integration/
+feasibility/
+docs/review/
+docs/implementation-status.md
+docs/media/wuthering-waves/shorekeeper-live-preview.png
+!docs/media/wuthering-waves/ASSET-NOTES.md

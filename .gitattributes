@@ -1,0 +1,7 @@
+* text=auto eol=lf
+*.png binary
+*.gif binary
+
+# The manifest checks these sample files as byte streams, including line endings.
+docs/examples/manifest.json -text
+docs/examples/theme.json -text

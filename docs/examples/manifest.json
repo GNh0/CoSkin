@@ -1,0 +1,36 @@
+{
+  "format": "coskin.theme",
+  "formatVersion": 1,
+  "id": "org.coskin.example.aurora",
+  "name": "Aurora 설계 예제",
+  "version": "0.1.0",
+  "description": "선택된 채팅의 정적인 투명 배경, 호버 펼침 효과, 검색 버튼 이미지의 설계 데이터 예제. 실행 가능한 제품이 아닙니다.",
+  "author": {
+    "name": "CoSkin"
+  },
+  "engine": {
+    "minVersion": "0.1.0"
+  },
+  "requirements": {
+    "required": [
+      "target:sidebar.thread-row",
+      "target:navigation.search",
+      "effect:reveal.edge@1"
+    ],
+    "optional": []
+  },
+  "entry": "theme.json",
+  "defaultProfile": "default",
+  "files": [
+    {
+      "path": "theme.json",
+      "bytes": 2916,
+      "sha256": "4179332d814ef3b41bdb87f0f119e866f1435a66819272559a58b0526136870e"
+    },
+    {
+      "path": "assets/search.png",
+      "bytes": 643,
+      "sha256": "3eebd4a964604ddbbff3f1a92522954c13c1e18cbe4cf91375a9857d2d20f972"
+    }
+  ]
+}
