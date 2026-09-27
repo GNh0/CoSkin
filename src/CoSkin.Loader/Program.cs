@@ -77,7 +77,7 @@ internal static class Program
                 if (NativeAttachment.Available && await nativeDiscovery.Find(token) is int nativePort) return nativePort;
                 if (options.CodexProcess is not null || !File.Exists(Path.Combine(store, "managed-connection.json"))) return null;
                 return await WindowsLauncher.ManagedConnection(store, await WindowsLauncher.Discover());
-            });
+            }, () => nativeDiscovery.RetryPending);
             async Task LaunchOrAttach()
             {
                 nativeDiscovery.Retry();
@@ -129,7 +129,7 @@ internal static class Program
                     if (verifiedProcess != owner)
                     {
                         var executable = NativeWindow.VerifyExecutable(owner);
-                        var installation = await WindowsLauncher.VerifyRunning(executable);
+                        var installation = nativeDiscovery.VerifiedInstallation(owner, number) ?? await WindowsLauncher.VerifyRunning(executable);
                         verifiedAppVersion = installation.AppVersion;
                         verifiedProcess = owner;
                         DiagnosticLog.Record("connected");

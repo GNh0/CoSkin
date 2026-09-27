@@ -6,6 +6,7 @@ internal sealed class EndpointRetry
     private int attempts;
     private bool blocked;
     private readonly object gate = new();
+    internal bool Exhausted { get { lock (gate) return !blocked && attempts >= 6; } }
     internal void WakeAfterExhaustion()
     {
         lock (gate)

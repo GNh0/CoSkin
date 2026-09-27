@@ -13,14 +13,16 @@ internal sealed class ResidentConnectionSignal : IDisposable
     private int? preferredPort;
     private readonly bool explicitEndpoint;
     private readonly Func<CancellationToken, Task<int?>>? probe;
+    private readonly Func<bool>? retryPending;
     private readonly Channel<bool> changes = Channel.CreateBounded<bool>(new BoundedChannelOptions(1) { FullMode = BoundedChannelFullMode.DropWrite });
-    internal ResidentConnectionSignal(string store, int? initialPort = null, Func<CancellationToken, Task<int?>>? probe = null)
+    internal ResidentConnectionSignal(string store, int? initialPort = null, Func<CancellationToken, Task<int?>>? probe = null, Func<bool>? retryPending = null)
     {
         this.store = store;
         preferredPort = initialPort;
         explicitEndpoint = initialPort is not null;
         attemptedGeneration = 0;
         this.probe = probe;
+        this.retryPending = retryPending;
         watcher = new FileSystemWatcher(store, "managed-connection.json") { NotifyFilter = NotifyFilters.FileName | NotifyFilters.LastWrite, EnableRaisingEvents = true };
         watcher.Changed += Changed;
         watcher.Created += Changed;
@@ -82,6 +84,8 @@ internal sealed class ResidentConnectionSignal : IDisposable
         using var wait = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         var signal = changes.Reader.WaitToReadAsync(wait.Token).AsTask();
         var delay = retry.Delay;
+        var resume = delay is null && retry.Exhausted && retryPending?.Invoke() == true;
+        if (resume) delay = TimeSpan.FromSeconds(5);
         try
         {
             if (delay is not null)
@@ -89,6 +93,7 @@ internal sealed class ResidentConnectionSignal : IDisposable
             else
                 await signal;
             cancellationToken.ThrowIfCancellationRequested();
+            if (resume) retry.WakeAfterExhaustion();
             if (signal.IsCompletedSuccessfully && signal.Result)
             {
                 await Task.Delay(150, cancellationToken);

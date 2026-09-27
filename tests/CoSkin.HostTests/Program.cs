@@ -49,6 +49,13 @@ try
     Check(!ResidentDetection.IsOriginalPath(Original("OpenAI.Codex_26.924.2738.0_x64__foreign"), detectionRoot), "다른 게시자 패키지 감지 거절");
     Check(!ResidentDetection.IsOriginalPath(Path.Combine(scratch, "ChatGPT.exe"), detectionRoot), "동명 실행파일은 원본 감지 아님");
     Check(!ResidentDetection.IsOriginalPath(Original("OpenAI.Codex_26.924.2738.0_x64__2p2nqsd0c76g0") + ".copy", detectionRoot), "실행파일 경로 전체 일치 필요");
+    var originalPids = new HashSet<int> { 10, 11, 12 };
+    var parentPids = new Dictionary<int, int> { [10] = 1, [11] = 10, [12] = 11 };
+    Check(ResidentDetection.IsBrowserRoot(10, parentPids, originalPids), "Codex 주 프로세스는 창 표시 여부와 관계없이 후보로 유지");
+    Check(!ResidentDetection.IsBrowserRoot(11, parentPids, originalPids) && !ResidentDetection.IsBrowserRoot(12, parentPids, originalPids), "더 작은 PID나 Chrome 창을 가진 하위 프로세스도 주 앱 후보에서 제외");
+    Check(!ResidentDetection.IsBrowserRoot(13, parentPids, originalPids) && !ResidentDetection.IsBrowserRoot(10, new Dictionary<int, int>(), originalPids), "프로세스 정체성 또는 부모 기록 없는 후보는 연결하지 않음");
+    var processEntry = typeof(NativeWindow).GetNestedType("ProcessEntry", System.Reflection.BindingFlags.NonPublic)!;
+    Check(System.Runtime.InteropServices.Marshal.SizeOf(processEntry) == 568 && System.Runtime.InteropServices.Marshal.OffsetOf(processEntry, "ParentProcessId").ToInt32() == 32, "Win64 PROCESSENTRY32 부모 PID 및 버퍼 크기 계약");
     foreach (var language in new[] { "ko", "en", "ja", "zh-CN" })
         Check(!TrayMessages.Error(language, "not-connected").Contains("shortcut", StringComparison.OrdinalIgnoreCase), "미연결 안내는 무조건 전용 바로가기 재실행을 요구하지 않음 " + language);
     var nativeDraw = typeof(SetupDrawing).GetNestedType("DrawItem", System.Reflection.BindingFlags.NonPublic)!;
@@ -107,6 +114,26 @@ try
         using var deadline = new CancellationTokenSource(2000);
         await explicitEndpoint.Wait(deadline.Token);
         Check(await explicitEndpoint.FindReadyPort(deadline.Token) == 60600, "명시 포트 일시 단절 뒤 포트 보존 재연결");
+    }
+    var slowNativeAttempts = 0;
+    using (var slowNative = new ResidentConnectionSignal(signalStore,
+        probe: _ => Task.FromResult<int?>(++slowNativeAttempts > 6 ? 60700 : null), retryPending: () => true))
+    {
+        for (var attempt = 0; attempt < 6; attempt++) await slowNative.FindReadyPort(CancellationToken.None);
+        using var deadline = new CancellationTokenSource(7000);
+        await slowNative.Wait(deadline.Token);
+        Check(await slowNative.FindReadyPort(deadline.Token) == 60700, "일시적인 native 실패는 추가 창 이벤트 없이도 준비 예산을 재개");
+        slowNative.Block();
+        using var blockedDeadline = new CancellationTokenSource(50);
+        try { await slowNative.Wait(blockedDeadline.Token); throw new Exception("차단된 대상 재시도"); }
+        catch (OperationCanceledException) { Check(await slowNative.FindReadyPort(CancellationToken.None) is null, "native 복구 대기가 정체성 차단을 해제하지 않음"); }
+    }
+    using (var idleNative = new ResidentConnectionSignal(signalStore, probe: _ => Task.FromResult<int?>(null), retryPending: () => false))
+    {
+        for (var attempt = 0; attempt < 6; attempt++) await idleNative.FindReadyPort(CancellationToken.None);
+        using var deadline = new CancellationTokenSource(50);
+        try { await idleNative.Wait(deadline.Token); throw new Exception("없는 대상 폴링"); }
+        catch (OperationCanceledException) { Check(await idleNative.FindReadyPort(CancellationToken.None) is null, "Codex가 없는 유휴 상태는 타이머 재시도 없이 대기"); }
     }
     var runtimeStore = new RuntimePreferenceStore(Path.Combine(scratch, "runtime-settings"));
     Check(runtimeStore.Read() == new RuntimePreferences(), "실행 설정 초기값은 테마와 독립");

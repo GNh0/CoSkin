@@ -7,7 +7,7 @@ internal static class DiagnosticLog
     private static readonly object Gate = new();
     private static string store = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "CoSkin");
     internal static void Configure(string directory) => store = Path.GetFullPath(directory);
-    internal static void Record(string stage, Exception? error = null)
+    internal static void Record(string stage, Exception? error = null, int? requests = null, long? elapsedMs = null)
     {
         try
         {
@@ -21,7 +21,7 @@ internal static class DiagnosticLog
                 var previous = path + ".previous";
                 if (File.Exists(path) && File.GetAttributes(path).HasFlag(FileAttributes.ReparsePoint) || File.Exists(previous) && File.GetAttributes(previous).HasFlag(FileAttributes.ReparsePoint)) return;
                 if (File.Exists(path) && new FileInfo(path).Length >= 256 * 1024) File.Move(path, previous, true);
-                var entry = new { at = DateTimeOffset.UtcNow, pid = Environment.ProcessId, version = ProductVersion.Display, stage, type = error?.GetType().Name, code = error is null ? null : Failure.Describe(error).Code, hresult = error?.HResult };
+                var entry = new { at = DateTimeOffset.UtcNow, pid = Environment.ProcessId, version = ProductVersion.Display, stage, type = error?.GetType().Name, code = error is null ? null : Failure.Describe(error).Code, hresult = error?.HResult, requests, elapsedMs };
                 File.AppendAllText(path, JsonSerializer.Serialize(entry) + "\n");
             }
         }

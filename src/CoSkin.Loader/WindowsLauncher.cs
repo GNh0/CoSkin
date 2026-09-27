@@ -102,6 +102,10 @@ internal static class WindowsLauncher
     internal static async Task<CodexInstallation> VerifyRunning(string executable)
     {
         var installation = await Discover();
+        // Discover has already verified the signature, version and archive at this exact path.
+        // Managed copies still require their own signature and content comparisons below.
+        if (Path.GetFullPath(executable).Equals(Path.Combine(installation.AppDirectory, "ChatGPT.exe"), StringComparison.OrdinalIgnoreCase))
+            return installation;
         await VerifySignature(executable);
         if (HashFile(executable) != HashFile(Path.Combine(installation.AppDirectory, "ChatGPT.exe")))
             throw new InvalidDataException("실행 중인 Codex 버전이 지원 설치본과 다릅니다.");

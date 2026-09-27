@@ -4,6 +4,8 @@ using System.Security.Cryptography;
 using System.Text.Json.Nodes;
 namespace CoSkin;
 
+internal sealed record NativeConnection(int Port, int ProcessId, long Started, CodexInstallation Installation);
+
 internal static class NativeAttachment
 {
     private const string ChromeHash = "B6F5C2323C642C3AD3DFDC3501AA94482970F88B4C12DB0875CE593AECE75C16";
@@ -13,9 +15,10 @@ internal static class NativeAttachment
     [DllImport("user32.dll")] private static extern bool UnhookWindowsHookEx(IntPtr hook);
     internal static bool Available => typeof(NativeAttachment).Assembly.GetManifestResourceNames().Contains("CoSkin.Native.dll");
 
-    internal static async Task<int> Open(string store, int processId, CancellationToken token)
+    internal static async Task<NativeConnection> Open(string store, int processId, CancellationToken token)
     {
         using var process = Process.GetProcessById(processId);
+        var started = process.StartTime.ToUniversalTime().Ticks;
         var executable = NativeWindow.VerifyExecutable(processId);
         var installation = await WindowsLauncher.VerifyRunning(executable);
         if (installation.PackageVersion != "26.924.2738.0" || !ResidentDetection.IsOriginalPath(executable, Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles)))
@@ -60,6 +63,8 @@ internal static class NativeAttachment
                 throw new System.ComponentModel.Win32Exception(Marshal.GetLastWin32Error());
             using var deadline = CancellationTokenSource.CreateLinkedTokenSource(token);
             deadline.CancelAfter(TimeSpan.FromSeconds(12));
+            var resend = System.Diagnostics.Stopwatch.StartNew();
+            var requests = 1;
             while (true)
             {
                 deadline.Token.ThrowIfCancellationRequested();
@@ -77,8 +82,17 @@ internal static class NativeAttachment
                             url.Scheme != "ws" || url.Host != "127.0.0.1" || url.Port < 1024 || url.Port > 65535 || url.UserInfo.Length != 0 ||
                             NativeWindow.ListenerProcess(url.Port) != processId)
                             throw new InvalidDataException("Codex 연결 모듈의 응답 정체성이 다릅니다.");
-                        return url.Port;
+                        DiagnosticLog.Record("native-ready", requests: requests, elapsedMs: resend.ElapsedMilliseconds);
+                        return new(url.Port, processId, started, installation);
                     }
+                }
+                // A hook can receive the message before V8 has entered a usable context.
+                // Keep the verified hook alive and resignal instead of waiting out a full timeout.
+                if (resend.ElapsedMilliseconds >= requests * 150L)
+                {
+                    if (!PostThreadMessage(thread, 0x8000 + 0x26D, UIntPtr.Zero, IntPtr.Zero))
+                        throw new System.ComponentModel.Win32Exception(Marshal.GetLastWin32Error());
+                    requests++;
                 }
                 await Task.Delay(50, deadline.Token);
             }
