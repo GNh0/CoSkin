@@ -311,7 +311,16 @@ export function validateTheme(
   allowLocalItems = false,
   optionalCapabilities: ReadonlySet<string> = new Set(),
 ) {
-  keys(theme, ["profiles", "customEffects"]);
+  keys(theme, ["profiles", "customEffects", "autoTextColor", "fontFamily"]);
+  const validFont = (value: unknown) =>
+    typeof value === "string" && /^[\p{L}\p{N} _-]{1,80}$/u.test(value);
+  if (theme.fontFamily !== undefined && !validFont(theme.fontFamily))
+    fail("글꼴 이름 오류");
+  if (
+    theme.autoTextColor !== undefined &&
+    typeof theme.autoTextColor !== "boolean"
+  )
+    fail("자동 글자색 설정 오류");
   const definitions = validateCustomEffects(theme.customEffects);
   const specs: Record<string, EffectDefinition> = { ...EFFECTS };
   for (const definition of definitions)
@@ -417,11 +426,14 @@ export function validateTheme(
                 "paddingPx",
                 "imagePlayback",
               ],
-              text: ["color", "opacity", "weight"],
+              text: ["color", "opacity", "weight", "autoColor", "family"],
             }[layer];
             keys(v, allowed ?? fail("레이어 오류"));
             for (const [key, val] of Object.entries(v)) {
               if (val === null) continue;
+              if (key === "family" && !validFont(val)) fail("글꼴 이름 오류");
+              if (key === "autoColor" && typeof val !== "boolean")
+                fail("자동 글자색 설정 오류");
               if (key === "imagePlayback" && !["play", "poster"].includes(val))
                 fail("움직이는 이미지 재생 값 오류");
               if (

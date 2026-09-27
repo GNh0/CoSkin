@@ -100,6 +100,16 @@ test("실제 미디어 재생기는 스크롤 정지와 맞춤·크기 변경에
   now = 1100;
   assert.equal(timers.size, 0);
   assert.equal(draws, before);
+  player.setVisible(false);
+  player.pause(true);
+  player.setVisible(true);
+  assert.equal(
+    timers.size,
+    0,
+    "최소화와 스크롤 정지가 겹치면 두 조건이 모두 풀릴 때 재개",
+  );
+  player.pause(false);
+  assert.equal(player.index, 1, "최소화 복원에서 첫 프레임으로 돌아가지 않음");
   player.pause(false);
   assert.equal(player.index, 1);
   assert.equal(draws, before);

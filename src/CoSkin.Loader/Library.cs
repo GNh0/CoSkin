@@ -74,6 +74,18 @@ internal sealed class Library : IDisposable
             JsonObject Revision(JsonObject e, int rev) => JsonContract.Read(File.ReadAllBytes(FilePath($"revision-{e["key"]}-{rev}.json")));
             switch (op)
             {
+                case "organization-write":
+                    ThemeOrganization.WriteTheme(state, Id(), request["metadata"]?.AsObject() ?? throw new InvalidDataException("분류 정보가 필요합니다."));
+                    Write("library.json", state);
+                    return Summary(state);
+                case "group-write":
+                    var groupId = ThemeOrganization.WriteGroup(state, request["groupId"]?.GetValue<string>(), JsonContract.String(request, "name"));
+                    Write("library.json", state);
+                    return new JsonObject { ["groupId"] = groupId };
+                case "group-delete":
+                    ThemeOrganization.DeleteGroup(state, JsonContract.String(request, "groupId"));
+                    Write("library.json", state);
+                    return Summary(state);
                 case "effect-import":
                 case "effect-register":
                     {
@@ -290,6 +302,7 @@ internal sealed class Library : IDisposable
                         foreach (var scope in associated)
                             bindings.Remove(scope);
                         themes.Remove(id);
+                        ThemeOrganization.DeleteTheme(state, id);
                         if (applyPlan is not null)
                             await applyPlan(Summary(state), previous);
                         Write("library.json", state);

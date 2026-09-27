@@ -15,6 +15,8 @@ export type LayerName =
 export type EventName = "enter" | "exit" | "click" | "idle";
 export type Fit = "cover" | "contain" | "stretch" | "tile";
 export interface LayerStyle {
+  family?: string | null;
+  autoColor?: boolean;
   imagePlayback?: "play" | "poster";
   color?: string | null;
   opacity?: number | null;
@@ -62,6 +64,8 @@ export interface Profile {
   rules: Rule[];
 }
 export interface Theme {
+  fontFamily?: string;
+  autoTextColor?: boolean;
   profiles: Profile[];
   customEffects?: CustomEffectDefinition[];
 }

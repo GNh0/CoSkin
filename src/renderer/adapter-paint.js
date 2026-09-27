@@ -76,5 +76,18 @@ export function discoverPaintSources(target, root, retained) {
       ),
     });
   }
+  if (target === "app.background")
+    for (const element of root.querySelectorAll(
+      'header.h-toolbar.draggable,[data-app-shell-titlebar="true"]',
+    )) {
+      if (
+        !element.isConnected ||
+        element.closest("[data-coskin-ui],[data-coskin-decoration]")
+      )
+        continue;
+      const rect = element.getBoundingClientRect();
+      if (rect.width > 0 && rect.height > 0)
+        sources.push({ element, clearImage: false, chromeHeader: true });
+    }
   return sources;
 }

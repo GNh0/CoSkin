@@ -5,12 +5,96 @@ import {
   resumeTimeline,
 } from "../core/media-timeline.ts";
 import gifWorkerSource from "../../dist/gif-worker.json";
+import { MEDIA_LIMITS } from "../core/media-limits.js";
+export function disposeMedia(media) {
+  for (const frame of media.frames) frame.image.close();
+  if (media.videoUrl) URL.revokeObjectURL(media.videoUrl);
+}
+async function decodeVideo(bytes) {
+  const videoUrl = URL.createObjectURL(
+    new Blob([bytes], { type: "video/mp4" }),
+  );
+  const video = document.createElement("video");
+  video.muted = true;
+  video.playsInline = true;
+  video.preload = "auto";
+  video.dataset.coskinUi = "";
+  Object.assign(video.style, {
+    position: "fixed",
+    left: "-9999px",
+    width: "1px",
+    height: "1px",
+    opacity: "0",
+    pointerEvents: "none",
+  });
+  document.body.append(video);
+  try {
+    await new Promise((resolve, reject) => {
+      const finish = (error) => {
+        clearTimeout(timer);
+        video.onloadedmetadata = video.onerror = null;
+        error ? reject(error) : resolve();
+      };
+      const timer = setTimeout(
+        () => finish(Error("MP4 디코딩 시간이 초과되었습니다.")),
+        10000,
+      );
+      video.onloadedmetadata = () => finish();
+      video.onerror = () => finish(Error("MP4 영상을 재생할 수 없습니다."));
+      video.src = videoUrl;
+      // Chromium defers an unconnected, paused video's first frame in hidden windows.
+      video.play().catch(finish);
+    });
+    if (
+      !video.videoWidth ||
+      !video.videoHeight ||
+      video.videoWidth > MEDIA_LIMITS.dimension ||
+      video.videoHeight > MEDIA_LIMITS.dimension ||
+      video.videoWidth * video.videoHeight > MEDIA_LIMITS.pixels ||
+      !Number.isFinite(video.duration) ||
+      video.duration <= 0 ||
+      video.duration * 1000 > MEDIA_LIMITS.maxDurationMs
+    )
+      throw Error("영상 해상도 또는 길이 제한을 초과했습니다.");
+    await new Promise((resolve, reject) => {
+      const timer = setTimeout(() => {
+        video.onseeked = null;
+        reject(Error("영상 미리보기를 준비하지 못했습니다."));
+      }, 10000);
+      video.onseeked = () => {
+        clearTimeout(timer);
+        video.onseeked = null;
+        resolve();
+      };
+      video.currentTime = Math.min(15, video.duration * 0.15);
+    });
+    const image = await createImageBitmap(video);
+    return {
+      mime: "video/mp4",
+      width: image.width,
+      height: image.height,
+      frames: [{ image, delay: 0 }],
+      videoUrl,
+      duration: video.duration,
+      encodedBytes: bytes.length,
+    };
+  } catch (error) {
+    URL.revokeObjectURL(videoUrl);
+    throw error;
+  } finally {
+    video.pause();
+    video.removeAttribute("src");
+    video.load();
+    video.remove();
+  }
+}
 export async function decodeMedia(data, mime) {
   const bytes =
     typeof data === "string"
       ? Uint8Array.from(atob(data), (c) => c.charCodeAt(0))
       : data;
   if (bytes.length > 25 * 1024 * 1024) throw Error("이미지 크기 제한");
+  if (mime === "video/mp4") return decodeVideo(bytes);
   if (mime === "image/gif")
     return await new Promise((resolve, reject) => {
       const url = URL.createObjectURL(
@@ -136,6 +220,30 @@ export class MediaPlayer {
     this.index = 0;
     this.loops = 0;
     this.draw();
+    if (media.videoUrl) {
+      this.video = document.createElement("video");
+      this.video.muted = true;
+      this.video.loop = true;
+      this.video.playsInline = true;
+      this.video.preload = "metadata";
+      this.video.src = media.videoUrl;
+      Object.assign(this.video.style, {
+        position: "absolute",
+        inset: "0",
+        width: "100%",
+        height: "100%",
+        pointerEvents: "none",
+        display: "none",
+      });
+      this.videoAppearance();
+      parent.append(this.video);
+    }
+  }
+  videoAppearance() {
+    if (!this.video) return;
+    this.video.style.objectFit = this.fit === "stretch" ? "fill" : this.fit;
+    this.video.style.objectPosition =
+      this.position.x * 100 + "% " + this.position.y * 100 + "%";
   }
   draw() {
     this.context.clearRect(0, 0, this.canvas.width, this.canvas.height);
@@ -161,6 +269,40 @@ export class MediaPlayer {
     );
     this.lastFrame = this.index;
   }
+  snapshot(canvas) {
+    canvas.style.visibility = "visible";
+    if (
+      !this.video ||
+      this.video.readyState < 2 ||
+      this.video.style.display === "none"
+    ) {
+      canvas.getContext("2d").drawImage(this.canvas, 0, 0);
+      return;
+    }
+    const scale =
+      this.fit === "stretch"
+        ? null
+        : this.fit === "cover"
+          ? Math.max(
+              canvas.width / this.media.width,
+              canvas.height / this.media.height,
+            )
+          : Math.min(
+              canvas.width / this.media.width,
+              canvas.height / this.media.height,
+            );
+    const width = scale === null ? canvas.width : this.media.width * scale;
+    const height = scale === null ? canvas.height : this.media.height * scale;
+    const context = canvas.getContext("2d");
+    context.clearRect(0, 0, canvas.width, canvas.height);
+    context.drawImage(
+      this.video,
+      (canvas.width - width) * this.position.x,
+      (canvas.height - height) * this.position.y,
+      width,
+      height,
+    );
+  }
   updateAppearance(fit, position) {
     if (
       this.fit === fit &&
@@ -171,6 +313,7 @@ export class MediaPlayer {
     this.fit = fit;
     this.position = position;
     this.draw();
+    this.videoAppearance();
   }
   resize() {
     const rect = this.parent.getBoundingClientRect();
@@ -187,8 +330,33 @@ export class MediaPlayer {
   }
   setPlaying(play) {
     this.playRequested = play;
+    if (this.video) {
+      if (play && !this.visibilityPaused) {
+        if (!this.video.paused) return;
+        this.video
+          .play()
+          .then(() => {
+            if (!this.disposed && this.playRequested && !this.video.paused) {
+              this.video.style.display = "block";
+              this.canvas.style.visibility = "hidden";
+            }
+          })
+          .catch(() => {
+            if (!this.disposed && this.video.paused) {
+              this.video.style.display = "none";
+              this.canvas.style.visibility = "visible";
+            }
+          });
+      } else if (!play) {
+        this.video.pause();
+        if (this.video.readyState) this.video.currentTime = 0;
+        this.video.style.display = "none";
+        this.canvas.style.visibility = "visible";
+      }
+      return;
+    }
     if (this.media.frames.length < 2) return;
-    if (play && this.scrollPaused) {
+    if (play && (this.scrollPaused || this.visibilityPaused)) {
       pausedPlayers.add(this);
       return;
     }
@@ -225,8 +393,25 @@ export class MediaPlayer {
     if (!clockTimer) scheduleClock();
   }
   pause(value) {
-    if (this.scrollPaused === value || this.media.frames.length < 2) return;
+    // Native video playback runs independently of the GIF redraw clock during scrolling.
+    if (this.video) return;
+    if (this.scrollPaused === value) return;
     this.scrollPaused = value;
+    this.refreshPause();
+  }
+  setVisible(visible) {
+    const value = !visible;
+    if (this.visibilityPaused === value) return;
+    this.visibilityPaused = value;
+    if (this.video) {
+      if (value) this.video.pause();
+      else this.setPlaying(this.playRequested);
+    } else this.refreshPause();
+  }
+  refreshPause() {
+    const value = !!(this.scrollPaused || this.visibilityPaused);
+    if (this.clockPaused === value || this.media.frames.length < 2) return;
+    this.clockPaused = value;
     const timeline = timelines.get(this.media);
     if (value) {
       if (this.playRequested) pausedPlayers.add(this);
@@ -249,8 +434,14 @@ export class MediaPlayer {
     }
   }
   dispose() {
+    this.disposed = true;
     pausedPlayers.delete(this);
     this.setPlaying(false);
+    if (this.video) {
+      this.video.removeAttribute("src");
+      this.video.load();
+      this.video.remove();
+    }
     this.canvas.remove();
   }
 }

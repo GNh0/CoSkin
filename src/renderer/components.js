@@ -18,6 +18,7 @@ export function busyImage() {
   });
 }
 const iconPaths = {
+  star: "M12 3l2.8 5.8 6.4.9-4.6 4.5 1.1 6.4L12 17.6l-5.7 3 1.1-6.4-4.6-4.5 6.4-.9z",
   trash: "M3 6h18M9 6V3h6v3M5 6l1 15h12l1-15M10 10v7M14 10v7",
   image: "M3 3h18v18H3zM3 17l6-6 4 4 3-3 5 5M8 7h.01",
   sparkles:

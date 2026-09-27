@@ -21,7 +21,7 @@ Aurora.coskin
   theme.json
   assets/
     search.png
-    background.webp       선택 사항
+    background.gif        선택 사항
   preview/
     cover.png             선택 사항
 ```
@@ -162,7 +162,7 @@ Aurora.coskin
 | `decoration` | image, opacity, fit, position                |
 | `border`     | color, opacity, widthPx, radiusPx, glow      |
 | `icon`       | image, sizePx, opacity, fit, paddingPx       |
-| `text`       | color, opacity, weight                       |
+| `text`       | color, opacity, weight, autoColor, family     |
 
 `color`는 #RRGGBB, 투명도는 별도 숫자 0~1이다. `image`는 패키지 안의 `assets/` 경로다. `fit`은 cover, contain, stretch, tile 중 해당 레이어가 지원하는 값이다. 크기는 유한한 제한 범위의 숫자로만 표현한다.
 
@@ -203,7 +203,7 @@ OS 동작 줄이기와 전체 효과 끄기는 패키지 설정보다 우선한�
 
 ## 7. 이미지와 경로
 
-v1 이미지 후보는 PNG, JPEG, WebP, GIF, AVIF다. 실제 디코더 지원과 크기를 검사한 형식만 가져온다. 움직이는 이미지 형식은 정지 프레임 생성까지 검증되어야 지원으로 표시한다. SVG·동영상·사용자 스크립트·원격 URL은 v1 패키지에서 허용하지 않는다.
+지원 미디어는 PNG, JPEG, GIF 및 CoSkin 0.1.2부터 MP4다. 확장자·바이트 형식·실제 디코딩을 확인한다. WebP·AVIF·SVG·사용자 스크립트·원격 URL은 현재 지원하지 않는다. MP4는 음소거로 재생하며 파일 내부의 코덱을 Windows Chromium이 디코딩할 수 있어야 한다. H.264 MP4를 실제 화면에서 검증했다.
 
 자산은 패키지에 포함하고, 외부 절대 경로나 HTTP 요청 없이 해석한다. 이미지 변환이 필요하면 공유 패키지 원본은 보존하고 로컬 파생 자산을 만든다.
 
@@ -285,7 +285,15 @@ v1 이미지 후보는 PNG, JPEG, WebP, GIF, AVIF다. 실제 디코더 지원과
 
 ## 구현 교정: 이미지와 로컬 설정
 
-PNG (`image/png`, `.png`), JPEG (`image/jpeg`, `.jpg` 또는 `.jpeg`), GIF (`image/gif`, `.gif`)를 확장자·바이트 형식·실제 디코딩으로 검증한다. 개별 이미지 최대25MiB, 패키지 최대100MiB, 총 압축 해제 최대250MiB의 현재 안전 한도와 GIF 디코딩 한도를 각각 적용한다. 내부 적용은 패키지 원본 경로가 아니라 내부 해시 자산과 불변 리비전을 사용한다.
+PNG (`image/png`, `.png`), JPEG (`image/jpeg`, `.jpg` 또는 `.jpeg`), GIF (`image/gif`, `.gif`), MP4 (`video/mp4`, `.mp4`)를 확장자·바이트 형식·실제 디코딩으로 검증한다. 개별 미디어 최대25MiB, 패키지 최대100MiB, 총 압축 해제 최대250MiB의 현재 안전 한도와 GIF 디코딩 한도를 각각 적용한다. MP4 길이는 최대600초이며 미리보기용 한 프레임과 네이티브 영상 플레이어를 사용한다. 내부 적용은 패키지 원본 경로가 아니라 내부 해시 자산과 불변 리비전을 사용한다.
+
+## 0.1.2 글자 스타일과 재생 옵션
+
+`theme.json` 루트의 선택 항목 `autoTextColor`는 boolean, `fontFamily`는 설치된 글꼴 이름(최대80자)이다. 자동 색상은 대표 프레임의 색감과 영역 배경을 사용하고, GIF·영상의 밝기 범위를 고려해 글자 대비를 우선한다. 필요한 경우 해당 영역의 단색 배경을 실행 중 더 진하게 합성하며 저장된 배경 설정은 보존한다. 모든 실제 픽셀에 대한 접근성 보증은 아니다.
+
+`style.text.autoColor: true`는 해당 영역을 자동 지정하고, `false`와 `color`를 함께 지정하면 수동 색상이 우선한다. `style.text.family`는 영역별 글꼴 이름, `weight`는100~900의 굵기다. 폰트 파일과 외부 URL을 불러오지 않는다. 이 옵션 또는 MP4를 사용하는 패키지는 `engine.minVersion: "0.1.2"`를 선언한다.
+
+미디어 레이어의 `imagePlayback: "poster"`는 정지 이미지를, `"play"`는 움직임 정책에 따른 재생을 선택한다. 최소화·화면 밖 정지는 재생 위치를 유지한다. 효과 없음과 명시적인 재생 해제는 정지 이미지로 전환한다. 그룹·즐겨찾기·태그는 개인 라이브러리의 분류 정보로 저장하며 내보낸 패키지에는 포함하지 않는다.
 
 이미지 레이어의 `imagePlayback: "play" | "poster"`는 움직이는 이미지 재생/정적 대표 프레임을 선택한다. UI 전환의 `motion.mode: "none"`과 별개다. 같은 이미지의 해시는 MIME·원본 바이트와 함께 보존하며 이미지 불투명도는 레이어에만 적용한다.
 

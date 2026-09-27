@@ -22,6 +22,13 @@ try
         using var probeDeadline = new CancellationTokenSource(2000);
         Check((await probeClient.Send(new JsonObject { ["op"] = "health" }, probeDeadline.Token))["pid"]?.GetValue<int>() == 123, "소유권 없는 업데이트 클라이언트가 실제 명명된 파이프 준비 응답 수신");
     }
+    byte[] Box(string type, byte[] payload) { var bytes = new byte[8 + payload.Length]; System.Buffers.Binary.BinaryPrimitives.WriteUInt32BigEndian(bytes, (uint)bytes.Length); Encoding.ASCII.GetBytes(type).CopyTo(bytes, 4); payload.CopyTo(bytes, 8); return bytes; }
+    var mp4 = Box("ftyp", Encoding.ASCII.GetBytes("isom\0\0\0\0isomavc1")).Concat(Box("moov", new byte[] { 0 })).Concat(Box("mdat", new byte[] { 0 })).ToArray();
+    ImageProbe.Validate("assets/video.mp4", mp4);
+    Check(ImageProbe.Mime(mp4) == "video/mp4" && ImageProbe.Extension("video/mp4") == ".mp4", "MP4 바이트 형식과 확장자 확인");
+    Reject(() => ImageProbe.Validate("assets/video.png", mp4), "MP4 위장 이미지 확장자 거절");
+    Reject(() => ImageProbe.Validate("assets/video.mp4", mp4[..^1]), "잘린 MP4 컨테이너 거절");
+    Reject(() => ImageProbe.Validate("assets/video.mp4", Box("ftyp", Encoding.ASCII.GetBytes("isom\0\0\0\0"))), "영상 데이터 없는 MP4 거절");
     var currentBuild = CodexBuilds.Find("26.924.2738.0")!;
     Check(CodexBuilds.Find("26.924.1866.0")?.AppVersion == "26.924.20706" && currentBuild.AppVersion == "26.924.22138", "검토한 Codex 패키지와 내부 앱 버전의 정확한 대응");
     Check(CodexBuilds.Find("26.924.2739.0") is null && CodexBuilds.Find("26.924.2738") is null, "검토하지 않은 인접·축약 버전은 자동 지원하지 않음");
@@ -467,8 +474,27 @@ try
         throw new Exception("잘못된 MIME 승인");
     }
     catch (InvalidDataException) { passed++; Console.WriteLine("PASS 자산 확장자 MIME 불일치 거절"); }
+    var classificationBefore = (await store.Handle(new JsonObject { ["op"] = "list" }, Validate, Decode)).DeepClone();
+    var groupCreated = await store.Handle(new JsonObject { ["op"] = "group-write", ["name"] = " 러브코미디 " }, Validate, Decode);
+    var groupId = groupCreated["groupId"]!.GetValue<string>();
+    await store.Handle(new JsonObject { ["op"] = "organization-write", ["id"] = id, ["metadata"] = new JsonObject { ["favorite"] = true, ["groupId"] = groupId, ["tags"] = new JsonArray("GIF", " 고화질 ", "gif") } }, Validate, Decode);
+    using (var reopened = new Library(store.StorePath))
+    {
+        var organized = await reopened.Handle(new JsonObject { ["op"] = "list" }, Validate, Decode);
+        Check(organized["organization"]?["themes"]?[id]?["favorite"]?.GetValue<bool>() == true && organized["organization"]?["themes"]?[id]?["tags"]?.AsArray().Count == 2, "즐겨찾기·그룹·태그는 정규화 후 재시작에도 보존");
+        Check(JsonNode.DeepEquals(classificationBefore["bindings"], organized["bindings"]) && JsonNode.DeepEquals(classificationBefore["themes"], organized["themes"]), "분류 저장은 적용 바인딩과 테마 리비전을 변경하지 않음");
+    }
+    try { await store.Handle(new JsonObject { ["op"] = "organization-write", ["id"] = id, ["metadata"] = new JsonObject { ["groupId"] = "missing" } }, Validate, Decode); throw new Exception("그룹 오류 승인"); }
+    catch (InvalidDataException) { Check(true, "없는 그룹 지정 거절"); }
+    await store.Handle(new JsonObject { ["op"] = "group-write", ["groupId"] = groupId, ["name"] = "애니메이션" }, Validate, Decode);
+    summary = await store.Handle(new JsonObject { ["op"] = "list" }, Validate, Decode);
+    Check(summary["organization"]?["groups"]?[groupId]?.GetValue<string>() == "애니메이션" && summary["organization"]?["themes"]?[id]?["groupId"]?.GetValue<string>() == groupId, "그룹 이름 변경 후 테마 연결 유지");
+    await store.Handle(new JsonObject { ["op"] = "group-delete", ["groupId"] = groupId }, Validate, Decode);
+    summary = await store.Handle(new JsonObject { ["op"] = "list" }, Validate, Decode);
+    Check(summary["organization"]?["themes"]?[id]?["groupId"] is null && summary["organization"]?["themes"]?[id]?["favorite"]?.GetValue<bool>() == true && summary["themes"]?[id] is not null, "그룹 삭제는 테마와 즐겨찾기를 유지하고 그룹 지정만 해제");
     var output = await store.Handle(new JsonObject { ["op"] = "export", ["id"] = id, ["revision"] = 1 }, Validate, Decode);
     var package = Package.Read(Convert.FromBase64String(output["data"]!.GetValue<string>()));
+    Check(!package.Files.Keys.Any(key => key.Contains("organization")) && package.Manifest["organization"] is null, "개인 분류 정보는 내보낸 테마에 포함하지 않음");
     Check(package.Files["assets/search.png"].SequenceEqual(assets["assets/search.png"]), "내보내기 자산 바이트 보존");
     using (var zipBytes = new MemoryStream())
     {

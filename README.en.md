@@ -27,8 +27,10 @@ Currently supports **Windows x64 · Codex 26.924.2738.0**. Run both apps at the 
 | Feature | What you can do |
 | --- | --- |
 | Theme library | Create, import and delete; preview and apply directly from cards |
+| Organization and search | Combine groups, favorites and tags to find themes |
 | Details and editing | Edit theme information, duplicate, edit in the actual app and export |
-| Images and GIFs | Set backgrounds, decorations and icons; adjust opacity separately from text |
+| Images, GIFs and video | Set backgrounds, decorations and icons; loop muted MP4 video; see resolution and aspect recommendations |
+| Text styles | Theme-tinted automatic text colors or your own color, installed font and weight |
 | Animation effects | Configure hover, click and selected states, plus enter, exit and repeating effects |
 | Application scope | Apply across the app, projects or chats; override individual items |
 | Languages | Follow Codex in Korean, English, Japanese or Simplified Chinese |
@@ -39,15 +41,21 @@ Open **CoSkin** from the left icon rail. Use **Preview** on a card to try a them
 
 | Theme library | Details and preview |
 | :---: | :---: |
-| ![Theme library](docs/media/theme-library-0.1.0.png) | ![Theme detail](docs/media/wuthering-waves/shorekeeper-theme-detail.png) |
+| ![Theme library](docs/media/theme-library-0.1.2.png) | ![Theme detail](docs/media/wuthering-waves/shorekeeper-theme-detail.png) |
 
 In editing mode, **right-click** the area you want to customize to adjust its images, effects and styles. Project and chat row edits apply to all rows of the same kind by default; choose an **individual override** to change just one item.
 
 **Save** keeps your theme changes; **Apply** uses them in the selected scope. Cancel a preview to return to the previous theme. Add and share your own effects with the [custom effects guide](docs/custom-effects.md).
 
+Use the star on a card to mark a **favorite**, and organize **groups and tags** in the detail view. Search, group, tag and favorite filters work together.
+
+**Match text colors automatically** prioritizes contrast with a subtle theme tint. When needed, it strengthens the surface behind text to keep bright video readable. Select **Choose manually** in the text editor to choose a color, installed font and weight for that area.
+
 ## Animated backgrounds and effects
 
 Combine a GIF background with row hover effects to create your own theme.
+
+Use GIF for short scenes and **MP4** for longer character motion. MP4 loops muted; the **No effects** profile shows a still image. Playback resumes from its position after minimizing and restoring. Image controls show resolution and aspect recommendations for the selected area. Choose **Show entire image** to keep the full action visible.
 
 ![Animated GIF background](docs/media/wuthering-waves/shorekeeper-live-gif.gif)
 

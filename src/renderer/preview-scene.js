@@ -1,5 +1,7 @@
+import { decodeMedia, disposeMedia } from "./media.js";
 import { downloadBytes } from "./file-transfer.js";
 import { resolve } from "../core/engine.ts";
+import { applyThemeTypography } from "./theme-typography.js";
 import { t } from "./messages.js";
 /** Draws a code-owned sample workspace. No current Codex content is read. */
 export async function drawPreviewScene(context, controller, document) {
@@ -8,92 +10,139 @@ export async function drawPreviewScene(context, controller, document) {
   );
   const styles = new Map();
   const images = new Map();
+  const videos = [];
+  const previewMedia = new Map();
+  const animatedAssets = new Set();
+  const styledProfile = {
+    ...profile,
+    autoTextColor: !!document.theme.autoTextColor,
+    fontFamily: document.theme.fontFamily,
+  };
+  let loaded = false;
   const style = (target, state = {}) => {
     const key = target + JSON.stringify(state);
-    if (!styles.has(key))
-      styles.set(key, resolve([profile], target, null, state).style || {});
+    if (!styles.has(key)) {
+      const final = resolve([profile], target, null, state);
+      if (loaded)
+        applyThemeTypography(
+          final,
+          [styledProfile],
+          (image) => previewMedia.get(document.assets[image]),
+          target,
+        );
+      styles.set(key, final.style || {});
+    }
     return styles.get(key);
   };
-  for (const target of [
-    "app.background",
-    "navigation.bar",
-    "navigation.home",
-    "navigation.library",
-    "navigation.images",
-    "sidebar.surface",
-    "sidebar.project-row",
-    "sidebar.thread-row",
-    "main.surface",
-    "composer.surface",
-    "composer.send",
-  ])
-    for (const layer of Object.values(style(target)))
-      if (layer?.image && document.assets[layer.image]) {
-        const hash = document.assets[layer.image];
-        if (images.has(hash)) continue;
-        const transfer = await controller.request("asset-read", { hash });
-        const mime = transfer.mime;
-        const bytes = await downloadBytes(controller, transfer);
-        images.set(
-          hash,
-          await createImageBitmap(new Blob([bytes], { type: mime })),
-        );
-      }
-  const rounded = (x, y, w, h, r) => {
-    context.beginPath();
-    context.roundRect(x, y, w, h, r);
-  };
-  const surface = (target, x, y, w, h, color, r = 0, state = {}) => {
-    const values = style(target, state);
-    context.save();
-    rounded(x, y, w, h, values.background?.radiusPx ?? r);
-    context.clip();
-    context.fillStyle = color;
-    context.fillRect(x, y, w, h);
-    for (const name of ["background", "decoration"]) {
-      const layer = values[name];
-      if (!layer) continue;
-      context.globalAlpha = layer.opacity ?? 1;
-      if (layer.color) {
-        context.fillStyle = layer.color;
-        context.fillRect(x, y, w, h);
-      }
-      const image = images.get(document.assets[layer.image]);
-      if (image) {
-        let iw = w,
-          ih = h;
-        if (layer.fit !== "stretch") {
-          const factor =
-            layer.fit === "contain"
-              ? Math.min(w / image.width, h / image.height)
-              : Math.max(w / image.width, h / image.height);
-          iw = image.width * factor;
-          ih = image.height * factor;
-        }
-        context.drawImage(image, x + (w - iw) / 2, y + (h - ih) / 2, iw, ih);
-      }
-    }
-    context.restore();
-    if (values.border?.color) {
-      context.save();
-      context.globalAlpha = values.border.opacity ?? 1;
-      context.strokeStyle = values.border.color;
-      context.lineWidth = values.border.widthPx ?? 1;
-      rounded(x + 0.5, y + 0.5, w - 1, h - 1, values.border.radiusPx ?? r);
-      context.stroke();
-      context.restore();
-    }
-    return values;
-  };
-  const label = (value, x, y, size = 11, color = "#aeb5c5", weight = 400) => {
-    context.fillStyle = color;
-    context.font = weight + " " + size + 'px "Segoe UI",sans-serif';
-    context.fillText(value, x, y);
-  };
-  const mainInk = style("main.surface").text?.color || "#eff2f9";
-  const sidebarInk = style("sidebar.surface").text?.color || "#aeb5c5";
-  const projectInk = style("sidebar.project-row").text?.color || sidebarInk;
   try {
+    for (const target of [
+      "app.background",
+      "navigation.bar",
+      "navigation.home",
+      "navigation.library",
+      "navigation.images",
+      "sidebar.surface",
+      "sidebar.project-row",
+      "sidebar.thread-row",
+      "main.surface",
+      "composer.surface",
+      "composer.send",
+    ])
+      for (const layer of Object.values(style(target)))
+        if (layer?.image && document.assets[layer.image]) {
+          const hash = document.assets[layer.image];
+          if (images.has(hash)) continue;
+          const transfer = await controller.request("asset-read", { hash });
+          const mime = transfer.mime;
+          if (mime === "image/gif") animatedAssets.add(hash);
+          const bytes = await downloadBytes(controller, transfer);
+          if (mime === "video/mp4") {
+            const media = await decodeMedia(bytes, mime);
+            videos.push(media);
+            images.set(hash, media.frames[0].image);
+          } else
+            images.set(
+              hash,
+              await createImageBitmap(new Blob([bytes], { type: mime })),
+            );
+        }
+    for (const [hash, image] of images)
+      previewMedia.set(hash, {
+        width: image.width,
+        height: image.height,
+        frames: [{ image }],
+        videoUrl: videos.find((media) => media.frames[0].image === image)
+          ?.videoUrl,
+        animated: animatedAssets.has(hash),
+      });
+    loaded = true;
+    styles.clear();
+    const rounded = (x, y, w, h, r) => {
+      context.beginPath();
+      context.roundRect(x, y, w, h, r);
+    };
+    const surface = (target, x, y, w, h, color, r = 0, state = {}) => {
+      const values = style(target, state);
+      context.save();
+      rounded(x, y, w, h, values.background?.radiusPx ?? r);
+      context.clip();
+      context.fillStyle = color;
+      context.fillRect(x, y, w, h);
+      for (const name of ["background", "decoration"]) {
+        const layer = values[name];
+        if (!layer) continue;
+        context.globalAlpha = layer.opacity ?? 1;
+        if (layer.color) {
+          context.fillStyle = layer.color;
+          context.fillRect(x, y, w, h);
+        }
+        const image = images.get(document.assets[layer.image]);
+        if (image) {
+          let iw = w,
+            ih = h;
+          if (layer.fit !== "stretch") {
+            const factor =
+              layer.fit === "contain"
+                ? Math.min(w / image.width, h / image.height)
+                : Math.max(w / image.width, h / image.height);
+            iw = image.width * factor;
+            ih = image.height * factor;
+          }
+          context.drawImage(
+            image,
+            x + (w - iw) * (layer.position?.x ?? 0.5),
+            y + (h - ih) * (layer.position?.y ?? 0.5),
+            iw,
+            ih,
+          );
+        }
+      }
+      context.restore();
+      if (values.border?.color) {
+        context.save();
+        context.globalAlpha = values.border.opacity ?? 1;
+        context.strokeStyle = values.border.color;
+        context.lineWidth = values.border.widthPx ?? 1;
+        rounded(x + 0.5, y + 0.5, w - 1, h - 1, values.border.radiusPx ?? r);
+        context.stroke();
+        context.restore();
+      }
+      return values;
+    };
+    const label = (value, x, y, size = 11, color = "#aeb5c5", weight = 400) => {
+      context.fillStyle = color;
+      context.font =
+        weight +
+        " " +
+        size +
+        'px "' +
+        (document.theme.fontFamily || "Segoe UI") +
+        '",sans-serif';
+      context.fillText(value, x, y);
+    };
+    const mainInk = style("main.surface").text?.color || "#eff2f9";
+    const sidebarInk = style("sidebar.surface").text?.color || "#aeb5c5";
+    const projectInk = style("sidebar.project-row").text?.color || sidebarInk;
     context.fillStyle = "#12141a";
     context.fillRect(0, 0, 640, 400);
     surface("app.background", 8, 8, 624, 384, "#1c2029", 12);
@@ -158,6 +207,9 @@ export async function drawPreviewScene(context, controller, document) {
     label("↑", 570, 309, 15, "#252b3a", 600);
     label("CoSkin", 375, 361, 10, "#8e99b2");
   } finally {
-    for (const image of images.values()) image.close();
+    for (const image of images.values())
+      if (!videos.some((media) => media.frames[0].image === image))
+        image.close();
+    for (const media of videos) disposeMedia(media);
   }
 }

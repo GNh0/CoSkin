@@ -1,4 +1,6 @@
 import { uploadFile } from "./file-transfer.js";
+import { assetGuidanceUi } from "./media-guidance.js";
+import { typographyControls } from "./typography-controls.js";
 import { editorChrome, inspectorPreview } from "./editor-chrome.js";
 import { t } from "./messages.js";
 import { h, icon } from "./components.js";
@@ -97,8 +99,97 @@ export function editorContext(panel, inspectorRoot) {
           : "background");
     if (layer !== chosen) continue;
     const current = editorState(panel).style?.[layer] || {};
+    if (layer === "text") {
+      const mode = h("select", { "aria-label": t("textColorMode") });
+      for (const [value, label] of [
+        ["theme", t("textColorTheme")],
+        ["auto", t("autoTextColor")],
+        ["manual", t("textColorManual")],
+      ])
+        mode.append(h("option", { value, text: label }));
+      mode.value =
+        current.autoColor === true
+          ? "auto"
+          : current.autoColor === false
+            ? "manual"
+            : "theme";
+      mode.onchange = () => {
+        panel.change(() => {
+          const s = panel.rule();
+          s.style ??= {};
+          s.style.text ??= {};
+          if (mode.value === "theme") delete s.style.text.autoColor;
+          else s.style.text.autoColor = mode.value === "auto";
+          panel.doc.manifest.engine.minVersion = "0.1.2";
+        });
+        panel.render();
+      };
+      const color = h("input", {
+        type: "color",
+        value: current.color || "#f0eef8",
+        "aria-label": t("textColorManual"),
+      });
+      color.disabled =
+        mode.value === "auto" ||
+        (mode.value === "theme" && panel.doc.theme.autoTextColor);
+      color.onchange = () => {
+        panel.change(() => {
+          const s = panel.rule();
+          s.style ??= {};
+          s.style.text ??= {};
+          s.style.text.color = color.value;
+          s.style.text.autoColor = false;
+          panel.doc.manifest.engine.minVersion = "0.1.2";
+        });
+        panel.render();
+      };
+      body.append(h("label", { text: t("textColorMode") }), mode, color);
+      const family = h("input", {
+        value: current.family || "",
+        maxLength: 80,
+        "aria-label": t("fontFamily"),
+        placeholder: t("textColorTheme"),
+      });
+      const weight = h("input", {
+        type: "number",
+        value: current.weight ?? "",
+        min: 100,
+        max: 900,
+        step: 100,
+        "aria-label": t("fontWeight"),
+        placeholder: "400",
+      });
+      family.onchange = () => {
+        panel.change(() => {
+          const s = panel.rule();
+          s.style ??= {};
+          s.style.text ??= {};
+          if (family.value.trim()) s.style.text.family = family.value.trim();
+          else delete s.style.text.family;
+          panel.doc.manifest.engine.minVersion = "0.1.2";
+        });
+        panel.render();
+      };
+      weight.onchange = () => {
+        panel.change(() => {
+          const s = panel.rule();
+          s.style ??= {};
+          s.style.text ??= {};
+          if (weight.value) s.style.text.weight = Number(weight.value);
+          else delete s.style.text.weight;
+        });
+        panel.render();
+      };
+      body.append(
+        h("label", { text: t("fontFamily") }),
+        family,
+        h("label", { text: t("fontWeight") }),
+        weight,
+      );
+    }
     if (
       panel.activeSection === "opacity" &&
+      layer !== "text" &&
       layer !== "decoration" &&
       layer !== "icon"
     ) {
@@ -157,7 +248,7 @@ export function editorContext(panel, inspectorRoot) {
       const file = h("input", {
         type: "file",
         class: "visually-hidden",
-        accept: "image/png,image/jpeg,image/gif",
+        accept: "image/png,image/jpeg,image/gif,video/mp4",
         "aria-label": label + t("control.imageSuffix"),
       });
       file.onchange = panel.action(async () => {
@@ -193,7 +284,7 @@ export function editorContext(panel, inspectorRoot) {
       const choose = panel.button(t("panel.setImage"), () => file.click());
       choose.className = "image-picker";
       choose.prepend(icon("image"));
-      body.append(choose, file);
+      body.append(choose, file, assetGuidanceUi(panel, layer));
       const fit = h("select", { "aria-label": t("control.fit") });
       for (const [value, label] of [
         ["contain", t("control.contain")],
@@ -281,6 +372,7 @@ export function editorContext(panel, inspectorRoot) {
   const settings = h("details", { class: "inspector-settings" }, [
     h("summary", { text: t("scope") }),
     panel.scope(),
+    typographyControls(panel),
     motionPolicyUi(panel),
     panel.button(text.cancel, () => panel.cancel()),
   ]);

@@ -2,6 +2,12 @@ import { t } from "./messages.js";
 import { h, busyImage, icon } from "./components.js";
 import { mountPreview } from "./previews.js";
 import { themeMetadata } from "./theme-metadata.js";
+import { filterLibrary } from "../core/library-filter.js";
+import {
+  organization,
+  favoriteButton,
+  groupManager,
+} from "./library-organization.js";
 export function galleryPage(panel, section) {
   if (panel.metadataMode === "create") {
     section.append(themeMetadata(panel, true));
@@ -45,11 +51,28 @@ export function galleryPage(panel, section) {
       ]),
     ]),
   );
-  const entries = Object.entries(panel.c.summary.themes).filter(
-    ([, entry]) =>
-      !panel.filter ||
-      entry.name.toLocaleLowerCase().includes(panel.filter.toLocaleLowerCase()),
-  );
+  const data = organization(panel);
+  const tags = [
+    ...new Set(Object.values(data.themes).flatMap((theme) => theme.tags || [])),
+  ].sort((a, b) => a.localeCompare(b));
+  if (panel.tagFilter && !tags.includes(panel.tagFilter)) panel.tagFilter = "";
+  if (
+    panel.groupFilter &&
+    panel.groupFilter !== "ungrouped" &&
+    !data.groups[panel.groupFilter]
+  )
+    panel.groupFilter = "";
+  const entries = filterLibrary(panel.c.summary.themes, data, {
+    query: panel.filter,
+    favorites: panel.favoriteFilter,
+    group: panel.groupFilter,
+    tag: panel.tagFilter,
+  });
+  const filter = (key, value) => {
+    panel[key] = value;
+    panel.page = 0;
+    panel.render();
+  };
   const search = h("input", {
     type: "search",
     class: "search",
@@ -72,7 +95,53 @@ export function galleryPage(panel, section) {
       }),
     ]),
   );
-  const page = panel.page || 0;
+  const group = h("select", { "aria-label": t("filterGroup") });
+  group.append(
+    h("option", { value: "", text: t("allGroups") }),
+    h("option", { value: "ungrouped", text: t("ungrouped") }),
+  );
+  for (const [id, name] of Object.entries(data.groups))
+    group.append(h("option", { value: id, text: name }));
+  group.value = panel.groupFilter || "";
+  group.onchange = () => filter("groupFilter", group.value);
+  const tag = h("select", { "aria-label": t("filterTag") });
+  tag.append(h("option", { value: "", text: t("allTags") }));
+  for (const name of tags) tag.append(h("option", { value: name, text: name }));
+  tag.value = panel.tagFilter || "";
+  tag.onchange = () => filter("tagFilter", tag.value);
+  const favorites = panel.button(t("favorites"), () =>
+    filter("favoriteFilter", !panel.favoriteFilter),
+  );
+  favorites.setAttribute("aria-pressed", String(!!panel.favoriteFilter));
+  favorites.prepend(icon("star"));
+  section.append(
+    h("div", { class: "library-filters" }, [
+      favorites,
+      group,
+      tag,
+      panel.button(t("manageGroups"), () => {
+        panel.manageGroups = !panel.manageGroups;
+      }),
+      ...(panel.favoriteFilter ||
+      panel.groupFilter ||
+      panel.tagFilter ||
+      panel.filter
+        ? [
+            panel.button(t("clearFilters"), () => {
+              panel.favoriteFilter = false;
+              panel.groupFilter = panel.tagFilter = panel.filter = "";
+              panel.page = 0;
+            }),
+          ]
+        : []),
+    ]),
+  );
+  if (panel.manageGroups) section.append(groupManager(panel));
+  const page = Math.min(
+    panel.page || 0,
+    Math.max(0, Math.ceil(entries.length / 24) - 1),
+  );
+  panel.page = page;
   const grid = h("div", { class: "grid" });
   for (const [id, entry] of entries.slice(page * 24, page * 24 + 24)) {
     const open = panel.action(async () => {
@@ -85,6 +154,7 @@ export function galleryPage(panel, section) {
     const applied =
       panel.c.summary.enabled && panel.c.summary.bindings[scopeKey]?.id === id;
     const thumbnail = busyImage();
+    const metadata = data.themes[id] || {};
     const body = h(
       "button",
       {
@@ -101,6 +171,22 @@ export function galleryPage(panel, section) {
             class: "muted",
             text: applied ? t("applied") : t("skin"),
           }),
+          h("div", { class: "theme-chips" }, [
+            ...(metadata.groupId && data.groups[metadata.groupId]
+              ? [
+                  h("span", {
+                    class: "group-chip",
+                    text: data.groups[metadata.groupId],
+                  }),
+                ]
+              : []),
+            ...(metadata.tags || [])
+              .slice(0, 3)
+              .map((name) => h("span", { text: name })),
+            ...((metadata.tags || []).length > 3
+              ? [h("span", { text: "+" + (metadata.tags.length - 3) })]
+              : []),
+          ]),
         ]),
       ],
     );
@@ -121,7 +207,11 @@ export function galleryPage(panel, section) {
     const card = h(
       "article",
       { class: "skin-card", "aria-selected": String(panel.selected === id) },
-      [body, h("div", { class: "card-actions" }, [apply, preview, remove])],
+      [
+        favoriteButton(panel, id, entry.name),
+        body,
+        h("div", { class: "card-actions" }, [apply, preview, remove]),
+      ],
     );
     grid.append(card);
     mountPreview(panel, thumbnail, id, entry.revision);
@@ -132,7 +222,9 @@ export function galleryPage(panel, section) {
       h("div", { class: "empty-state" }, [
         h("div", { class: "empty-icon", text: "✦", "aria-hidden": "true" }),
         h("h2", {
-          text: panel.filter ? t("noResults") : t("empty"),
+          text: Object.keys(panel.c.summary.themes).length
+            ? t("noResults")
+            : t("empty"),
         }),
         h("p", { text: t("emptyDescription") }),
         panel.button(t("create"), () => panel.create()),

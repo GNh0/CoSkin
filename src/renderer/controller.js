@@ -1,4 +1,6 @@
 import { pauseMediaForScroll } from "./scroll-media-policy.js";
+import { applyThemeTypography } from "./theme-typography.js";
+import { mediaMemoryBytes, mediaCacheBudget } from "../core/media-budget.js";
 import { t } from "./messages.js";
 import { downloadBytes } from "./file-transfer.js";
 import { isMotionPaused } from "../core/motion-policy.ts";
@@ -20,10 +22,10 @@ import { CodexAdapter } from "./adapter.js";
 import { Decoration } from "./layers.js";
 import { mutationNeedsDiscovery } from "./mutation-impact.js";
 import { Panel } from "./panel.js";
-import { decodeMedia } from "./media.js";
+import { decodeMedia, disposeMedia } from "./media.js";
 export async function decodeImage(data, mime) {
   const media = await decodeMedia(data, mime);
-  for (const frame of media.frames) frame.image.close();
+  disposeMedia(media);
   return true;
 }
 export async function validateDocument(doc) {
@@ -56,7 +58,11 @@ export async function validateDocument(doc) {
   )
     throw Error("테마 형식 또는 기본 프로필 오류");
   const minimum = m.engine.minVersion.split(".").map(Number);
-  if (minimum[0] > 0 || minimum[1] > 1 || (minimum[1] === 1 && minimum[2] > 0))
+  const current = [0, 1, 2];
+  const difference = minimum.findIndex(
+    (part, index) => part !== current[index],
+  );
+  if (difference >= 0 && minimum[difference] > current[difference])
     throw Error("이 테마에 필요한 엔진 버전을 지원하지 않습니다.");
   const used = new Set();
   for (const p of doc.theme.profiles)
@@ -83,8 +89,8 @@ export async function validateDocument(doc) {
   if (m.requirements.required.some((c) => !supported.includes(c)))
     throw Error("필수 지원 기능을 사용할 수 없습니다.");
   for (const [path, hash] of Object.entries(doc.assets)) {
-    if (!/\.(png|jpe?g|gif)$/.test(path))
-      throw Error("PNG·JPEG·GIF 이미지를 지원합니다.");
+    if (!/\.(png|jpe?g|gif|mp4)$/.test(path))
+      throw Error("PNG·JPEG·GIF 이미지와 MP4 영상을 지원합니다.");
     if (!/^[a-f0-9]{64}$/.test(hash)) throw Error("자산 해시 오류");
   }
   return true;
@@ -319,6 +325,8 @@ export class Controller {
     const p = doc.theme.profiles.find((p) => p.id === id);
     if (!p) return undefined;
     const result = structuredClone(p);
+    result.autoTextColor = !!doc.theme.autoTextColor;
+    result.fontFamily = doc.theme.fontFamily;
     result.rules.push(...structuredClone(doc.localOverrides?.[id] || []));
     result.rules = result.rules.filter((rule) =>
       this.adapter.supportedTargets.includes(rule.target),
@@ -361,14 +369,14 @@ export class Controller {
     return result;
   }
   mediaBytes(media) {
-    return media.width * media.height * media.frames.length * 4;
+    return mediaMemoryBytes(media);
   }
   storeMedia(hash, media) {
-    const budget = 128 * 1024 * 1024;
     const active = new Set();
     for (const decoration of this.decorations.values())
       for (const player of decoration.players.values())
         active.add(player.media);
+    const budget = mediaCacheBudget(media, active);
     let bytes = this.mediaBytes(media);
     for (const cached of this.assetCache.values())
       bytes += this.mediaBytes(cached);
@@ -377,10 +385,10 @@ export class Controller {
       if (active.has(cached)) continue;
       this.assetCache.delete(key);
       bytes -= this.mediaBytes(cached);
-      for (const frame of cached.frames) frame.image.close();
+      disposeMedia(cached);
     }
     if (bytes > budget || this.assetCache.size >= 64) {
-      for (const frame of media.frames) frame.image.close();
+      disposeMedia(media);
       throw Error(
         "움직이는 이미지와 이미지의 메모리 예산을 초과했습니다. 이미지 크기나 프레임 수를 줄여 주세요.",
       );
@@ -403,7 +411,7 @@ export class Controller {
           transfer.mime,
         );
         if (this.disposed) {
-          for (const frame of media.frames) frame.image.close();
+          disposeMedia(media);
           throw Error("연결이 종료되었습니다.");
         }
         return this.storeMedia(hash, media);
@@ -481,11 +489,12 @@ export class Controller {
           this.removeDecoration(d.target.el);
           continue;
         }
-        d.setPlaying(false);
+        d.setSuspended(true);
         d.cancel();
         d.serialized = null;
       }
     } else {
+      for (const d of this.decorations.values()) d.setSuspended(false);
       this.needsRender = false;
       this.render();
     }
@@ -501,7 +510,8 @@ export class Controller {
       this.externalApplying ||
       this.panel.dirty ||
       this.panel.editing ||
-      (this.panel.busy && !(allowUpdateRequest && this.panel.updateRequesting)) ||
+      (this.panel.busy &&
+        !(allowUpdateRequest && this.panel.updateRequesting)) ||
       (allowUpdateRequest && this.panel.runtimeSettingsDraft) ||
       this.panel.session.previewing
     )
@@ -520,7 +530,8 @@ export class Controller {
     if (this.panel.settingsOpen) this.panel.render();
   }
   openLibrary() {
-    if (!document.querySelector('nav[data-app-navigation-rail="true"]')) return false;
+    if (!document.querySelector('nav[data-app-navigation-rail="true"]'))
+      return false;
     if (this.panel.editing || this.panel.dirty || this.panel.session.previewing)
       return false;
     this.panel.settingsOpen = false;
@@ -538,7 +549,8 @@ export class Controller {
     return true;
   }
   async openSettings() {
-    if (!document.querySelector('nav[data-app-navigation-rail="true"]')) return false;
+    if (!document.querySelector('nav[data-app-navigation-rail="true"]'))
+      return false;
     if (this.panel.editing || this.panel.dirty || this.panel.session.previewing)
       return false;
     this.panel.runtimeSettings = await this.request("runtime-settings-read");
@@ -584,7 +596,7 @@ export class Controller {
       if (active.has(media)) continue;
       this.assetCache.delete(hash);
       unusedBytes -= this.mediaBytes(media);
-      for (const frame of media.frames) frame.image.close();
+      disposeMedia(media);
     }
   }
   render(subset = null, partial = false) {
@@ -614,13 +626,20 @@ export class Controller {
           this.removeDecoration(t.el);
           dec = null;
         }
+        const profiles = this.profiles(t);
         const final = resolve(
-          this.profiles(t),
+          profiles,
           t.target,
           t.item,
           this.replay?.element === t.el
             ? this.replay.flags
             : this.adapter.state(t.el),
+        );
+        applyThemeTypography(
+          final,
+          profiles,
+          (image) => this.asset(image),
+          t.target,
         );
         const nativeEffects = Object.values(final.motion?.events || {})
           .flat()
@@ -859,8 +878,7 @@ export class Controller {
       p.reject(Error("연결이 종료되었습니다."));
     }
     this.pending.clear();
-    for (const media of this.assetCache.values())
-      for (const frame of media.frames) frame.image.close();
+    for (const media of this.assetCache.values()) disposeMedia(media);
     this.assetCache.clear();
     delete window.__coskin;
   }

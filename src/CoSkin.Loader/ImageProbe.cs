@@ -6,6 +6,11 @@ internal static class ImageProbe
     {
         var mime = Mime(bytes);
         var extension = Path.GetExtension(path);
+        if (mime == "video/mp4" && extension == ".mp4")
+        {
+            ValidateMp4(bytes);
+            return;
+        }
         if (mime == "image/jpeg" && extension is ".jpg" or ".jpeg")
             return;
         if (mime == "image/gif" && extension == ".gif")
@@ -42,7 +47,44 @@ internal static class ImageProbe
             return "image/jpeg";
         if (bytes.Length >= 6 && System.Text.Encoding.ASCII.GetString(bytes, 0, 6) is "GIF87a" or "GIF89a")
             return "image/gif";
-        throw new InvalidDataException("PNG·JPEG·GIF 바이트 형식을 확인하지 못했습니다.");
+        if (bytes.Length >= 16 && bytes.AsSpan(4, 4).SequenceEqual("ftyp"u8))
+            return "video/mp4";
+        throw new InvalidDataException("PNG·JPEG·GIF·MP4 바이트 형식을 확인하지 못했습니다.");
     }
-    internal static string Extension(string mime) => mime switch { "image/png" => ".png", "image/jpeg" => ".jpg", "image/gif" => ".gif", _ => throw new InvalidDataException("이미지 형식 오류") };
+    internal static string Extension(string mime) => mime switch { "image/png" => ".png", "image/jpeg" => ".jpg", "image/gif" => ".gif", "video/mp4" => ".mp4", _ => throw new InvalidDataException("미디어 형식 오류") };
+    private static void ValidateMp4(byte[] bytes)
+    {
+        var movie = false;
+        var data = false;
+        var count = 0;
+        for (var offset = 0; offset < bytes.Length;)
+        {
+            if (++count > 4096 || bytes.Length - offset < 8)
+                throw new InvalidDataException("MP4 컨테이너 구조 오류");
+            var size = (ulong)System.Buffers.Binary.BinaryPrimitives.ReadUInt32BigEndian(bytes.AsSpan(offset, 4));
+            var type = System.Text.Encoding.ASCII.GetString(bytes, offset + 4, 4);
+            var header = 8;
+            if (size == 1)
+            {
+                if (bytes.Length - offset < 16) throw new InvalidDataException("MP4 컨테이너 구조 오류");
+                size = System.Buffers.Binary.BinaryPrimitives.ReadUInt64BigEndian(bytes.AsSpan(offset + 8, 8));
+                header = 16;
+            }
+            else if (size == 0) size = (ulong)(bytes.Length - offset);
+            if (size < (ulong)header || size > (ulong)(bytes.Length - offset))
+                throw new InvalidDataException("MP4 컨테이너 크기 오류");
+            if (offset == 0)
+            {
+                if (type != "ftyp" || size < (ulong)(header + 8) || (size - (ulong)header) % 4 != 0)
+                    throw new InvalidDataException("MP4 형식 선언 오류");
+                var brand = System.Text.Encoding.ASCII.GetString(bytes, offset + header, 4);
+                if (brand is not ("isom" or "iso2" or "mp41" or "mp42" or "avc1" or "M4V "))
+                    throw new InvalidDataException("지원하지 않는 MP4 형식입니다.");
+            }
+            movie |= type == "moov" && size > (ulong)header;
+            data |= type == "mdat" && size > (ulong)header;
+            offset += checked((int)size);
+        }
+        if (!movie || !data) throw new InvalidDataException("MP4 영상 데이터가 없습니다.");
+    }
 }

@@ -87,6 +87,54 @@ test("실제 Controller·Decoration·GIF는 휠 범위와 숨김을 분리하고
   });
   vm.runInContext(bundle.outputFiles[0].text, context);
   const { Controller, Decoration, MediaPlayer } = context.module.exports;
+  let unusedClosed = 0;
+  const activeVideo = {
+    width: 1920,
+    height: 1080,
+    videoUrl: "blob:active-hd",
+    encodedBytes: 21 * 1024 * 1024,
+    frames: [{ image: { close() {} } }],
+  };
+  const uhdVideo = {
+    width: 3840,
+    height: 2160,
+    videoUrl: "blob:uhd",
+    encodedBytes: 21930134,
+    frames: [{ image: { close() {} } }],
+  };
+  const budgetController = Object.create(Controller.prototype);
+  Object.assign(budgetController, {
+    decorations: new Map([
+      [1, { players: new Map([["background", { media: activeVideo }]]) }],
+    ]),
+    assetCache: new Map([
+      ["active", activeVideo],
+      [
+        "unused",
+        {
+          width: 4800,
+          height: 4800,
+          frames: [{ image: { close: () => unusedClosed++ } }],
+        },
+      ],
+    ]),
+  });
+  assert.equal(budgetController.storeMedia("uhd", uhdVideo), uhdVideo);
+  assert.equal(budgetController.assetCache.get("active"), activeVideo);
+  assert.equal(budgetController.assetCache.has("unused"), false);
+  assert.equal(unusedClosed, 1);
+  budgetController.decorations.clear();
+  budgetController.assetCache.clear();
+  const oversizedGif = {
+    width: 1024,
+    height: 1024,
+    frames: Array.from({ length: 33 }, () => ({ image: { close() {} } })),
+  };
+  assert.throws(
+    () => budgetController.storeMedia("gif", oversizedGif),
+    /메모리 예산/,
+    "4K 영상 지원이 GIF의 기존 메모리 한도를 늘리지 않는다",
+  );
   const advance = (ms) => {
     const end = now + ms;
     let budget = 100;
@@ -168,21 +216,26 @@ test("실제 Controller·Decoration·GIF는 휠 범위와 숨김을 분리하고
       "각 숨김 조건은 실행 중인 공유 GIF 시계에서 시작한다",
     );
     document.hidden = !native;
+    const before = [background.player.index, row.player.index];
     controller.suspend(native);
     assert.equal(controller.suspended, true);
     controller.onScroll({ type: "wheel", target: { closest: () => sidebar } });
     controller.onScroll({ type: "wheel", target: chat });
     advance(250);
-    assert.equal(background.player.playRequested, false);
-    assert.equal(row.player.playRequested, false);
+    assert.equal(background.player.playRequested, true);
+    assert.equal(row.player.playRequested, true);
+    assert.deepEqual([background.player.index, row.player.index], before);
     assert.equal(
       timers.size,
       0,
       "숨김 휠과 idle 종료가 GIF 시계를 깨우지 않는다",
     );
     document.hidden = false;
-    controller.nativeSuspended = false;
-    controller.suspended = false;
+    controller.suspend(false);
+    assert.equal(controller.suspended, false);
+    assert.deepEqual([background.player.index, row.player.index], before);
+    advance(100);
+    assert.notEqual(background.player.index, before[0]);
   }
   let resumed = 0;
   const owned = {

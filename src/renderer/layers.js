@@ -1,6 +1,8 @@
 import { keyframes } from "../core/engine.ts";
 import { MediaPlayer } from "./media.js";
 import { NativePaintScope } from "./native-paint.js";
+import { TextPaint } from "./text-paint.js";
+import { blendColors, readableThemeColor } from "../core/theme-colors.js";
 const rgba = (color, opacity = 1) => {
   const v = parseInt((color || "#000000").slice(1), 16);
   return `rgba(${v >> 16},${(v >> 8) & 255},${v & 255},${opacity})`;
@@ -92,16 +94,19 @@ export class Decoration {
       this.paintSources.delete(element);
     }
     for (const source of descriptors) {
-      const { element, clearImage, summaryHeader, fileTree } = source;
+      const { element, clearImage, summaryHeader, chromeHeader, fileTree } =
+        source;
       this.paintSources.set(element, source);
       if (this.style?.background) {
-        const paint = summaryHeader
-          ? rgba(
-              this.style.background.color,
-              this.style.background.opacity ?? 1,
-            )
-          : "transparent";
+        const paint =
+          summaryHeader || chromeHeader
+            ? rgba(
+                this.style.background.color,
+                chromeHeader ? 0.96 : (this.style.background.opacity ?? 1),
+              )
+            : "transparent";
         this.paintScope.set(element, "background-color", paint);
+        if (chromeHeader) this.paintChromeText(element);
         if (summaryHeader)
           this.paintScope.set(element, "--coskin-summary-header-paint", paint);
         if (fileTree) {
@@ -113,6 +118,16 @@ export class Decoration {
       }
     }
     this.paintSurfaces = [...this.paintSources.values()];
+  }
+  paintChromeText(element) {
+    const background = this.style?.background?.color || "#17191f";
+    const color = readableThemeColor(this.style?.border?.color || "#ffffff", [
+      blendColors(background, "#ffffff", 0.96),
+      blendColors(background, "#000000", 0.96),
+    ]);
+    this.paintScope.set(element, "color", color);
+    this.paintScope.set(element, "--coskin-font-color", color);
+    this.paintScope.set(element, "--coskin-font-shadow", "none");
   }
   set(style = {}) {
     const nextStyle = style || {};
@@ -190,11 +205,12 @@ export class Decoration {
           this.paintScope.set(
             surface.element,
             "background-color",
-            surface.summaryHeader
-              ? rgba(v.color, v.opacity ?? 1)
+            surface.summaryHeader || surface.chromeHeader
+              ? rgba(v.color, surface.chromeHeader ? 0.96 : (v.opacity ?? 1))
               : "transparent",
             "important",
           );
+          if (surface.chromeHeader) this.paintChromeText(surface.element);
           if (surface.summaryHeader)
             this.paintScope.set(
               surface.element,
@@ -240,20 +256,13 @@ export class Decoration {
         } else this.restoreIcon();
       } else if (name === "text") {
         el.style.display = "none";
-        /* Original text remains accessible and selectable; color is restored on detach. */ if (
-          !this.textOriginal
-        ) {
-          this.textOriginal = {
-            color: this.target.el.style.color,
-            fontWeight: this.target.el.style.fontWeight,
-          };
-        }
-        this.target.el.style.color = v.color
-          ? rgba(v.color, v.opacity)
-          : this.textOriginal.color;
-        this.target.el.style.fontWeight = v.weight
-          ? String(v.weight)
-          : this.textOriginal.fontWeight;
+        this.textPaint ??= new TextPaint(this.target.el);
+        this.textPaint.set(
+          v.color ? rgba(v.color, v.opacity) : null,
+          v.weight,
+          v.cascade || !!v.family || !!v.weight,
+          v.family,
+        );
       } else el.style.opacity = String(v.opacity ?? 1);
     }
     if (!this.style.background) this.restoreBackground();
@@ -477,11 +486,14 @@ export class Decoration {
     ) {
       ghost = this.root.cloneNode(true);
       const sourceCanvases = this.root.querySelectorAll("canvas");
-      ghost
-        .querySelectorAll("canvas")
-        .forEach((canvas, index) =>
-          canvas.getContext("2d").drawImage(sourceCanvases[index], 0, 0),
+      ghost.querySelectorAll("canvas").forEach((canvas, index) => {
+        const player = [...this.players.values()].find(
+          (player) => player.canvas === sourceCanvases[index],
         );
+        if (player) player.snapshot(canvas);
+        else canvas.getContext("2d").drawImage(sourceCanvases[index], 0, 0);
+      });
+      for (const video of ghost.querySelectorAll("video")) video.remove();
       ghost.removeAttribute("data-coskin-decoration");
       ghost.dataset.coskinTransition = "";
       const originals = [...this.root.children];
@@ -555,13 +567,14 @@ export class Decoration {
   }
   setPlaying(play) {
     this.playRequested = play;
-    for (const [layer, player] of this.players)
-      player.setPlaying(
-        play &&
-          this.style[layer]?.imagePlayback !== "poster" &&
-          !this.hidden &&
-          !document.hidden,
-      );
+    for (const [layer, player] of this.players) {
+      player.setVisible(!this.hidden && !document.hidden && !this.suspended);
+      player.setPlaying(play && this.style[layer]?.imagePlayback !== "poster");
+    }
+  }
+  setSuspended(value) {
+    this.suspended = value;
+    this.setPlaying(this.playRequested);
   }
   setScrollPaused(value, pauseMedia = value) {
     if (this.scrollPaused !== value) {
@@ -596,10 +609,8 @@ export class Decoration {
     }
   }
   restoreText() {
-    if (this.textOriginal) {
-      Object.assign(this.target.el.style, this.textOriginal);
-      this.textOriginal = null;
-    }
+    this.textPaint?.dispose();
+    this.textPaint = null;
   }
   restoreBackground() {
     if (this.summaryStyles)

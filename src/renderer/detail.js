@@ -3,6 +3,8 @@ import { h, busyImage } from "./components.js";
 import { mountPreview } from "./previews.js";
 import { themeMetadata } from "./theme-metadata.js";
 import { revisionStatusUi } from "./revision-status.js";
+import { organizationForm } from "./library-organization.js";
+import { typographyControls } from "./typography-controls.js";
 export function detailPage(panel, section) {
   const manifest = panel.doc.manifest;
   section.append(panel.button(t("back"), () => (panel.detail = false)));
@@ -45,5 +47,7 @@ export function detailPage(panel, section) {
     ]),
   ]);
   section.append(h("div", { class: "detail-layout" }, [preview, info]));
+  info.append(organizationForm(panel));
+  info.append(typographyControls(panel));
   if (panel.metadataMode === "edit") section.append(themeMetadata(panel));
 }

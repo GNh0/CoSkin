@@ -4,6 +4,8 @@ import vm from "node:vm";
 import fs from "node:fs";
 import path from "node:path";
 import { build } from "esbuild";
+import { NativePaintScope } from "../src/renderer/native-paint.js";
+import { blendColors, contrastRatio } from "../src/core/theme-colors.js";
 
 test("행의 동일 스타일 및 불투명도 전환은 미디어 재생성과 위치 측정을 요구하지 않는다", async () => {
   const bundle = await build({
@@ -154,4 +156,55 @@ test("행의 동일 스타일 및 불투명도 전환은 미디어 재생성과 
   decoration.setScrollPaused(false);
   assert.equal(animationResumes, 1);
   assert.deepEqual(mediaPauses, [false, true, false]);
+  const values = new Map([
+    ["color", { value: "white", priority: "important" }],
+  ]);
+  const header = {
+    style: {
+      getPropertyValue: (key) => values.get(key)?.value || "",
+      getPropertyPriority: (key) => values.get(key)?.priority || "",
+      setProperty(key, value, priority = "") {
+        values.set(key, { value, priority });
+      },
+      removeProperty(key) {
+        values.delete(key);
+      },
+    },
+  };
+  let sources = [{ element: header, chromeHeader: true }];
+  const chrome = Object.create(context.module.exports.Decoration.prototype);
+  Object.assign(chrome, {
+    target: { target: "app.background", paintSources: () => sources },
+    paintScope: new NativePaintScope(),
+    paintSources: new Map(),
+    style: {
+      background: { color: "#221b29", opacity: 1 },
+      border: { color: "#e6aebc" },
+    },
+  });
+  for (const background of ["#221b29", "#faf4ff"]) {
+    chrome.style.background.color = background;
+    chrome.updatePaintSurfaces();
+    assert.match(header.style.getPropertyValue("background-color"), /0\.96\)$/);
+    const ink = header.style.getPropertyValue("--coskin-font-color");
+    for (const wallpaper of ["#ffffff", "#000000"])
+      assert.ok(
+        contrastRatio(ink, blendColors(background, wallpaper, 0.96)) >= 4.5,
+      );
+    assert.equal(header.style.getPropertyValue("--coskin-font-shadow"), "none");
+  }
+  sources = [];
+  chrome.updatePaintSurfaces();
+  assert.equal(header.style.getPropertyValue("color"), "white");
+  assert.equal(header.style.getPropertyPriority("color"), "important");
+  for (const key of [
+    "background-color",
+    "--coskin-font-color",
+    "--coskin-font-shadow",
+  ])
+    assert.equal(
+      header.style.getPropertyValue(key),
+      "",
+      "Removed headers restore their original paint",
+    );
 });
