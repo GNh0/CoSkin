@@ -1,78 +1,83 @@
+<img src="assets/coskin.svg" alt="CoSkin" width="64">
+
 # CoSkin
+
+**Codexを、自分だけの空間に。**
+
+画像・動く背景・エフェクトでCodexを彩りましょう。テーマを選び、実際の画面でプレビューして、ワンクリックで適用できます。
 
 [한국어](README.md) · [English](README.en.md) · [日本語](README.ja.md) · [简体中文](README.zh-CN.md)
 
-Codexを自分だけの空間にするWindows用テーマライブラリです。画像・GIF・エフェクトを選び、実際の画面でプレビュー・編集・適用できます。
+[Windows版をダウンロード](https://github.com/GNh0/CoSkin/releases/latest) · [カスタムエフェクト](docs/custom-effects.md) · [対応環境](docs/support-matrix.md)
 
-[Windows x64をダウンロード](https://github.com/GNh0/CoSkin/releases/tag/v0.1.0) · [対応・検証範囲](docs/support-matrix.md)
+![CoSkinでカスタマイズしたCodex](docs/media/wuthering-waves/shorekeeper-live-applied.png)
 
-## インストールと起動
+## はじめる
 
-ZIPを展開して **CoSkin.Loader.exe** を起動してください。実行ファイル・renderer.js・THIRD-PARTY-NOTICES.txtの3ファイルを同じフォルダーに置きます。利用者はNodeや.NETを別途インストールする必要はありません。
+1. [最新リリース](https://github.com/GNh0/CoSkin/releases/latest)からZIPをダウンロードして展開します。
+2. **CoSkin.Loader.exe**を起動し、インストール設定を選びます。
+3. CodexとCoSkinを起動します。**どちらを先に起動しても自動接続します。**
 
-Windowsサインイン時の起動、Codexと同時に終了、デスクトップショートカット、.coskinの関連付け、自動更新を選択できます。既存のテーマとCodexデータを保持します。
+CoSkinを先に起動するとトレイでCodexを待ちます。デスクトップの **CoSkin** は単独起動、スタートメニューの **Codex + CoSkin** は同時起動です。開発ツールのインストールは不要です。
 
-**CoSkin → Codex、Codex → CoSkinのどちらの順序でも接続できます。** CoSkinを先に起動するとトレイで待機し、起動中の対応Codexには再起動せずに接続します。デスクトップの **CoSkin** は単独起動、スタートメニューの **Codex + CoSkin** は同時起動です。Codexを強制終了しません。
+現在の対応環境は **Windows x64 · Codex 26.924.2738.0** です。両アプリのWindows権限レベルを揃えてください。
 
-通常起動への接続を検証したバージョンはWindowsパッケージ **26.924.2738.0**、内部アプリ **26.924.22138** です。実行ファイル・OpenAI署名・ASAR・chrome.dllを確認します。他のバージョンは互換性の検証が必要です。両アプリのWindows権限レベルを揃えてください。[常駐構造](docs/resident-architecture.md)
+## カスタマイズできること
 
-## テーマとエフェクト
+| 機能 | できること |
+| --- | --- |
+| テーマ一覧 | 作成・取り込み・削除、カードから直接プレビュー・適用 |
+| 詳細・編集 | テーマ情報の変更、複製、実画面での編集、書き出し |
+| 画像・GIF | 背景・装飾・アイコンの設定、文字と別に不透明度を調整 |
+| アニメーション | ホバー・クリック・選択状態、開始・終了・繰り返しエフェクト |
+| 適用範囲 | アプリ全体・プロジェクト・チャットへの適用、個別上書き |
+| 言語 | Codexに合わせて韓国語・英語・日本語・簡体字中国語で表示 |
 
-- 左のアイコンバーから **CoSkin** を開きます。カード一覧で作成・取り込み・削除・プレビュー・即時適用できます。
-- カードを開くと詳細ページでプレビュー・編集・複製・書き出し・テーマ情報の編集ができます。
-- 実画面の編集モードで対象を右クリックします。プロジェクト・チャット行は標準で **同じ種類の全行** を編集し、個別指定で1行だけを上書きできます。
-- アプリ全体・プロジェクト・チャットの適用範囲を選択します。保存と適用は別操作です。プレビューのキャンセルは元の適用状態を保持します。
-- PNG・JPEG・GIFに対応します。画像の不透明度を文字と別に調整できます。通常・ホバー・選択状態と、開始・終了・クリック・繰り返しエフェクトを編集できます。
-- [カスタムエフェクト](docs/custom-effects.md)は宣言型JSONキーフレームを登録・共有します。レンダラーはJavaScript/TypeScript・CSS・Web Animations APIを使用し、任意のJavaScriptを実行するパッケージではありません。
+## テーマを選んで編集する
 
-一覧はチャットから分離した専用ページです。共通背景はCodexのアプリ表面、タブ、ファイル・ブラウザーツールのアプリ領域に適用されます。外部サイトの内容とWindowsダイアログは別の表面です。
+左のアイコンバーから **CoSkin** を開きます。カードの **プレビュー**で試し、**適用**で切り替えます。カードをクリックすると詳細画面で編集・複製・書き出しができます。
 
-## トレイと更新
+| テーマ一覧 | 詳細・プレビュー |
+| :---: | :---: |
+| ![テーマ一覧](docs/media/theme-library-0.1.0.png) | ![テーマ詳細](docs/media/wuthering-waves/shorekeeper-theme-detail.png) |
 
-トレイから一覧・設定・テーマ選択・装飾の切り替え・再接続・終了を操作できます。テーマはサブメニューにまとめ、メニューはCodexの言語に従います。サインイン起動と同時終了は独立した設定です。
+編集モードでは変更したい領域を **右クリック**して画像・エフェクト・スタイルを調整します。プロジェクト・チャット行は標準で同じ種類の全行に適用し、**個別指定**で選んだ項目だけを変更できます。
 
-自動更新は **GitHub Releasesの新しい安定版** を確認します。発行者署名・SHA-256・パッケージ構成を検証し、編集・プレビュー中は置き換えを延期します。新しいCoSkinが準備できなければ前のインストールを復元します。Codexとテーマデータは更新対象ではありません。無効化するとバックグラウンド確認を止めます。設定から手動確認もできます。[更新の公開方法](docs/updates.md)
+**保存**でテーマの変更を保管し、**適用**で選んだ範囲に反映します。プレビューをキャンセルすると前のテーマに戻ります。自作エフェクトの追加・共有は[カスタムエフェクトガイド](docs/custom-effects.md)をご覧ください。
 
-## 実際の画面
+## 動く背景とエフェクト
 
-![0.1.0 テーマ一覧](docs/media/theme-library-0.1.0.png)
+GIF背景と行のホバーエフェクトを組み合わせて、自分だけのテーマを作れます。
 
-別途生成した鳴潮のショアキーパーの非公式ファンアート例です。実行ZIPには同梱していません。[メディア出典](docs/media/wuthering-waves/ASSET-NOTES.md)
+![動くGIF背景](docs/media/wuthering-waves/shorekeeper-live-gif.gif)
 
-![テーマ一覧](docs/media/wuthering-waves/shorekeeper-theme-library.png)
-![テーマ詳細](docs/media/wuthering-waves/shorekeeper-theme-detail.png)
+<details>
+<summary>エフェクト編集とホバーの例を見る</summary>
+
+**エフェクト編集**
+
 ![エフェクト編集](docs/media/wuthering-waves/shorekeeper-effect-editor.png)
-![背景の適用](docs/media/wuthering-waves/shorekeeper-live-applied.png)
-![行のホバー](docs/media/wuthering-waves/shorekeeper-hover.gif)
-![実際のGIF背景](docs/media/wuthering-waves/shorekeeper-live-gif.gif)
 
-一部の例は最初のベータ版で撮影しました。フレームレートの保証や性能ベンチマークではありません。
+**プロジェクト行のホバー**
 
-## 性能と言語
+![プロジェクト行のホバーエフェクト](docs/media/wuthering-waves/shorekeeper-hover.gif)
 
-UIはCodexの言語に従い、**韓国語・英語・日本語・簡体字中国語**を提供します。他の言語は英語に置き換えます。
+</details>
 
-固定GIF背景はホイールスクロール中も再生します。移動するサイドバー行のエフェクトとGIFは短く停止して一覧の応答を優先します。非表示・最小化・画面外では動きを停止します。Windowsの動きを減らす設定に従うか、許可・停止を選べます。大きいGIFや複数の高解像度背景には負荷が残ります。
+画面例は鳴潮のショアキーパーの非公式ファンアートテーマです。[画像・GIFの制作情報](docs/media/wuthering-waves/ASSET-NOTES.md)
 
-**Node 47テスト、ホスト171検査**とESLint・TypeScript検査が通過しました。実際のインストール更新、起動中Codexへの接続、データ保持を確認しました。[検証範囲](docs/support-matrix.md)に条件と未検証環境を記載しています。
+## 起動と更新の設定
 
-## 開発
+トレイからテーマを切り替えたり、**CoSkin設定**を開いたりできます。
 
-Node 24、.NET 10、ネイティブモジュール用のVisual Studio 2022 C++ x64ツールが必要です。
+- **Windowsサインイン時に起動**：CoSkinを待機させ、Codexの起動時に接続します。
+- **Codexと同時に終了**：最後に接続したCodexが終了するとCoSkinも終了します。
+- **自動更新**：GitHubの新しい安定版をダウンロードしてインストールします。設定から手動確認もできます。
 
-```powershell
-npm ci --ignore-scripts
-npm test
-npm run lint
-npm run typecheck
-./scripts/build.ps1 -Portable
-dotnet run --project tests/CoSkin.HostTests
-```
+GIFが動かない場合はエフェクトの動き設定とWindowsの **動きを減らす** 設定を確認してください。大きなGIFはスクロール性能に影響することがあります。
 
-元のCodexファイル・ASAR・ショートカットは変更しません。個人ログ・利用者画面・保存先・発行者の秘密鍵は公開しません。
+## 関連ドキュメント
 
-[設計](docs/CoSkin-설계서.md) · [構造](docs/architecture.md) · [.coskin仕様](docs/coskin-package-v1.md)
+[開発・ビルド](docs/development.md) · [カスタムエフェクト](docs/custom-effects.md) · [対応環境](docs/support-matrix.md) · [更新の公開方法](docs/updates.md)
 
-## ライセンス
-
-CoSkinソースのライセンスは未指定です。依存要素には個別のライセンスが適用されます。[第三者通知](THIRD-PARTY-NOTICES.txt)を参照してください。キャラクターに関する権利は各権利者に帰属します。
+CoSkinソースのライセンスは未指定です。依存要素のライセンスは[第三者通知](THIRD-PARTY-NOTICES.txt)を参照してください。

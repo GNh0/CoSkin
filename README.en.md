@@ -1,78 +1,83 @@
+<img src="assets/coskin.svg" alt="CoSkin" width="64">
+
 # CoSkin
+
+**Make Codex your own.**
+
+Style Codex with images, animated backgrounds and effects. Pick a theme, preview it in the actual app, and apply it with a click.
 
 [한국어](README.md) · [English](README.en.md) · [日本語](README.ja.md) · [简体中文](README.zh-CN.md)
 
-A Windows theme library for making Codex your own. Choose images, GIFs and effects, then preview, edit and apply them in the actual app.
+[Download for Windows](https://github.com/GNh0/CoSkin/releases/latest) · [Custom effects](docs/custom-effects.md) · [Compatibility](docs/support-matrix.md)
 
-[Download Windows x64](https://github.com/GNh0/CoSkin/releases/tag/v0.1.0) · [Supported and tested scope](docs/support-matrix.md)
+![Codex styled with CoSkin](docs/media/wuthering-waves/shorekeeper-live-applied.png)
 
-## Install and launch
+## Get started
 
-Extract the ZIP and run **CoSkin.Loader.exe**. Keep the executable, renderer.js and THIRD-PARTY-NOTICES.txt together. End users do not need Node or .NET installed separately.
+1. Download the ZIP from the [latest release](https://github.com/GNh0/CoSkin/releases/latest) and extract it.
+2. Run **CoSkin.Loader.exe** and choose your installation options.
+3. Start Codex and CoSkin. **They connect automatically in either launch order.**
 
-The installer offers Windows sign-in startup, exit with Codex, a desktop shortcut, .coskin file association and automatic updates. Existing themes and Codex data are preserved.
+CoSkin waits in the tray if started first. Use the desktop **CoSkin** shortcut to start it independently, or **Codex + CoSkin** in the Start menu to launch both. No development tools are needed.
 
-**Either launch order works: CoSkin → Codex or Codex → CoSkin.** CoSkin waits in the tray when started first and connects to an already running supported Codex without restarting it. Desktop **CoSkin** starts independently; Start menu **Codex + CoSkin** starts both. CoSkin never forces Codex to quit.
+Currently supports **Windows x64 · Codex 26.924.2738.0**. Run both apps at the same Windows privilege level.
 
-Ordinary launch attachment is verified for Windows package **26.924.2738.0**, internal app **26.924.22138**. The connection module verifies the executable, OpenAI signature, ASAR and chrome.dll. Other builds require compatibility review. Both apps need the same Windows privilege level. [Resident architecture](docs/resident-architecture.md)
+## What can you customize?
 
-## Themes and effects
+| Feature | What you can do |
+| --- | --- |
+| Theme library | Create, import and delete; preview and apply directly from cards |
+| Details and editing | Edit theme information, duplicate, edit in the actual app and export |
+| Images and GIFs | Set backgrounds, decorations and icons; adjust opacity separately from text |
+| Animation effects | Configure hover, click and selected states, plus enter, exit and repeating effects |
+| Application scope | Apply across the app, projects or chats; override individual items |
+| Languages | Follow Codex in Korean, English, Japanese or Simplified Chinese |
 
-- Open **CoSkin** from the left icon rail. Create, import, delete, preview and apply themes directly from the card library.
-- Open a card for a detail page with preview, editing, duplication, export and theme information.
-- Right-click a target in actual-screen editing mode. Project and chat row edits default to **all rows of that kind**; individual overrides affect one selected row.
-- Choose app-wide, project or chat scope. Saving and applying are separate; cancelling a preview preserves the former application.
-- PNG, JPEG and GIF are supported. Adjust image opacity separately from text. Edit base, hover and selected states, plus enter, exit, click and repeating effects.
-- [Custom effects](docs/custom-effects.md) use declarative JSON keyframes that can be registered and shared. The renderer uses JavaScript/TypeScript, CSS and the Web Animations API; effect packages do not execute arbitrary JavaScript.
+## Choose and edit a theme
 
-The library is a dedicated page separated from chat. Common backgrounds cover Codex app surfaces, tabs and the app portions of file/browser tools. External website content and Windows dialogs are separate surfaces.
+Open **CoSkin** from the left icon rail. Use **Preview** on a card to try a theme and **Apply** to use it. Click the card for details, editing, duplication and export.
 
-## Tray and updates
+| Theme library | Details and preview |
+| :---: | :---: |
+| ![Theme library](docs/media/theme-library-0.1.0.png) | ![Theme detail](docs/media/wuthering-waves/shorekeeper-theme-detail.png) |
 
-The tray provides library, settings, theme selection, decoration toggle, reconnect and exit. Themes are grouped in a submenu, and menus follow the Codex language. Sign-in startup and exit with Codex are independent options.
+In editing mode, **right-click** the area you want to customize to adjust its images, effects and styles. Project and chat row edits apply to all rows of the same kind by default; choose an **individual override** to change just one item.
 
-Automatic updates check **newer stable GitHub Releases**. Publisher signature, SHA-256 and package layout are verified; replacement waits while editing or previewing. A failed new host restores the previous installation. Codex and theme data are not update payloads. Disabling automatic updates stops background update checks; settings still offer a manual check. [Publishing updates](docs/updates.md)
+**Save** keeps your theme changes; **Apply** uses them in the selected scope. Cancel a preview to return to the previous theme. Add and share your own effects with the [custom effects guide](docs/custom-effects.md).
 
-## Actual screens
+## Animated backgrounds and effects
 
-![0.1.0 theme library](docs/media/theme-library-0.1.0.png)
+Combine a GIF background with row hover effects to create your own theme.
 
-An independently generated, unofficial Wuthering Waves Shorekeeper fan-art example. It is not bundled in the runtime ZIP. [Media provenance](docs/media/wuthering-waves/ASSET-NOTES.md)
+![Animated GIF background](docs/media/wuthering-waves/shorekeeper-live-gif.gif)
 
-![Theme library](docs/media/wuthering-waves/shorekeeper-theme-library.png)
-![Theme detail](docs/media/wuthering-waves/shorekeeper-theme-detail.png)
+<details>
+<summary>View the effect editor and hover example</summary>
+
+**Effect editor**
+
 ![Effect editor](docs/media/wuthering-waves/shorekeeper-effect-editor.png)
-![Applied background](docs/media/wuthering-waves/shorekeeper-live-applied.png)
-![Row hover](docs/media/wuthering-waves/shorekeeper-hover.gif)
-![Actual GIF background](docs/media/wuthering-waves/shorekeeper-live-gif.gif)
 
-Some demonstration captures were made with the first beta. They are not frame-rate guarantees or performance benchmarks.
+**Project row hover**
 
-## Performance and languages
+![Project row hover effect](docs/media/wuthering-waves/shorekeeper-hover.gif)
 
-UI follows Codex language with **Korean, English, Japanese and Simplified Chinese**, falling back to English for other languages.
+</details>
 
-Fixed GIF backgrounds continue during wheel scrolling. Effects and GIFs on moving sidebar rows pause briefly to prioritize list responsiveness. Motion stops when hidden, minimized or outside the screen. Windows reduced-motion preference can be followed, overridden with Allow, or replaced with Off. Large GIFs and multiple high-resolution backgrounds still have a cost.
+Screens show an unofficial Wuthering Waves Shorekeeper fan-art theme. [Image and GIF credits](docs/media/wuthering-waves/ASSET-NOTES.md)
 
-**47 Node tests, 171 host checks**, ESLint and TypeScript checks passed. Actual installation replacement, attachment to existing Codex and data preservation were verified. [Validation scope](docs/support-matrix.md) distinguishes tested conditions from remaining environmental limits.
+## Startup and updates
 
-## Development
+Change themes or open **CoSkin settings** from the tray.
 
-Requires Node 24, .NET 10 and Visual Studio 2022 C++ x64 tools for the native module.
+- **Start at Windows sign-in**: keep CoSkin ready to connect when Codex starts.
+- **Exit with Codex**: close CoSkin when the last connected Codex exits.
+- **Automatic updates**: download and install new stable GitHub releases. Manual checks are also available in settings.
 
-```powershell
-npm ci --ignore-scripts
-npm test
-npm run lint
-npm run typecheck
-./scripts/build.ps1 -Portable
-dotnet run --project tests/CoSkin.HostTests
-```
+If a GIF does not animate, check the motion option in effect settings and the Windows **reduced motion** preference. Large GIFs can affect scrolling performance.
 
-Original Codex files, ASAR and shortcuts are not modified. Private logs, user screens, stores and the publisher private key are excluded from releases.
+## Learn more
 
-[Design](docs/CoSkin-설계서.md) · [Architecture](docs/architecture.md) · [.coskin contract](docs/coskin-package-v1.md)
+[Development and build](docs/development.md) · [Custom effects](docs/custom-effects.md) · [Supported environments](docs/support-matrix.md) · [Publishing updates](docs/updates.md)
 
-## License
-
-CoSkin source does not yet have an assigned license. Dependencies have their own licenses; see [third-party notices](THIRD-PARTY-NOTICES.txt). Character-related rights belong to their respective holders.
+CoSkin source does not yet have an assigned license. See [third-party notices](THIRD-PARTY-NOTICES.txt) for dependency licenses.
