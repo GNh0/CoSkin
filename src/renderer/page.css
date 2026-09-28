@@ -121,6 +121,29 @@ p {
 .page-header .row {
   margin: 0;
 }
+.request-prompt {
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 20px;
+  margin: -12px 0 28px;
+}
+.request-prompt h2 {
+  font-size: 18px;
+  margin: 0 0 4px;
+}
+.request-prompt p {
+  margin: 0 0 12px;
+}
+.request-prompt textarea {
+  min-height: 360px;
+  line-height: 1.6;
+  resize: vertical;
+}
+.request-prompt .row {
+  align-items: center;
+  margin-bottom: 0;
+}
 button,
 .button {
   border: 1px solid var(--line);

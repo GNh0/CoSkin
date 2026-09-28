@@ -25,6 +25,10 @@ export function galleryPage(panel, section) {
   );
   const create = panel.button(t("create"), () => panel.create());
   create.className = "primary";
+  const request = panel.button(t("requestTheme"), () => {
+    panel.requestPromptOpen = !panel.requestPromptOpen;
+  });
+  request.setAttribute("aria-expanded", String(!!panel.requestPromptOpen));
   const close = panel.button("", () => panel.closePage());
   close.className = "icon-button";
   close.setAttribute("aria-label", t("close"));
@@ -39,6 +43,7 @@ export function galleryPage(panel, section) {
       h("div", { class: "row" }, [
         create,
         panel.button(t("import"), () => importer.click()),
+        request,
         importer,
         ...(panel.c.summary.runtimeSettingsAvailable
           ? [
@@ -51,6 +56,50 @@ export function galleryPage(panel, section) {
       ]),
     ]),
   );
+  if (panel.requestPromptOpen) {
+    const prompt = h("textarea", {
+      "aria-label": t("requestPromptLabel"),
+      spellcheck: "false",
+    });
+    prompt.value = panel.requestPromptDraft ?? t("requestPromptTemplate");
+    prompt.addEventListener("input", () => {
+      panel.requestPromptDraft = prompt.value;
+    });
+    const status = h("span", { role: "status", class: "muted" });
+    const copy = h("button", { type: "button", text: t("copyPrompt") });
+    copy.addEventListener("click", async () => {
+      try {
+        if (!navigator.clipboard?.writeText)
+          throw new Error("Clipboard unavailable");
+        await navigator.clipboard.writeText(prompt.value);
+        status.textContent = t("copiedPrompt");
+      } catch {
+        prompt.focus();
+        prompt.select();
+        let copied = false;
+        try {
+          copied = document.execCommand?.("copy") === true;
+        } catch {
+          // Leave the text selected so the user can copy it manually.
+        }
+        status.textContent = copied ? t("copiedPrompt") : t("copyPromptFailed");
+      }
+    });
+    const reset = h("button", { type: "button", text: t("resetPrompt") });
+    reset.addEventListener("click", () => {
+      prompt.value = t("requestPromptTemplate");
+      panel.requestPromptDraft = prompt.value;
+      status.textContent = "";
+    });
+    section.append(
+      h("div", { class: "request-prompt" }, [
+        h("h2", { text: t("requestTheme") }),
+        h("p", { text: t("requestPromptHint") }),
+        prompt,
+        h("div", { class: "row" }, [copy, reset, status]),
+      ]),
+    );
+  }
   const data = organization(panel);
   const tags = [
     ...new Set(Object.values(data.themes).flatMap((theme) => theme.tags || [])),

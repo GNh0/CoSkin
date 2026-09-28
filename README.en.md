@@ -8,7 +8,7 @@ Style Codex with images, animated backgrounds and effects. Pick a theme, preview
 
 [한국어](README.md) · [English](README.en.md) · [日本語](README.ja.md) · [简体中文](README.zh-CN.md)
 
-[Download for Windows](https://github.com/GNh0/CoSkin/releases/latest) · [Custom effects](docs/custom-effects.md) · [Compatibility](docs/support-matrix.md)
+[Download for Windows](https://github.com/GNh0/CoSkin/releases/latest) · [Theme file specification](docs/theme-package-spec.md) · [Custom effects](docs/custom-effects.md) · [Compatibility](docs/support-matrix.md)
 
 ![Codex styled with CoSkin](docs/media/wuthering-waves/shorekeeper-live-applied.png)
 
@@ -24,23 +24,25 @@ Currently supports **Windows x64 · Codex 26.924.2738.0**. Run both apps at the 
 
 ## What can you customize?
 
-| Feature | What you can do |
-| --- | --- |
-| Theme library | Create, import and delete; preview and apply directly from cards |
-| Organization and search | Combine groups, favorites and tags to find themes |
-| Details and editing | Edit theme information, duplicate, edit in the actual app and export |
-| Images, GIFs and video | Set backgrounds, decorations and icons; loop muted MP4 video; see resolution and aspect recommendations |
-| Text styles | Theme-tinted automatic text colors or your own color, installed font and weight |
-| Animation effects | Configure hover, click and selected states, plus enter, exit and repeating effects |
-| Application scope | Apply across the app, projects or chats; override individual items |
-| Languages | Follow Codex in Korean, English, Japanese or Simplified Chinese |
+| Feature                 | What you can do                                                                                         |
+| ----------------------- | ------------------------------------------------------------------------------------------------------- |
+| Theme library           | Create, import and delete; preview and apply directly from cards                                        |
+| Organization and search | Combine groups, favorites and tags to find themes                                                       |
+| Details and editing     | Edit theme information, duplicate, edit in the actual app and export                                    |
+| Images, GIFs and video  | Set backgrounds, decorations and icons; loop muted MP4 video; see resolution and aspect recommendations |
+| Text styles             | Theme-tinted automatic text colors or your own color, installed font and weight                         |
+| Animation effects       | Configure hover, click and selected states, plus enter, exit and repeating effects                      |
+| Application scope       | Apply across the app, projects or chats; override individual items                                      |
+| Languages               | Follow Codex in Korean, English, Japanese or Simplified Chinese                                         |
 
 ## Choose and edit a theme
 
 Open **CoSkin** from the left icon rail. Use **Preview** on a card to try a theme and **Apply** to use it. Click the card for details, editing, duplication and export.
 
-| Theme library | Details and preview |
-| :---: | :---: |
+To ask an AI assistant to make a theme, share the [request template](docs/theme-request-template.md) and [package specification](docs/theme-package-spec.md). Builds from the current source also offer an editable **Request a theme** action in the library.
+
+|                    Theme library                     |                           Details and preview                            |
+| :--------------------------------------------------: | :----------------------------------------------------------------------: |
 | ![Theme library](docs/media/theme-library-0.1.2.png) | ![Theme detail](docs/media/wuthering-waves/shorekeeper-theme-detail.png) |
 
 In editing mode, **right-click** the area you want to customize to adjust its images, effects and styles. Project and chat row edits apply to all rows of the same kind by default; choose an **individual override** to change just one item.

@@ -1,5 +1,7 @@
 # .coskin 파일 형식 v1 초안
 
+> **현재 사양과 제작 방법은 [`.coskin` v1 형식과 테마 제작](theme-package-spec.md)을 참고하세요.** 아래 내용은 초기 설계 기록이며, 구현과 다른 절차·예정 사항이 섞여 있습니다.
+
 작성일: 2026-09-26 · 설계 상태: 초안 · 제품 문서: [CoSkin 설계서](CoSkin-설계서.md)
 
 이 문서는 **테마스킨 목록으로 스킨을 가져오고 공유용으로 내보내는 교환 형식**의 계약과 구현 기준을 정한다. 실제 적용은 내부 목록과 hash 자산을 사용한다. 파일 입력·내보내기·재가져오기·외부 원본 삭제 후 적용은 검수 복사본에서 확인했다. 최대 크기·모든 비표준 ZIP·충돌 선택까지 검증된 것은 아니다. 정확한 경계는 [구현 상태](support-matrix.md)와 독립 검수에 기록한다. 첫 테스트 배포의 범위와 제한은 [0.1.0-beta.1 안내](release-0.1.0-beta.1.md)를 확인한다.
@@ -162,7 +164,7 @@ Aurora.coskin
 | `decoration` | image, opacity, fit, position                |
 | `border`     | color, opacity, widthPx, radiusPx, glow      |
 | `icon`       | image, sizePx, opacity, fit, paddingPx       |
-| `text`       | color, opacity, weight, autoColor, family     |
+| `text`       | color, opacity, weight, autoColor, family    |
 
 `color`는 #RRGGBB, 투명도는 별도 숫자 0~1이다. `image`는 패키지 안의 `assets/` 경로다. `fit`은 cover, contain, stretch, tile 중 해당 레이어가 지원하는 값이다. 크기는 유한한 제한 범위의 숫자로만 표현한다.
 
@@ -298,7 +300,6 @@ PNG (`image/png`, `.png`), JPEG (`image/jpeg`, `.jpg` 또는 `.jpeg`), GIF (`ima
 이미지 레이어의 `imagePlayback: "play" | "poster"`는 움직이는 이미지 재생/정적 대표 프레임을 선택한다. UI 전환의 `motion.mode: "none"`과 별개다. 같은 이미지의 해시는 MIME·원본 바이트와 함께 보존하며 이미지 불투명도는 레이어에만 적용한다.
 
 앱 UI 언어·앱별 움직임 정책·현재 Codex 프로젝트/채팅 안정 ID의 개별 예외는 PC 로컬 설정이다. `.coskin`의 공유 데이터에 실제 채팅 제목·프로젝트 경로·현재 화면 캡처를 자동 포함하지 않는다. 개별 예외를 전체 규칙으로 명시 이동하면 해당 generic 규칙은 공유 테마에 포함할 수 있다.
-
 
 ### 결과물·소스 패널 대상
 

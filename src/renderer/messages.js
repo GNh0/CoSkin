@@ -50,6 +50,32 @@ export const messages = {
     tagline: "나만의 Codex를 만들어 보세요.",
     create: "+ 테마 만들기",
     import: "가져오기",
+    requestTheme: "테마 요청문",
+    requestPromptLabel: "AI에게 보낼 CoSkin 테마 요청문",
+    requestPromptHint: "대괄호 부분을 고친 뒤 복사해서 AI에게 보내세요.",
+    copyPrompt: "요청문 복사",
+    copiedPrompt: "요청문을 복사했습니다.",
+    copyPromptFailed:
+      "자동 복사에 실패했습니다. 선택된 내용을 Ctrl+C로 복사하세요.",
+    resetPrompt: "기본 문구로 되돌리기",
+    requestPromptTemplate: `CoSkin은 Windows용 Codex 데스크톱 앱에 독립적으로 연결되는 테마 관리자입니다. 원래 Codex 앱 파일을 직접 수정하지 않고, 배경·사이드바·프로젝트/채팅 행·입력창 등을 꾸밉니다. 테마 교환 파일인 .coskin은 manifest.json, theme.json, 자산 파일을 담는 ZIP 기반 패키지입니다.
+
+먼저 https://github.com/GNh0/CoSkin 의 README와 https://github.com/GNh0/CoSkin/blob/main/docs/theme-package-spec.md 를 읽고 현재 설치된 버전의 실제 지원 대상과 형식을 확인해 주세요. 문서와 실제 .coskin 예제 모두에 접근할 수 없다면 형식을 추측해 패키지를 만들지 말고 필요한 자료를 요청해 주세요.
+
+아래 조건으로 새 테마를 제작해 주세요. 실행 가능한 환경이라면 완성된 테마를 실제로 가져와 미리보기·적용까지 검증하고, 확인하지 못한 부분은 밝혀 주세요.
+
+테마 이름: [이름]
+콘셉트·분위기: [예: 차분한 밤바다]
+참고 이미지·영상: [첨부 파일·경로·링크 또는 없음]
+배경 종류: [정지 이미지 / GIF / 무음 반복 MP4 / 없음]
+배경 구도: [전체 보이기 / 영역 채우기], 중요 피사체 위치 [위치]
+색감·밝기: [원하는 색과 밝기]
+움직임·반복 방식: [원하는 동작과 속도]
+적용 범위: [앱 전체 / 프로젝트 / 채팅]
+영역별 요청: 상단 컨트롤 [설정], 왼쪽 사이드바 [설정], 프로젝트 행 [설정], 채팅 행 [설정], 본문 [설정], 입력창 [설정]
+피할 점: [원치 않는 색·효과·가림]
+
+기본 컨트롤과 글자·버튼이 읽히게 하고, 프로젝트 행과 채팅 행을 구분해 주세요. 배경이 창 모서리 밖으로 삐져나오지 않게 맞춰 주세요. 참고 미디어 원본은 보존해 주세요. 가져올 수 있는 .coskin 파일과 미리보기 이미지를 제공하고, 실제 적용 화면에서 구도·모서리·영상 반복을 확인한 결과를 알려 주세요.`,
     search: "테마스킨 검색",
     count: "{count}개의 테마",
     detail: "{name} 상세보기",
@@ -126,6 +152,33 @@ export const messages = {
     tagline: "Make Codex your own.",
     create: "+ Create theme",
     import: "Import",
+    requestTheme: "Request a theme",
+    requestPromptLabel: "CoSkin theme request for an AI assistant",
+    requestPromptHint:
+      "Edit the bracketed fields, then copy this request to your AI assistant.",
+    copyPrompt: "Copy request",
+    copiedPrompt: "Request copied.",
+    copyPromptFailed:
+      "Automatic copy failed. Press Ctrl+C to copy the selected text.",
+    resetPrompt: "Reset template",
+    requestPromptTemplate: `CoSkin is an independent theme manager for the Windows Codex desktop app. It styles backgrounds, sidebars, project and chat rows, and the composer without directly modifying the original Codex app files. A .coskin exchange file is a ZIP-based package containing manifest.json, theme.json, and assets.
+
+First read the README at https://github.com/GNh0/CoSkin and the package specification at https://github.com/GNh0/CoSkin/blob/main/docs/theme-package-spec.md, then check the actual supported targets and format of the installed version. If neither the docs nor a real .coskin example is available, do not guess the package format; ask for the missing material.
+
+Create a new theme with the requirements below. If the environment allows it, import the finished theme and verify its preview and applied appearance; clearly state what you could not verify.
+
+Theme name: [name]
+Concept and mood: [for example, a quiet seaside evening]
+Reference images or video: [attached files, paths, links, or none]
+Background media: [still image / GIF / muted looping MP4 / none]
+Background framing: [show entire image / fill region], important subject position [position]
+Colors and brightness: [preferences]
+Motion and loop: [movement and speed]
+Apply to: [whole app / project / chat]
+Areas: top controls [style], left sidebar [style], project rows [style], chat rows [style], main content [style], composer [style]
+Avoid: [unwanted colors, effects, or occlusion]
+
+Keep native controls, text, and buttons readable. Make project and chat rows distinguishable, and fit the background to the window corners. Preserve the original reference media. Deliver an importable .coskin file and a preview image, then report the results of checking framing, corners, and video looping in the applied theme.`,
     search: "Search themes",
     count: "{count} themes",
     detail: "View {name}",
@@ -202,6 +255,33 @@ export const messages = {
     tagline: "自分だけの Codex を作りましょう。",
     create: "+ テーマを作成",
     import: "読み込む",
+    requestTheme: "テーマを依頼",
+    requestPromptLabel: "AIに送るCoSkinテーマの依頼文",
+    requestPromptHint:
+      "角括弧の項目を編集してから、AIに依頼文を送ってください。",
+    copyPrompt: "依頼文をコピー",
+    copiedPrompt: "依頼文をコピーしました。",
+    copyPromptFailed:
+      "自動コピーに失敗しました。選択された文章をCtrl+Cでコピーしてください。",
+    resetPrompt: "ひな形に戻す",
+    requestPromptTemplate: `CoSkinはWindows版Codexデスクトップアプリに独立して接続するテーマ管理ツールです。元のCodexアプリのファイルを直接変更せず、背景、サイドバー、プロジェクト・チャット行、入力欄などを装飾します。交換用の.coskinファイルはmanifest.json、theme.json、素材を含むZIP形式のパッケージです。
+
+まず https://github.com/GNh0/CoSkin のREADMEと https://github.com/GNh0/CoSkin/blob/main/docs/theme-package-spec.md を読み、インストール済みバージョンで実際に対応する箇所と形式を確認してください。文書と実際の.coskinファイルのどちらも入手できない場合は形式を推測してパッケージを作らず、必要な資料を求めてください。
+
+以下の条件で新しいテーマを作成してください。実行可能な環境なら完成したテーマを読み込み、プレビューと適用画面を確認し、確認できなかった点は明記してください。
+
+テーマ名: [名前]
+コンセプト・雰囲気: [例: 静かな夕暮れの海]
+参考画像・動画: [添付ファイル、パス、リンク、またはなし]
+背景メディア: [静止画 / GIF / 無音ループMP4 / なし]
+背景の表示: [全体を表示 / 領域を埋める]、重要な被写体の位置 [位置]
+色と明るさ: [希望]
+動きとループ: [動作と速度]
+適用範囲: [アプリ全体 / プロジェクト / チャット]
+箇所別の希望: 上部の操作部 [設定]、左サイドバー [設定]、プロジェクト行 [設定]、チャット行 [設定]、本文 [設定]、入力欄 [設定]
+避けたいもの: [不要な色、効果、遮り]
+
+標準の操作部、文字、ボタンを読みやすくしてください。プロジェクト行とチャット行を区別できるようにし、背景がウィンドウの角からはみ出ないようにしてください。参考メディアの原本は保存してください。読み込み可能な.coskinファイルとプレビュー画像を渡し、適用画面で構図、角、動画のループを確認した結果を報告してください。`,
     search: "テーマを検索",
     count: "{count} 件のテーマ",
     detail: "{name} の詳細",
@@ -275,6 +355,31 @@ export const messages = {
     tagline: "打造属于你的 Codex。",
     create: "+ 创建主题",
     import: "导入",
+    requestTheme: "请求制作主题",
+    requestPromptLabel: "发送给 AI 的 CoSkin 主题请求",
+    requestPromptHint: "填写方括号中的内容，然后复制请求发送给 AI。",
+    copyPrompt: "复制请求",
+    copiedPrompt: "已复制请求。",
+    copyPromptFailed: "自动复制失败。请按 Ctrl+C 复制已选中的文字。",
+    resetPrompt: "恢复模板",
+    requestPromptTemplate: `CoSkin 是独立连接到 Windows 版 Codex 桌面应用的主题管理器。它无需直接修改原版 Codex 应用文件，即可装饰背景、侧边栏、项目和聊天行以及输入框。.coskin 交换文件是包含 manifest.json、theme.json 和素材的 ZIP 格式包。
+
+请先阅读 https://github.com/GNh0/CoSkin 的 README 和 https://github.com/GNh0/CoSkin/blob/main/docs/theme-package-spec.md，再确认已安装版本实际支持的区域与格式。如果既无法访问文档，也没有真实的 .coskin 示例文件，请勿猜测包格式；应请求提供所需资料。
+
+请按以下条件制作新主题。如果环境允许，请导入完成的主题并验证预览和实际效果；无法验证的部分请明确说明。
+
+主题名称：[名称]
+概念与氛围：[例如安静的傍晚海边]
+参考图片或视频：[附件、路径、链接或无]
+背景媒体：[静态图片 / GIF / 静音循环 MP4 / 无]
+背景构图：[完整显示 / 填满区域]，重要主体的位置 [位置]
+颜色与亮度：[偏好]
+动态与循环：[动作和速度]
+应用范围：[整个应用 / 项目 / 聊天]
+区域要求：顶部控件 [样式]、左侧边栏 [样式]、项目行 [样式]、聊天行 [样式]、正文 [样式]、输入框 [样式]
+避免：[不需要的颜色、效果或遮挡]
+
+请保证原生控件、文字和按钮清晰可读，让项目行与聊天行容易区分，并确保背景不超出窗口圆角。保留参考媒体原件。提供可导入的 .coskin 文件和预览图，并报告在实际应用界面检查构图、圆角及视频循环的结果。`,
     search: "搜索主题",
     count: "{count} 个主题",
     detail: "查看 {name}",

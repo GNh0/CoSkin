@@ -1,0 +1,26 @@
+{
+  "format": "coskin.theme",
+  "formatVersion": 1,
+  "id": "org.example.quiet-night",
+  "name": "Quiet Night",
+  "version": "1.0.0",
+  "description": "A small color-only CoSkin example.",
+  "author": {
+    "name": "Example"
+  },
+  "engine": {
+    "minVersion": "0.1.0"
+  },
+  "requirements": {
+    "required": [
+      "target:main.surface",
+      "target:sidebar.surface",
+      "target:sidebar.project-row",
+      "target:sidebar.thread-row"
+    ],
+    "optional": []
+  },
+  "entry": "theme.json",
+  "defaultProfile": "default",
+  "files": []
+}

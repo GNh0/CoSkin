@@ -1,0 +1,82 @@
+{
+  "profiles": [
+    {
+      "id": "default",
+      "name": "Default",
+      "rules": [
+        {
+          "id": "main",
+          "target": "main.surface",
+          "states": {
+            "base": {
+              "style": {
+                "background": {
+                  "color": "#171b27",
+                  "opacity": 1
+                }
+              }
+            }
+          }
+        },
+        {
+          "id": "sidebar",
+          "target": "sidebar.surface",
+          "states": {
+            "base": {
+              "style": {
+                "background": {
+                  "color": "#222b3a",
+                  "opacity": 0.72
+                }
+              }
+            }
+          }
+        },
+        {
+          "id": "projects",
+          "target": "sidebar.project-row",
+          "states": {
+            "base": {
+              "style": {
+                "background": {
+                  "color": "#789cb9",
+                  "opacity": 0.18
+                }
+              }
+            },
+            "selected": {
+              "style": {
+                "background": {
+                  "color": "#789cb9",
+                  "opacity": 0.3
+                }
+              }
+            }
+          }
+        },
+        {
+          "id": "chats",
+          "target": "sidebar.thread-row",
+          "states": {
+            "base": {
+              "style": {
+                "background": {
+                  "color": "#ffffff",
+                  "opacity": 0.06
+                }
+              }
+            },
+            "selected": {
+              "style": {
+                "background": {
+                  "color": "#789cb9",
+                  "opacity": 0.23
+                }
+              }
+            }
+          }
+        }
+      ]
+    }
+  ]
+}
