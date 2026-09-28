@@ -39,7 +39,7 @@ Currently supports **Windows x64 · Codex 26.924.2738.0**. Run both apps at the 
 
 Open **CoSkin** from the left icon rail. Use **Preview** on a card to try a theme and **Apply** to use it. Click the card for details, editing, duplication and export.
 
-To ask an AI assistant to make a theme, share the [request template](docs/theme-request-template.md) and [package specification](docs/theme-package-spec.md). Builds from the current source also offer an editable **Request a theme** action in the library.
+To ask an AI assistant to make a theme, share the [request template](docs/theme-request-template.md) and [package specification](docs/theme-package-spec.md). CoSkin 0.1.4 and later also offer an editable **Request a theme** action in the library.
 
 |                    Theme library                     |                           Details and preview                            |
 | :--------------------------------------------------: | :----------------------------------------------------------------------: |
