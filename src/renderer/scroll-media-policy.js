@@ -6,13 +6,20 @@ const movingRows = new Set([
 
 // Fixed surfaces keep their GIF clock. Only moving sidebar rows are deferred.
 // This decision needs no geometry or computed style reads.
-export function pauseMediaForScroll(target, eventTarget) {
-  if (!movingRows.has(target.target)) return false;
+export function sidebarForScroll(eventTarget) {
   const element = eventTarget?.closest
     ? eventTarget
     : eventTarget?.parentElement;
-  const sidebar = element?.closest?.(
-    '[data-app-shell-left-panel-appearance="default"]',
+  return element?.closest?.('[data-app-shell-left-panel-appearance="default"]');
+}
+
+export function pauseMediaForSidebarScroll(target, sidebar) {
+  return movingRows.has(target.target) && !!sidebar?.contains(target.el);
+}
+
+export function pauseMediaForScroll(target, eventTarget) {
+  return (
+    movingRows.has(target.target) &&
+    pauseMediaForSidebarScroll(target, sidebarForScroll(eventTarget))
   );
-  return !!sidebar?.contains(target.el);
 }

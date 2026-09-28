@@ -12,6 +12,25 @@ Task Validate(JsonObject _) => Task.CompletedTask; // Contract/decoder behavior 
 Task Decode(byte[] _, string __) => Task.CompletedTask;
 try
 {
+    var discovered = new JsonObject
+    {
+        ["family"] = "OpenAI.Codex_2p2nqsd0c76g0",
+        ["version"] = "26.924.2738.0",
+        ["location"] = Path.Combine(scratch, "original-package"),
+        ["status"] = "Valid",
+        ["publisher"] = "OpenAI OpCo, LLC",
+        ["packageMs"] = 15,
+        ["signatureMs"] = 20
+    };
+    var verifiedDiscovery = WindowsLauncher.ValidateDiscovery(discovered);
+    Check(verifiedDiscovery.Build.PackageVersion == "26.924.2738.0" && verifiedDiscovery.App.EndsWith("app", StringComparison.Ordinal), "통합 패키지·서명 응답은 동일 지원 빌드 계약으로 검증");
+    var badSignature = (JsonObject)discovered.DeepClone(); badSignature["status"] = "UnknownError";
+    Reject(() => WindowsLauncher.ValidateDiscovery(badSignature), "통합 조회도 무효 서명을 거절");
+    var wrongPublisher = (JsonObject)discovered.DeepClone(); wrongPublisher["publisher"] = "Another Publisher";
+    Reject(() => WindowsLauncher.ValidateDiscovery(wrongPublisher), "통합 조회도 게시자 변경을 거절");
+    var wrongBuild = (JsonObject)discovered.DeepClone(); wrongBuild["version"] = "26.924.9999.0";
+    try { WindowsLauncher.ValidateDiscovery(wrongBuild); throw new Exception("지원되지 않는 빌드 허용"); }
+    catch (TrayActionException error) { Check(error.Code == "unsupported-codex", "통합 조회도 지원되지 않는 Codex 빌드를 거절"); }
     var codexLaunches = 0;
     var probeStore = Path.Combine(scratch, "update-readiness-probe");
     await using (var probeClient = new InstanceChannel(probeStore, claimOwnership: false))
@@ -72,6 +91,16 @@ try
     Check(System.Runtime.InteropServices.Marshal.SizeOf(nativeCustomDraw) == 80 && System.Runtime.InteropServices.Marshal.OffsetOf(nativeCustomDraw, "Dc").ToInt32() == 32, "실제 체크박스 custom-draw Win64 ABI 계약");
     Check(CodexPageContract.Supports("app://-/index.html") && CodexPageContract.Supports("app://-/detached-window.html?initialRoute=%2Fdetached-window"), "검증된 main 및 detached 앱 문서 허용");
     Check(!CodexPageContract.Supports("https://example.com/index.html") && !CodexPageContract.Supports("app://-/detached-window.html?initialRoute=https://example.com") && !CodexPageContract.Supports("app://-/index.html?extra=1"), "외부 페이지 및 미지원 내부 라우트 주입 금지");
+    var detachedUrl = "app://-/detached-window.html?initialRoute=%2Fdetached-window";
+    Check(CodexPageContract.IsRecoverableDetachedFailure(detachedUrl, new InvalidDataException("화면 초기화를 완료하지 못했습니다.")) &&
+        CodexPageContract.IsRecoverableDetachedFailure(detachedUrl, new IOException("target closed while handling command")) &&
+        CodexPageContract.IsRecoverableDetachedFailure(detachedUrl, new InvalidDataException("{\"text\":\"target closed while handling command\"}")),
+        "보조 창 초기화·종료 오류는 해당 창만 재시도");
+    Check(!CodexPageContract.IsRecoverableDetachedFailure("app://-/index.html", new InvalidDataException("화면 초기화를 완료하지 못했습니다.")) &&
+        !CodexPageContract.IsRecoverableDetachedFailure(detachedUrl, new InvalidDataException("잘못된 연결 주소")) &&
+        !CodexPageContract.IsRecoverableDetachedFailure(detachedUrl, new InvalidDataException("지원되지 않은 앱 빌드")) &&
+        !CodexPageContract.IsRecoverableDetachedFailure("app://-/detached-window.html?initialRoute=https://example.com", new IOException("closed")),
+        "주 창·연결 주소·지원하지 않는 문서는 전체 검증 경계 유지");
     Check(UiLocale.Normalize("ko-KR") == "ko" && UiLocale.Normalize("ja-JP") == "ja" && UiLocale.Normalize("zh-TW") == "zh-CN" && UiLocale.Normalize(null) == "en", "호스트 앱 언어 및 지역 fallback 계약");
     Check(!new RuntimePreferences().ExitWithCodex && !new RuntimePreferences().StartAtSignIn, "새 상주 기본은 종료 후 대기·자동 시작 opt-in");
     var registration = new FakeSignInRegistration();

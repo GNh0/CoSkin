@@ -55,16 +55,23 @@ internal static class WindowsLauncher
     }
     internal static async Task<CodexInstallation> Discover()
     {
-        var output = await PowerShell("$ErrorActionPreference='Stop'; $p=Get-AppxPackage -Name OpenAI.Codex; if(-not $p){throw 'Package discovery unavailable in this Windows user context'}; [pscustomobject]@{family=$p.PackageFamilyName;version=$p.Version.ToString();location=$p.InstallLocation}|ConvertTo-Json -Compress");
+        // Query the package and its original executable signature in one isolated helper.
+        // The same publisher, build and archive checks still gate the returned installation.
+        var discoveryClock = Stopwatch.StartNew();
+        string output;
+        try
+        {
+            output = await PowerShell("$ErrorActionPreference='Stop'; $clock=[Diagnostics.Stopwatch]::StartNew(); $p=Get-AppxPackage -Name OpenAI.Codex; if(-not $p){throw 'Package discovery unavailable in this Windows user context'}; $packageMs=$clock.ElapsedMilliseconds; $clock.Restart(); Import-Module ($PSHOME+'\\Modules\\Microsoft.PowerShell.Security\\Microsoft.PowerShell.Security.psd1') -ErrorAction Stop; $s=Get-AuthenticodeSignature -LiteralPath (Join-Path $p.InstallLocation 'app\\ChatGPT.exe'); $signatureMs=$clock.ElapsedMilliseconds; [pscustomobject]@{family=$p.PackageFamilyName;version=$p.Version.ToString();location=$p.InstallLocation;status=$s.Status.ToString();publisher=$s.SignerCertificate.GetNameInfo([System.Security.Cryptography.X509Certificates.X509NameType]::SimpleName,$false);packageMs=$packageMs;signatureMs=$signatureMs}|ConvertTo-Json -Compress");
+        }
+        catch (Exception error)
+        {
+            DiagnosticLog.Record("discovery-failed", error, elapsedMs: discoveryClock.ElapsedMilliseconds);
+            throw;
+        }
         var package = JsonNode.Parse(output)?.AsObject() ?? throw new IOException("설치된 Codex 패키지를 확인하지 못했습니다.");
-        var family = JsonContract.String(package, "family");
-        var version = JsonContract.String(package, "version");
-        var build = CodexBuilds.Find(version);
-        if (family != Family || build is null)
-            throw new TrayActionException("unsupported-codex");
-        var app = Path.GetFullPath(Path.Combine(JsonContract.String(package, "location"), "app"));
-        var executable = Path.Combine(app, "ChatGPT.exe");
-        await VerifySignature(executable);
+        DiagnosticLog.Record("package-discovery", elapsedMs: package["packageMs"]?.GetValue<long>());
+        DiagnosticLog.Record("original-signature", elapsedMs: package["signatureMs"]?.GetValue<long>());
+        var (family, version, app, build) = ValidateDiscovery(package);
         var metadata = Path.Combine(app, "resources", "owl-app.ini");
         var appVersion = build.AppVersion;
         if (File.Exists(metadata))
@@ -82,10 +89,25 @@ internal static class WindowsLauncher
         }
         else if (build.ArchiveHash is not null)
             throw new TrayActionException("unsupported-codex");
-        var archiveHash = build.ArchiveHash is null ? "" : HashFile(Path.Combine(app, "resources", "app.asar"));
+        var hashClock = Stopwatch.StartNew();
+        string archiveHash;
+        try { archiveHash = build.ArchiveHash is null ? "" : HashFile(Path.Combine(app, "resources", "app.asar")); }
+        finally { DiagnosticLog.Record("archive-hash", elapsedMs: hashClock.ElapsedMilliseconds); }
         if (!CodexBuilds.Matches(build, appVersion, archiveHash))
             throw new TrayActionException("unsupported-codex");
         return new(family, version, build.AppVersion, app);
+    }
+    internal static (string Family, string Version, string App, CodexBuild Build) ValidateDiscovery(JsonObject package)
+    {
+        var family = JsonContract.String(package, "family");
+        var version = JsonContract.String(package, "version");
+        var build = CodexBuilds.Find(version);
+        if (family != Family || build is null)
+            throw new TrayActionException("unsupported-codex");
+        if (package["status"]?.GetValue<string>() != "Valid" || package["publisher"]?.GetValue<string>() != "OpenAI OpCo, LLC")
+            throw new InvalidDataException("Codex의 유효한 OpenAI 서명을 확인하지 못했습니다.");
+        var app = Path.GetFullPath(Path.Combine(JsonContract.String(package, "location"), "app"));
+        return (family, version, app, build);
     }
     internal static async Task VerifySignature(string executable)
     {

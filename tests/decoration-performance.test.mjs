@@ -48,6 +48,36 @@ test("행의 동일 스타일 및 불투명도 전환은 미디어 재생성과 
   });
   const context = vm.createContext({ module: { exports: {} } });
   vm.runInContext(bundle.outputFiles[0].text, context);
+  const composerChild = { radius: "22px" };
+  const shell = { radius: "0px", querySelector: () => composerChild };
+  const mainSurface = {
+    radius: "0px 12px 4px 0px",
+    querySelector: () => composerChild,
+  };
+  const composer = { querySelector: () => composerChild };
+  const readRadius = (element) => ({ borderRadius: element.radius });
+  assert.equal(
+    context.module.exports.nativeRadiusFor(
+      { target: "app.background", el: shell },
+      readRadius,
+    ),
+    "0px",
+    "the app shell must not inherit the nested composer radius",
+  );
+  assert.equal(
+    context.module.exports.nativeRadiusFor(
+      { target: "main.surface", el: mainSurface },
+      readRadius,
+    ),
+    "0px 12px 4px 0px",
+  );
+  assert.equal(
+    context.module.exports.nativeRadiusFor(
+      { target: "composer.surface", el: composer },
+      readRadius,
+    ),
+    "22px",
+  );
   const decoration = Object.create(context.module.exports.Decoration.prototype);
   let writes = 0,
     positions = 0;
@@ -207,4 +237,65 @@ test("행의 동일 스타일 및 불투명도 전환은 미디어 재생성과 
       "",
       "Removed headers restore their original paint",
     );
+  context.document = {
+    querySelector: () => ({ getBoundingClientRect: () => ({ top: 44 }) }),
+  };
+  const video = { videoUrl: "blob:wallpaper" };
+  const appLayer = {
+    style: {},
+    removeAttribute() { this.style = {}; },
+  };
+  const app = Object.create(context.module.exports.Decoration.prototype);
+  Object.assign(app, {
+    target: { target: "app.background", el: { style: {} } },
+    root: { style: {} },
+    layers: { background: appLayer },
+    players: new Map([["background", { media: video, updateAppearance() {} }]]),
+    asset: () => video,
+    paintSources: new Map(),
+    paintSurfaces: [],
+    paintScope: { set() {} },
+    nativeRadius: "0px",
+    position() {},
+    restoreIcon() {},
+    restoreText() {},
+    restoreBackground() {},
+  });
+  app.set({ background: { image: "assets/wallpaper.mp4", color: "#152B32" } });
+  assert.equal(appLayer.style.clipPath, "inset(44px 0 0 0)");
+  assert.equal(app.root.style.borderRadius, "0px");
+  delete video.videoUrl;
+  video.frames = [{ image: {} }, { image: {} }];
+  app.set({ background: { image: "assets/wallpaper.gif", color: "#152B32" } });
+  assert.equal(appLayer.style.clipPath, "inset(44px 0 0 0)");
+  app.set({
+    background: { image: "assets/wallpaper.gif", color: "#152B32" },
+    border: { color: "#ffffff", radiusPx: 22 },
+  });
+  assert.equal(app.root.style.borderRadius, "0px");
+  const sidebarLayer = {
+    style: {},
+    removeAttribute() { this.style = {}; },
+  };
+  const sidebar = Object.create(context.module.exports.Decoration.prototype);
+  Object.assign(sidebar, {
+    target: { target: "sidebar.surface", el: { style: {} } },
+    root: { style: {} },
+    layers: { background: sidebarLayer },
+    players: new Map(),
+    paintSources: new Map(),
+    paintSurfaces: [],
+    paintScope: { set() {} },
+    nativeRadius: "0px",
+    position() {},
+    restoreIcon() {},
+    restoreText() {},
+    restoreBackground() {},
+  });
+  sidebar.set({ background: { color: "#152B32", opacity: 0.72, blurPx: 10 } });
+  assert.equal(sidebarLayer.style.opacity, "1");
+  assert.equal(sidebarLayer.style.backdropFilter, "blur(10px)");
+  sidebar.set({ background: { color: "#152B32", opacity: 0.72 } });
+  assert.equal(sidebarLayer.style.opacity, "0.72");
+  assert.equal(sidebarLayer.style.backdropFilter, undefined);
 });

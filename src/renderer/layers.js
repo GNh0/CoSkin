@@ -14,6 +14,15 @@ const animationFrames = (effect, element) => {
     filter: style.filter,
   });
 };
+export const nativeRadiusFor = (target, computed = getComputedStyle) => {
+  const surface =
+    target.target === "composer.surface"
+      ? target.el.querySelector(
+          "[data-composer-surface-variant][data-composer-layout]",
+        ) || target.el
+      : target.el;
+  return computed(surface).borderRadius;
+};
 // Decoration layers stay within the target paint box; native content and input remain intact.
 export class Decoration {
   constructor(target, asset) {
@@ -35,11 +44,7 @@ export class Decoration {
       if (/(auto|scroll|hidden|clip)/.test(style.overflowX + style.overflowY))
         this.clipAncestors.push(ancestor);
     }
-    this.nativeRadius = getComputedStyle(
-      target.el.querySelector(
-        "[data-composer-surface-variant][data-composer-layout]",
-      ) || target.el,
-    ).borderTopLeftRadius;
+    this.nativeRadius = nativeRadiusFor(target);
     this.originalPosition = target.el.style.position;
     this.originalIsolation = target.el.style.isolation;
     if (getComputedStyle(target.el).position === "static")
@@ -195,6 +200,23 @@ export class Decoration {
         el.style.backgroundColor = rgba(v.color, 1);
         el.style.opacity = String(v.opacity ?? 1);
         el.style.filter = `blur(${v.blurPx || 0}px)`;
+        if (this.target.target === "app.background" && this.players.get(name)?.media) {
+          const railTop =
+            document
+              .querySelector('nav[data-app-navigation-rail="true"]')
+              ?.getBoundingClientRect().top ?? 0;
+          el.style.clipPath = `inset(${Math.max(0, Math.min(80, railTop))}px 0 0 0)`;
+        }
+        if (
+          this.target.target === "sidebar.surface" &&
+          !v.image &&
+          v.blurPx > 0
+        ) {
+          el.style.backgroundColor = rgba(v.color, v.opacity ?? 1);
+          el.style.opacity = "1";
+          el.style.filter = "none";
+          el.style.backdropFilter = `blur(${v.blurPx}px)`;
+        }
         this.paintScope.set(
           this.target.el,
           "background-color",
@@ -237,10 +259,18 @@ export class Decoration {
               "important",
             );
         }
-        this.root.style.borderRadius = `${this.style.border?.radiusPx ?? (parseFloat(this.nativeRadius) || 0)}px`;
+        this.root.style.borderRadius =
+          ["app.background", "main.surface"].includes(this.target.target) ||
+          this.style.border?.radiusPx == null
+            ? this.nativeRadius
+            : `${this.style.border.radiusPx}px`;
       } else if (name === "border") {
         el.style.border = `${v.widthPx || 1}px solid ${rgba(v.color, v.opacity)}`;
-        el.style.borderRadius = `${v.radiusPx || 0}px`;
+        el.style.borderRadius = ["app.background", "main.surface"].includes(
+          this.target.target,
+        )
+          ? this.nativeRadius
+          : `${v.radiusPx || 0}px`;
         if (v.glow)
           el.style.boxShadow = `0 0 ${v.glow}px ${rgba(v.color, v.opacity)}`;
       } else if (name === "icon") {

@@ -68,6 +68,7 @@ internal static class Program
             string? verifiedAppVersion = null;
             var nativeWindows = new ConcurrentDictionary<string, IntPtr>();
             var lastVisibility = new ConcurrentDictionary<string, bool>();
+            var detachedRetryAfter = new Dictionary<string, DateTimeOffset>();
             var sessionId = Guid.NewGuid().ToString("N");
             using var stop = new CancellationTokenSource();
             NativeRendererSession? nativeSession = null;
@@ -118,12 +119,14 @@ internal static class Program
                     if (number == 0)
                     {
                         tray.RefreshDetection();
+                        var discoveryClock = System.Diagnostics.Stopwatch.StartNew();
                         number = await connectionSignal.FindReadyPort(stop.Token) ?? 0;
                         if (number == 0)
                         {
                             await connectionSignal.Wait(stop.Token);
                             continue;
                         }
+                        DiagnosticLog.Record("endpoint-ready", elapsedMs: discoveryClock.ElapsedMilliseconds);
                     }
                     var owner = NativeWindow.ListenerProcess(number);
                     if (verifiedProcess != owner)
@@ -150,68 +153,99 @@ internal static class Program
                     var alive = new HashSet<string>();
                     foreach (var target in list)
                     {
-                        if (target?["type"]?.GetValue<string>() != "page" || !CodexPageContract.Supports(target["url"]?.GetValue<string>()))
+                        var pageUrl = target?["url"]?.GetValue<string>();
+                        if (target?["type"]?.GetValue<string>() != "page" || !CodexPageContract.Supports(pageUrl))
                             continue;
                         var id = target["id"]!.GetValue<string>();
-                        var newlyConnected = false;
-                        alive.Add(id);
-                        if (!sessions.TryGetValue(id, out var cdp))
-                        {
-                            newlyConnected = true;
-                            if (nativeSession is not null) cdp = new Cdp(nativeSession.Main, int.Parse(id, System.Globalization.CultureInfo.InvariantCulture));
-                            else
-                            {
-                                var uri = new Uri(target["webSocketDebuggerUrl"]!.GetValue<string>());
-                                if (uri.Host != "127.0.0.1" || uri.Port != number || uri.Scheme != "ws" || uri.UserInfo.Length != 0)
-                                    throw new InvalidDataException("잘못된 연결 주소");
-                                cdp = new Cdp();
-                                await cdp.Connect(uri);
-                            }
-                            var current = cdp;
-                            cdp.Event += message => { if (message["method"]?.GetValue<string>() == "Runtime.bindingCalled" && message["params"]?["name"]?.GetValue<string>() == "__coskinRequest") _ = Handle(current, library, message["params"]!["payload"]!.GetValue<string>(), sessionId, () => sessions.Values.ToArray()); };
-                            await cdp.Send("Runtime.enable");
-                            await cdp.Send("Runtime.addBinding", new JsonObject { ["name"] = "__coskinRequest" });
-                            sessions[id] = cdp;
-                        }
-                        if (newlyConnected)
-                        {
-                            await cdp.Evaluate("window.__coskinHostVersion=" + System.Text.Json.JsonSerializer.Serialize(verifiedAppVersion));
-                            await cdp.Evaluate("window.__coskinSessionId=" + System.Text.Json.JsonSerializer.Serialize(sessionId) + ";if(window.__coskin)window.__coskin.sessionId=window.__coskinSessionId");
-                            var appLanguage = (await cdp.Evaluate("document.documentElement.lang || navigator.language"))?.GetValue<string>();
-                            await library.Handle(new JsonObject { ["op"] = "runtime-locale", ["locale"] = UiLocale.Normalize(appLanguage) }, _ => Task.CompletedTask, (_, _) => Task.CompletedTask);
-                        }
-                        var status = await cdp.Evaluate("Boolean(window.__coskin)");
-                        if (status?.GetValue<bool>() != true)
-                        {
-                            await cdp.Evaluate("window.__coskinSessionId=" + System.Text.Json.JsonSerializer.Serialize(sessionId));
-                            await cdp.Evaluate(bundle);
-                            await cdp.Evaluate("window.__coskinReady");
-                            if (await cdp.Evaluate("Boolean(window.__coskin)") is not JsonValue ready || !ready.GetValue<bool>())
-                                throw new InvalidDataException("화면 초기화를 완료하지 못했습니다.");
-                            Console.WriteLine("Codex 창에 CoSkin 테마스킨 목록을 연결했습니다.");
-                        }
-                        await cdp.Evaluate("window.__coskin?.heartbeat()");
-                        if (!nativeWindows.TryGetValue(id, out var window) || window == IntPtr.Zero)
-                        {
-                            if (nativeSession is not null) window = NativeWindow.RendererWindow(owner, target!);
-                            else
-                            {
-                                var geometry = (await cdp.Evaluate("({x:screenX,y:screenY,width:outerWidth,height:outerHeight})"))?.AsObject();
-                                window = geometry is null ? IntPtr.Zero : NativeWindow.MatchWindow(owner, geometry);
-                            }
-                            nativeWindows[id] = window;
-                        }
-                        var nativeVisible = NativeWindow.Visible(window, owner);
-                        if (window == IntPtr.Zero)
-                        {
-                            await cdp.Evaluate("window.__coskin?.pauseMotion(true);window.__coskin?.suspend(false)");
+                        if (detachedRetryAfter.TryGetValue(id, out var retryAfter) && retryAfter > DateTimeOffset.UtcNow)
                             continue;
+                        var rendererClock = System.Diagnostics.Stopwatch.StartNew();
+                        var newlyConnected = false;
+                        Cdp? pendingSession = null;
+                        alive.Add(id);
+                        try
+                        {
+                            if (!sessions.TryGetValue(id, out var cdp))
+                            {
+                                newlyConnected = true;
+                                if (nativeSession is not null) cdp = new Cdp(nativeSession.Main, int.Parse(id, System.Globalization.CultureInfo.InvariantCulture));
+                                else
+                                {
+                                    var uri = new Uri(target["webSocketDebuggerUrl"]!.GetValue<string>());
+                                    if (uri.Host != "127.0.0.1" || uri.Port != number || uri.Scheme != "ws" || uri.UserInfo.Length != 0)
+                                        throw new InvalidDataException("잘못된 연결 주소");
+                                    cdp = new Cdp();
+                                    pendingSession = cdp;
+                                    await cdp.Connect(uri);
+                                }
+                                pendingSession = cdp;
+                                var current = cdp;
+                                cdp.Event += message => { if (message["method"]?.GetValue<string>() == "Runtime.bindingCalled" && message["params"]?["name"]?.GetValue<string>() == "__coskinRequest") _ = Handle(current, library, message["params"]!["payload"]!.GetValue<string>(), sessionId, () => sessions.Values.ToArray()); };
+                                await cdp.Send("Runtime.enable");
+                                await cdp.Send("Runtime.addBinding", new JsonObject { ["name"] = "__coskinRequest" });
+                                sessions[id] = cdp;
+                                pendingSession = null;
+                            }
+                            if (newlyConnected)
+                            {
+                                await cdp.Evaluate("window.__coskinHostVersion=" + System.Text.Json.JsonSerializer.Serialize(verifiedAppVersion));
+                                await cdp.Evaluate("window.__coskinSessionId=" + System.Text.Json.JsonSerializer.Serialize(sessionId) + ";if(window.__coskin)window.__coskin.sessionId=window.__coskinSessionId");
+                                var appLanguage = (await cdp.Evaluate("document.documentElement.lang || navigator.language"))?.GetValue<string>();
+                                await library.Handle(new JsonObject { ["op"] = "runtime-locale", ["locale"] = UiLocale.Normalize(appLanguage) }, _ => Task.CompletedTask, (_, _) => Task.CompletedTask);
+                            }
+                            var status = await cdp.Evaluate("Boolean(window.__coskin)");
+                            var needsInjection = status?.GetValue<bool>() != true;
+                            if (needsInjection)
+                            {
+                                await cdp.Evaluate("window.__coskinSessionId=" + System.Text.Json.JsonSerializer.Serialize(sessionId));
+                                await cdp.Evaluate(bundle);
+                                await cdp.Evaluate("window.__coskinReady");
+                                if (await cdp.Evaluate("Boolean(window.__coskin)") is not JsonValue ready || !ready.GetValue<bool>())
+                                    throw new InvalidDataException("화면 초기화를 완료하지 못했습니다.");
+                                Console.WriteLine("Codex 창에 CoSkin 테마스킨 목록을 연결했습니다.");
+                            }
+                            if (newlyConnected || needsInjection)
+                                DiagnosticLog.Record("renderer-ready", elapsedMs: rendererClock.ElapsedMilliseconds);
+                            await cdp.Evaluate("window.__coskin?.heartbeat()");
+                            if (!nativeWindows.TryGetValue(id, out var window) || window == IntPtr.Zero)
+                            {
+                                if (nativeSession is not null) window = NativeWindow.RendererWindow(owner, target!);
+                                else
+                                {
+                                    var geometry = (await cdp.Evaluate("({x:screenX,y:screenY,width:outerWidth,height:outerHeight})"))?.AsObject();
+                                    window = geometry is null ? IntPtr.Zero : NativeWindow.MatchWindow(owner, geometry);
+                                }
+                                nativeWindows[id] = window;
+                            }
+                            var nativeVisible = NativeWindow.Visible(window, owner);
+                            if (window == IntPtr.Zero)
+                            {
+                                await cdp.Evaluate("window.__coskin?.pauseMotion(true);window.__coskin?.suspend(false)");
+                                continue;
+                            }
+                            await cdp.Evaluate("window.__coskin?.pauseMotion(false)");
+                            if (newlyConnected || !lastVisibility.TryGetValue(id, out var previousVisible) || previousVisible != nativeVisible)
+                                await cdp.Evaluate("window.__coskin?.suspend(" + (nativeVisible ? "false" : "true") + ")");
+                            lastVisibility[id] = nativeVisible;
+                        detachedRetryAfter.Remove(id);
                         }
-                        await cdp.Evaluate("window.__coskin?.pauseMotion(false)");
-                        if (newlyConnected || !lastVisibility.TryGetValue(id, out var previousVisible) || previousVisible != nativeVisible)
-                            await cdp.Evaluate("window.__coskin?.suspend(" + (nativeVisible ? "false" : "true") + ")");
-                        lastVisibility[id] = nativeVisible;
+                        catch (Exception error) when (CodexPageContract.IsRecoverableDetachedFailure(pageUrl, error))
+                        {
+                            DiagnosticLog.Record("detached-renderer-retry", error, elapsedMs: rendererClock.ElapsedMilliseconds);
+                            detachedRetryAfter[id] = DateTimeOffset.UtcNow.AddSeconds(30);
+                            alive.Remove(id);
+                            try
+                            {
+                                if (sessions.TryRemove(id, out var failed)) await failed.DisposeAsync();
+                                if (pendingSession is not null) await pendingSession.DisposeAsync();
+                            }
+                            catch (Exception cleanupError) { DiagnosticLog.Record("detached-renderer-cleanup", cleanupError); }
+                            nativeWindows.TryRemove(id, out _);
+                            lastVisibility.TryRemove(id, out _);
+                        }
                     }
+                    foreach (var missing in detachedRetryAfter.Keys.Where(id => !list.Any(target => target?["id"]?.GetValue<string>() == id)).ToArray())
+                        detachedRetryAfter.Remove(missing);
                     foreach (var stale in sessions.Keys.Where(k => !alive.Contains(k)).ToArray())
                     {
                         await sessions[stale].DisposeAsync();

@@ -1,5 +1,9 @@
-import { pauseMediaForScroll } from "./scroll-media-policy.js";
+import {
+  pauseMediaForSidebarScroll,
+  sidebarForScroll,
+} from "./scroll-media-policy.js";
 import { applyThemeTypography } from "./theme-typography.js";
+import { heartbeatExpired } from "./heartbeat-policy.js";
 import { mediaMemoryBytes, mediaCacheBudget } from "../core/media-budget.js";
 import { t } from "./messages.js";
 import { downloadBytes } from "./file-transfer.js";
@@ -260,7 +264,7 @@ export class Controller {
       ],
     });
     this.timer = setInterval(() => {
-      if (Date.now() - this.lastHeartbeat > 15000) this.dispose();
+      if (heartbeatExpired(Date.now(), this.lastHeartbeat)) this.dispose();
     }, 5000);
     this.viewportObserver = new IntersectionObserver((entries) => {
       for (const entry of entries) {
@@ -775,9 +779,11 @@ export class Controller {
       for (const decoration of this.decorations.values())
         decoration.setScrollPaused(true, false);
     }
-    for (const decoration of this.decorations.values())
-      if (pauseMediaForScroll(decoration.target, event?.target))
-        decoration.setScrollPaused(true, true);
+    const sidebar = sidebarForScroll(event?.target);
+    if (sidebar)
+      for (const decoration of this.decorations.values())
+        if (pauseMediaForSidebarScroll(decoration.target, sidebar))
+          decoration.setScrollPaused(true, true);
     clearTimeout(this.scrollTimer);
     this.scrollTimer = setTimeout(() => {
       this.scrolling = false;

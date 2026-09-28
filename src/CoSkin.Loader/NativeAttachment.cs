@@ -17,6 +17,7 @@ internal static class NativeAttachment
 
     internal static async Task<NativeConnection> Open(string store, int processId, CancellationToken token)
     {
+        var preflight = Stopwatch.StartNew();
         using var process = Process.GetProcessById(processId);
         var started = process.StartTime.ToUniversalTime().Ticks;
         var executable = NativeWindow.VerifyExecutable(processId);
@@ -30,6 +31,7 @@ internal static class NativeAttachment
         var thread = GetWindowThreadProcessId(handle, out var owner);
         if (handle == IntPtr.Zero || thread == 0 || owner != processId)
             throw new IOException("Codex 창이 아직 연결을 받을 준비가 되지 않았습니다.");
+        DiagnosticLog.Record("attachment-preflight", elapsedMs: preflight.ElapsedMilliseconds);
         using var input = typeof(NativeAttachment).Assembly.GetManifestResourceStream("CoSkin.Native.dll") ?? throw new IOException("CoSkin 연결 모듈이 없습니다.");
         using var copy = new MemoryStream(); await input.CopyToAsync(copy, token);
         var bytes = copy.ToArray();

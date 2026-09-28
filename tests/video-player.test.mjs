@@ -2,13 +2,15 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import vm from "node:vm";
 import { build } from "esbuild";
+import { workspaceBundle } from './workspace-bundle.mjs';
 
 const compiled = await build({
-  entryPoints: ["src/renderer/media.js"],
+  stdin: { contents: 'export * from "./src/renderer/media.js"', resolveDir: process.cwd() },
   bundle: true,
   write: false,
   platform: "node",
   format: "cjs",
+  plugins: [workspaceBundle()],
 });
 function runtime(video) {
   const canvas = {

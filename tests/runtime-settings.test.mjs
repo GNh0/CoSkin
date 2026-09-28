@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {build} from 'esbuild';
+import {workspaceBundle} from './workspace-bundle.mjs';
 import {settingsPage} from '../src/renderer/runtime-settings.js';
 class Element {
   constructor(tag){this.tag=tag;this.children=[];this.attributes={};this.style={};this.listeners={};}
@@ -8,7 +9,7 @@ class Element {
   addEventListener(key,value){this.listeners[key]=value}
   append(...children){this.children.push(...children)}
 }
-const compiled=await build({absWorkingDir:process.cwd(),entryPoints:['./src/renderer/panel.js'],bundle:true,write:false,platform:'node',format:'esm',loader:{'.css':'text'}});
+const compiled=await build({stdin:{contents:'export {Panel} from "./src/renderer/panel.js"',resolveDir:process.cwd()},bundle:true,write:false,platform:'node',format:'esm',plugins:[workspaceBundle()]});
 const {Panel}=await import('data:text/javascript;base64,'+Buffer.from(compiled.outputFiles[0].text).toString('base64'));
 test('Settings update buttons send one request through the real panel action and release busy state',async()=>{
   globalThis.document={createElement:tag=>new Element(tag),documentElement:{lang:'ko'},querySelector:()=>null};

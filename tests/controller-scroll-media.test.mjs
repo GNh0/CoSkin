@@ -187,15 +187,36 @@ test("실제 Controller·Decoration·GIF는 휠 범위와 숨김을 분리하고
     render() {},
     stopReplay() {},
   });
-  const chat = { closest: () => null };
+  let chatClosestCalls = 0;
+  const chat = {
+    closest: () => {
+      chatClosestCalls++;
+      return null;
+    },
+  };
   controller.onScroll({ type: "wheel", target: chat });
+  assert.equal(chatClosestCalls, 1, "대화 휠은 목록 조상을 한 번만 확인한다");
   advance(110);
   assert.equal(controller.scrolling, true);
   assert.equal(background.player.index, 1);
   assert.equal(row.player.index, 1);
   advance(40);
   const sidebar = { contains: (el) => el === row.d.target.el };
-  controller.onScroll({ type: "wheel", target: { closest: () => sidebar } });
+  let sidebarClosestCalls = 0;
+  controller.onScroll({
+    type: "wheel",
+    target: {
+      closest: () => {
+        sidebarClosestCalls++;
+        return sidebar;
+      },
+    },
+  });
+  assert.equal(
+    sidebarClosestCalls,
+    1,
+    "목록 휠은 행마다 조상을 다시 찾지 않는다",
+  );
   assert.equal(row.player.scrollPaused, true);
   assert.equal(background.player.scrollPaused, false);
   advance(60);
