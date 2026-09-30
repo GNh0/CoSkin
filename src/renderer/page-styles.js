@@ -1,1 +1,4 @@
-export { default as pageStyles } from "./page.css";
+import baseStyles from "./page.css";
+import panelStyles from "./panel-design.css";
+
+export const pageStyles = baseStyles + "\n" + panelStyles;

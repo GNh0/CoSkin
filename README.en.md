@@ -27,7 +27,7 @@ Run Codex and CoSkin on **Windows x64** at the same Windows privilege level. Fro
 | Feature                 | What you can do                                                                                         |
 | ----------------------- | ------------------------------------------------------------------------------------------------------- |
 | Theme library           | Create, import and delete; preview and apply directly from cards                                        |
-| Organization and search | Nested folder tree, favorites and tags; numbered pages, sorting and multi-select organization             |
+| Organization and search | Nested folder tree, favorites and tags; numbered pages, sorting and multi-select organization           |
 | Details and editing     | Edit theme information, duplicate, edit in the actual app and export                                    |
 | Images, GIFs and video  | Set backgrounds, decorations and icons; loop muted MP4 video; see resolution and aspect recommendations |
 | Text styles             | Theme-tinted automatic text colors or your own color, installed font and weight                         |
@@ -49,7 +49,7 @@ In editing mode, **right-click** the area you want to customize to adjust its im
 
 **Save** keeps your theme changes; **Apply** uses them in the selected scope. Cancel a preview to return to the previous theme. Add and share your own effects with the [custom effects guide](docs/custom-effects.md).
 
-Use the **folder tree** to create, expand and collapse nested folders. **Include subfolders** shows themes across a parent folder, and selection mode moves multiple themes or updates favorites and tags. Numbered, first/last and direct page navigation with 24/48/96 items make large libraries easier to browse. Returning from details preserves the query and list position. [Library guide](docs/theme-library.md)
+Browse a folder tree on the left and folders with theme files on the right. A single click selects a folder; **double-click or Enter** opens it. Clicking a theme opens its management screen. Switch **Folder view/Tree view** independently of **Preview cards/One-line list**. Breadcrumbs, back/forward/up and **Include subfolders** support navigation. Drag theme cards onto a folder to move their classification, or use selection mode for moves, favorites and tags. Numbered, first/last and direct page navigation supports 24/48/96 items; returning from details preserves search and list position. One-line lists load no media previews. [Library guide](docs/theme-library.md)
 
 **Match text colors automatically** prioritizes contrast with a subtle theme tint. When needed, it strengthens the surface behind text to keep bright video readable. Select **Choose manually** in the text editor to choose a color, installed font and weight for that area.
 

@@ -6,7 +6,9 @@ export function themeMetadata(panel, creating = false) {
   const manifest = creating
     ? { name: "", description: "", author: { name: t("panel.user") } }
     : panel.doc.manifest;
-  const root = h("form", { class: "theme-metadata" });
+  const root = h("form", {
+    class: "theme-metadata panel-form panel-metadata-form",
+  });
   const name = h("input", {
     value: manifest.name,
     required: true,
@@ -17,7 +19,7 @@ export function themeMetadata(panel, creating = false) {
   const description = h("textarea", {
     value: manifest.description || "",
     maxLength: 4096,
-    rows: 3,
+    rows: 4,
     "aria-label": t("control.themeDescription"),
   });
   const author = h("input", {
@@ -27,10 +29,33 @@ export function themeMetadata(panel, creating = false) {
     "aria-label": t("control.themeAuthor"),
   });
   root.append(
-    h("h2", { text: t(creating ? "create" : "control.themeInformation") }),
-    h("label", { text: t("control.themeName") }, [name]),
-    h("label", { text: t("control.themeDescription") }, [description]),
-    h("label", { text: t("control.themeAuthor") }, [author]),
+    h("header", { class: "panel-form-header" }, [
+      h("span", { class: "panel-heading-mark", "aria-hidden": "true" }),
+      h("div", {}, [
+        h("span", { class: "panel-eyebrow", text: "CoSkin" }),
+        h("h2", { text: t(creating ? "create" : "control.themeInformation") }),
+      ]),
+    ]),
+    h("div", { class: "panel-form-fields" }, [
+      h("label", { class: "panel-field" }, [
+        h("span", { class: "panel-field-label", text: t("control.themeName") }),
+        name,
+      ]),
+      h("label", { class: "panel-field" }, [
+        h("span", {
+          class: "panel-field-label",
+          text: t("control.themeDescription"),
+        }),
+        description,
+      ]),
+      h("label", { class: "panel-field" }, [
+        h("span", {
+          class: "panel-field-label",
+          text: t("control.themeAuthor"),
+        }),
+        author,
+      ]),
+    ]),
   );
   const save = h("button", {
     type: "submit",
@@ -42,7 +67,7 @@ export function themeMetadata(panel, creating = false) {
     panel.metadataMode = null;
     panel.render();
   });
-  root.append(h("div", { class: "detail-actions" }, [save, cancel]));
+  root.append(h("div", { class: "panel-form-footer" }, [cancel, save]));
   root.onsubmit = async (event) => {
     event.preventDefault();
     if (!root.reportValidity()) return;

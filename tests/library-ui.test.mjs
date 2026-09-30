@@ -7,7 +7,7 @@ import { libraryFixture } from "./library-fixture.mjs";
 const compiled = await build({
   stdin: {
     contents:
-      'export { Panel } from "./src/renderer/panel.js"; export { groupManager, organizationForm, writeOrganizationBatch } from "./src/renderer/library-organization.js"; export { searchablePicker } from "./src/renderer/library-controls.js";',
+      'export { Panel } from "./src/renderer/panel.js"; export { groupManager, organizationForm, writeOrganizationBatch } from "./src/renderer/library-organization.js"; export { searchablePicker } from "./src/renderer/library-controls.js"; export { themeDragMime } from "./src/renderer/library-explorer.js";',
     resolveDir: process.cwd(),
   },
   bundle: true,
@@ -22,6 +22,7 @@ const {
   organizationForm,
   writeOrganizationBatch,
   searchablePicker,
+  themeDragMime,
 } = await import(
   "data:text/javascript;base64," +
     Buffer.from(compiled.outputFiles[0].text).toString("base64")
@@ -110,6 +111,9 @@ class Element {
   querySelector(selector) {
     return this.querySelectorAll(selector)[0] || null;
   }
+  contains(element) {
+    return all(this).includes(element);
+  }
   focus() {
     document.activeElement = this;
   }
@@ -141,7 +145,7 @@ const byFocus = (root, key) =>
     (element) => element.getAttribute("data-library-focus") === key,
   );
 
-function setup() {
+function setup(location = "all") {
   const catalog = libraryFixture();
   globalThis.document = {
     createElement: (tag) => new Element(tag),
@@ -223,6 +227,7 @@ function setup() {
     previewToolbar: { update() {} },
     pageResources: [],
     selected: "theme.0999",
+    groupFilter: location,
     draftWrite: Promise.resolve(),
     draftGeneration: 0,
   });
@@ -314,42 +319,49 @@ function nestedCatalog(panel, catalog) {
   panel.render();
 }
 
-test("nested folder browsing includes descendants by default, counts them, preserves query and selection, and handles empty folders", async () => {
+test("nested folders show direct contents by default and optionally include descendants, preserving query and selection", async () => {
   const { panel, catalog } = setup();
   nestedCatalog(panel, catalog);
   assert.equal(byClass(panel.shadow, "folder-tree-row").length, 3);
-  assert.match(byFocus(panel.shadow, "folder-root").textContent, /NIKKE2/);
   assert.match(
-    byFocus(panel.shadow, "folder-root").title,
+    byFocus(panel.shadow, "sidebar-folder-root").textContent,
+    /NIKKE2/,
+  );
+  assert.match(
+    byFocus(panel.shadow, "sidebar-folder-root").title,
     /0 direct.*2 including/,
   );
-  await byFocus(panel.shadow, "folder-root").emit("click");
+  await byFocus(panel.shadow, "sidebar-folder-root").emit("click");
   assert.equal(panel.groupFilter, "root");
-  assert.equal(panel.folderIncludeChildren, true);
-  assert.equal(byClass(panel.shadow, "skin-card").length, 2);
+  assert.equal(panel.folderIncludeChildren, false);
+  assert.equal(byClass(panel.shadow, "skin-card").length, 0);
+  assert.equal(byClass(panel.shadow, "folder-card").length, 1);
   assert.equal(panel.selected, "theme.0999");
   const include = byLabel(panel.shadow, "Include themes in subfolders");
-  include.checked = false;
+  include.checked = true;
   await include.emit("change");
-  assert.equal(byClass(panel.shadow, "skin-card").length, 0);
-  const includeAgain = byLabel(panel.shadow, "Include themes in subfolders");
-  includeAgain.checked = true;
-  await includeAgain.emit("change");
   assert.equal(byClass(panel.shadow, "skin-card").length, 2);
+  const includeAgain = byLabel(panel.shadow, "Include themes in subfolders");
+  includeAgain.checked = false;
+  await includeAgain.emit("change");
+  assert.equal(byClass(panel.shadow, "skin-card").length, 0);
+  const includeFiltered = byLabel(panel.shadow, "Include themes in subfolders");
+  includeFiltered.checked = true;
+  await includeFiltered.emit("change");
   const search = byLabel(panel.shadow, "Search name, character, skin, or type");
   search.value = "0000";
   await search.emit("change");
   assert.equal(byClass(panel.shadow, "skin-card").length, 1);
-  await byFocus(panel.shadow, "folder-empty").emit("click");
+  await byFocus(panel.shadow, "sidebar-folder-empty").emit("click");
   assert.equal(panel.filter, "0000");
   assert.equal(panel.groupFilter, "empty");
   assert.equal(byClass(panel.shadow, "skin-card").length, 0);
   assert.equal(panel.page, 0);
-  await byFocus(panel.shadow, "folder-all").emit("click");
+  await byFocus(panel.shadow, "sidebar-folder-all").emit("click");
   assert.equal(panel.filter, "0000");
   assert.equal(byClass(panel.shadow, "skin-card").length, 1);
   await byText(panel.shadow, "Clear filters").emit("click");
-  await byFocus(panel.shadow, "folder-ungrouped").emit("click");
+  await byFocus(panel.shadow, "sidebar-folder-ungrouped").emit("click");
   assert.equal(panel.groupFilter, "ungrouped");
   assert.match(
     byLabel(panel.shadow, "Library pages").textContent,
@@ -363,10 +375,10 @@ test("folder tree reveals search ancestors and responds to keyboard navigation",
   const tree = byClass(panel.shadow, "folder-tree")[0];
   await tree.emit("keydown", {
     key: "ArrowRight",
-    target: byFocus(panel.shadow, "folder-root"),
+    target: byFocus(panel.shadow, "sidebar-folder-root"),
   });
-  assert.ok(byFocus(panel.shadow, "folder-unit"));
-  const rootButton = byFocus(panel.shadow, "folder-root");
+  assert.ok(byFocus(panel.shadow, "sidebar-folder-unit"));
+  const rootButton = byFocus(panel.shadow, "sidebar-folder-root");
   await tree.emit("keydown", { key: "ArrowDown", target: rootButton });
   assert.equal(document.activeElement.getAttribute("data-folder-id"), "unit");
   const search = byLabel(panel.shadow, "Search folder tree");
@@ -378,9 +390,9 @@ test("folder tree reveals search ancestors and responds to keyboard navigation",
     ),
     ["root", "unit", "skin", "motion"],
   );
-  assert.equal(panel.groupFilter, undefined);
+  assert.equal(panel.groupFilter, "all");
   assert.equal(panel.page, 0);
-  await byFocus(panel.shadow, "folder-motion").emit("click");
+  await byFocus(panel.shadow, "sidebar-folder-motion").emit("click");
   assert.equal(panel.groupFilter, "motion");
   assert.equal(byClass(panel.shadow, "skin-card").length, 1);
 });
@@ -388,7 +400,7 @@ test("folder tree reveals search ancestors and responds to keyboard navigation",
 test("folder creation sets the selected parent and reparenting excludes itself and all descendants", async () => {
   const { panel, catalog, requests } = setup();
   nestedCatalog(panel, catalog);
-  await byFocus(panel.shadow, "folder-root").emit("click");
+  await byFocus(panel.shadow, "sidebar-folder-root").emit("click");
   await byText(panel.shadow, "Create a subfolder here").emit("click");
   const manager = byClass(panel.shadow, "group-manager")[0];
   const create = byClass(manager, "group-create")[0];
@@ -429,7 +441,10 @@ test("folder creation sets the selected parent and reparenting excludes itself a
 test("moving a folder's last descendant themes preserves selection and shows the emptied folder", async () => {
   const { panel, catalog, requests } = setup();
   nestedCatalog(panel, catalog);
-  await byFocus(panel.shadow, "folder-root").emit("click");
+  await byFocus(panel.shadow, "sidebar-folder-root").emit("click");
+  const include = byLabel(panel.shadow, "Include themes in subfolders");
+  include.checked = true;
+  await include.emit("change");
   await byText(panel.shadow, "Select to organize").emit("click");
   await byText(panel.shadow, "Select all 2 results").emit("click");
   panel.batchGroup = "other";
@@ -443,7 +458,10 @@ test("moving a folder's last descendant themes preserves selection and shows the
   assert.equal(panel.groupFilter, "root");
   assert.equal(panel.page, 0);
   assert.equal(byClass(panel.shadow, "skin-card").length, 0);
-  assert.match(byFocus(panel.shadow, "folder-root").textContent, /NIKKE0/);
+  assert.match(
+    byFocus(panel.shadow, "sidebar-folder-root").textContent,
+    /NIKKE0/,
+  );
   assert.match(
     byClass(panel.shadow, "batch-organization")[0].textContent,
     /2 selected themes outside/,
@@ -463,7 +481,7 @@ test("4096-folder gallery and manager mount only bounded tree rows and picker op
   await byFocus(panel.shadow, "folder-tree-last").emit("click");
   assert.equal(panel.folderTreePage, 170);
   assert.equal(byClass(panel.shadow, "folder-tree-row").length, 16);
-  assert.ok(byFocus(panel.shadow, "folder-folder.4095"));
+  assert.ok(byFocus(panel.shadow, "sidebar-folder-folder.4095"));
   const manager = groupManager(panel);
   assert.equal(byClass(manager, "group-row").length, 12);
   for (const options of byClass(manager, "picker-options"))
@@ -745,4 +763,526 @@ test("batch validates all limits before writes and refreshes accurate state afte
   assert.equal(catalog.organization.themes["theme.0000"].favorite, true);
   assert.equal(requests.filter((request) => request.op === "list").length, 1);
   assert.equal(panel.batchProgress, null);
+});
+
+const mainItems = (panel) => byClass(panel.shadow, "explorer-items")[0];
+const mainFolder = (panel, id) =>
+  mainItems(panel).querySelector('[data-explorer-folder="' + id + '"]');
+const mainTheme = (panel, id) =>
+  byFocus(mainItems(panel), "theme-" + id)?.parent;
+
+function explorerCatalog(panel, catalog) {
+  nestedCatalog(panel, catalog);
+  for (const id of Object.keys(catalog.themes))
+    if (Number(id.slice(-4)) >= 6) delete catalog.themes[id];
+  catalog.organization.groupParents.empty = "unit";
+  catalog.organization.themes = {
+    "theme.0000": {
+      groupId: "battle",
+      favorite: true,
+      tags: ["character: Dorothy", "type: Battle", "Existing tag"],
+    },
+    "theme.0001": {
+      groupId: "motion",
+      favorite: false,
+      tags: ["character: Dorothy", "type: Motion"],
+    },
+    "theme.0002": { groupId: "other", favorite: true, tags: ["Original"] },
+    "theme.0003": {
+      groupId: "root",
+      favorite: false,
+      tags: ["type: Overview"],
+    },
+    "theme.0004": {
+      groupId: "unit",
+      favorite: true,
+      tags: ["Existing unit tag"],
+    },
+    "theme.0005": { favorite: true, tags: ["Unsorted"] },
+  };
+  catalog.bindings.global = {
+    id: "theme.0000",
+    revision: 1,
+    profile: "default",
+  };
+  panel.groupFilter = "";
+  panel.selected = "theme.0000";
+  panel.render();
+}
+
+test("main contents mix folders and themes; single-click selects and double-click or Enter opens a folder", async () => {
+  const { panel, catalog, requests } = setup("");
+  explorerCatalog(panel, catalog);
+  assert.deepEqual(
+    byClass(mainItems(panel), "folder-card").map((card) =>
+      card.getAttribute("data-explorer-folder"),
+    ),
+    ["root", "other"],
+  );
+  assert.ok(mainTheme(panel, "theme.0005"));
+  assert.equal(byClass(mainItems(panel), "skin-card").length, 1);
+  const folder = mainFolder(panel, "root");
+  const body = byClass(folder, "folder-card-body")[0];
+  panel.librarySelection.add("theme.0005");
+  await body.emit("click");
+  assert.equal(panel.groupFilter, "");
+  assert.equal(panel.explorerSelectedFolder, "root");
+  assert.equal(folder.getAttribute("aria-selected"), "true");
+  assert.equal(
+    mainFolder(panel, "root"),
+    folder,
+    "selection retains the node so the browser can dispatch dblclick",
+  );
+  assert.equal(requests.length, 0);
+  await body.emit("dblclick");
+  assert.equal(panel.groupFilter, "root");
+  assert.ok(mainFolder(panel, "unit"));
+  assert.ok(mainTheme(panel, "theme.0003"));
+  assert.equal(byClass(mainItems(panel), "skin-card").length, 1);
+  assert.equal(panel.librarySelection.has("theme.0005"), true);
+  const unit = byFocus(mainItems(panel), "folder-unit");
+  await unit.emit("keydown", { key: "Enter" });
+  assert.equal(panel.groupFilter, "unit");
+  assert.deepEqual(
+    byClass(mainItems(panel), "folder-card").map((card) =>
+      card.getAttribute("data-explorer-folder"),
+    ),
+    ["skin", "empty"],
+  );
+  assert.ok(mainTheme(panel, "theme.0004"));
+  assert.equal(
+    byClass(panel.shadow, "explorer-breadcrumbs")[0].textContent,
+    "Folder homeNIKKEDorothy",
+  );
+  await byFocus(mainItems(panel), "theme-theme.0004").emit("click");
+  assert.equal(panel.detail, true);
+  assert.equal(panel.selected, "theme.0004");
+  assert.equal(requests.filter(({ op }) => op === "read").length, 1);
+});
+
+test("back, forward, parent and breadcrumb navigation preserve filters, pages, scroll and theme selection", async () => {
+  const { panel } = setup();
+  panel.page = 12;
+  panel.filter = "Battle";
+  panel.librarySelection.add("theme.0004");
+  panel.render();
+  panel.shadow.querySelector("section").scrollTop = 360;
+  await byFocus(panel.shadow, "sidebar-folder-group.2").emit("click");
+  assert.equal(panel.filter, "Battle");
+  assert.equal(panel.groupFilter, "group.2");
+  assert.equal(panel.page, 0);
+  await byFocus(panel.shadow, "explorer-back").emit("click");
+  assert.equal(panel.groupFilter, "all");
+  assert.equal(panel.page, 12);
+  assert.equal(panel.shadow.querySelector("section").scrollTop, 360);
+  await byFocus(panel.shadow, "explorer-forward").emit("click");
+  assert.equal(panel.groupFilter, "group.2");
+  await byFocus(panel.shadow, "explorer-up").emit("click");
+  assert.equal(panel.groupFilter, "");
+  await byFocus(panel.shadow, "sidebar-folder-group.2").emit("click");
+  await byFocus(panel.shadow, "explorer-crumb-root").emit("click");
+  assert.equal(panel.groupFilter, "");
+  assert.equal(panel.filter, "Battle");
+  assert.deepEqual([...panel.librarySelection], ["theme.0004"]);
+  assert.equal(panel.selected, "theme.0999");
+});
+
+test("opening a folder again after Back restores its remembered page and scroll", async () => {
+  const { panel, catalog } = setup("");
+  catalog.organization.groups = { a: "Folder A", b: "Folder B" };
+  for (const metadata of Object.values(catalog.organization.themes))
+    metadata.groupId = "a";
+  panel.filter = "Battle";
+  panel.librarySelection = new Set(["theme.0004"]);
+  panel.render();
+  await byFocus(mainItems(panel), "folder-a").emit("dblclick");
+  panel.page = 5;
+  panel.render();
+  panel.shadow.querySelector("section").scrollTop = 240;
+  await byFocus(panel.shadow, "explorer-back").emit("click");
+  assert.equal(panel.groupFilter, "");
+  assert.equal(panel.page, 0);
+  const folder = byFocus(mainItems(panel), "folder-a");
+  await folder.emit("click");
+  await folder.emit("dblclick");
+  assert.equal(panel.groupFilter, "a");
+  assert.equal(panel.page, 5);
+  assert.equal(panel.shadow.querySelector("section").scrollTop, 240);
+  assert.equal(panel.filter, "Battle");
+  assert.deepEqual([...panel.librarySelection], ["theme.0004"]);
+  assert.equal(panel.explorerForward.length, 0);
+});
+
+test("main tree expands folder nodes into child folders and theme leaves, with keyboard navigation and empty folder search paths", async () => {
+  const { panel, catalog } = setup("");
+  explorerCatalog(panel, catalog);
+  await byFocus(panel.shadow, "explorer-view-tree").emit("click");
+  assert.equal(mainItems(panel).getAttribute("role"), "tree");
+  assert.equal(
+    mainFolder(panel, "root").getAttribute("aria-expanded"),
+    "false",
+  );
+  await byFocus(mainItems(panel), "explorer-expand-root").emit("click");
+  assert.ok(mainFolder(panel, "unit"));
+  assert.ok(mainTheme(panel, "theme.0003"));
+  assert.equal(mainFolder(panel, "unit").getAttribute("aria-level"), "2");
+  assert.equal(mainTheme(panel, "theme.0003").getAttribute("aria-level"), "2");
+  const unit = byFocus(mainItems(panel), "folder-unit");
+  await unit.emit("keydown", { key: "ArrowRight" });
+  assert.ok(mainFolder(panel, "skin"));
+  assert.ok(mainTheme(panel, "theme.0004"));
+  const items = mainItems(panel).querySelectorAll("[data-explorer-item]");
+  await mainItems(panel).emit("keydown", {
+    key: "ArrowDown",
+    target: items[0],
+  });
+  assert.equal(document.activeElement, items[1]);
+  await mainItems(panel).emit("keydown", { key: "End", target: items[1] });
+  assert.equal(document.activeElement, items.at(-1));
+  await mainItems(panel).emit("keydown", { key: "Home", target: items.at(-1) });
+  assert.equal(document.activeElement, items[0]);
+  const search = byLabel(panel.shadow, "Search name, character, skin, or type");
+  search.value = "Empty";
+  await search.emit("change");
+  assert.deepEqual(
+    byClass(mainItems(panel), "folder-card").map((card) =>
+      card.getAttribute("data-explorer-folder"),
+    ),
+    ["root", "unit", "empty"],
+  );
+  assert.equal(byClass(mainItems(panel), "skin-card").length, 0);
+  assert.equal(
+    byFocus(mainItems(panel), "explorer-expand-root").disabled,
+    true,
+  );
+  await byFocus(mainItems(panel), "folder-empty").emit("keydown", {
+    key: "Enter",
+  });
+  await byText(panel.shadow, "Clear filters").emit("click");
+  assert.match(
+    byClass(panel.shadow, "empty-state")[0].textContent,
+    /This folder is empty/,
+  );
+});
+
+test("both folder and tree lists mount no preview observers or media requests and retain path, filters, page and selection", async () => {
+  const { panel, requests, observers } = setup();
+  panel.page = 7;
+  panel.filter = "Battle";
+  panel.librarySelection.add("theme.0004");
+  panel.render();
+  assert.equal(observers(), 24);
+  for (const view of ["folders", "tree"]) {
+    await byFocus(panel.shadow, "explorer-view-" + view).emit("click");
+    await byFocus(panel.shadow, "explorer-display-list").emit("click");
+    assert.equal(observers(), 0);
+    assert.equal(byClass(mainItems(panel), "thumb").length, 0);
+    assert.equal(mainItems(panel).querySelectorAll("canvas").length, 0);
+    assert.equal(requests.length, 0);
+    assert.equal(panel.page, 7);
+    assert.equal(panel.filter, "Battle");
+    assert.equal(panel.groupFilter, "all");
+    assert.equal(panel.librarySelection.has("theme.0004"), true);
+    assert.ok(
+      byClass(mainItems(panel), "skin-card").every((card) =>
+        card.className.includes("explorer-row"),
+      ),
+    );
+    const first = mainItems(panel).querySelectorAll("[data-explorer-item]")[0];
+    await mainItems(panel).emit("keydown", { key: "ArrowDown", target: first });
+    assert.equal(
+      document.activeElement,
+      mainItems(panel).querySelectorAll("[data-explorer-item]")[1],
+    );
+    await byFocus(panel.shadow, "explorer-display-preview").emit("click");
+    assert.equal(observers(), 24);
+    assert.equal(byClass(mainItems(panel), "thumb").length, 24);
+    assert.equal(panel.page, 7);
+    assert.equal(requests.length, 0);
+  }
+  await byFocus(panel.shadow, "explorer-display-list").emit("click");
+  await byClass(mainItems(panel), "card-body")[0].emit("click");
+  assert.equal(panel.detail, true);
+  assert.equal(requests.filter(({ op }) => op === "read").length, 1);
+});
+
+test("all four explorer view combinations support keyboard folder opening and ordinary theme management", async () => {
+  for (const view of ["folders", "tree"])
+    for (const display of ["preview", "list"]) {
+      const { panel, catalog, requests, observers } = setup("");
+      explorerCatalog(panel, catalog);
+      panel.libraryView = view;
+      panel.libraryDisplay = display;
+      panel.render();
+      const root = byFocus(mainItems(panel), "folder-root");
+      await root.emit("click");
+      assert.equal(panel.groupFilter, "");
+      await root.emit("keydown", { key: "Enter" });
+      assert.equal(panel.groupFilter, "root");
+      assert.ok(mainFolder(panel, "unit"));
+      assert.ok(mainTheme(panel, "theme.0003"));
+      assert.equal(observers(), display === "list" ? 0 : 1);
+      assert.equal(requests.length, 0);
+      await byFocus(mainItems(panel), "theme-theme.0003").emit("click");
+      assert.equal(panel.detail, true);
+      assert.equal(panel.selected, "theme.0003");
+      assert.equal(requests.filter(({ op }) => op === "read").length, 1);
+    }
+});
+
+test("a narrow screen begins with a collapsed sidebar and lets the user reopen it", async () => {
+  const match = globalThis.matchMedia;
+  globalThis.matchMedia = () => ({ matches: true });
+  try {
+    const { panel } = setup("");
+    assert.equal(byClass(panel.shadow, "explorer-sidebar").length, 0);
+    assert.equal(
+      byFocus(panel.shadow, "explorer-sidebar").getAttribute("aria-expanded"),
+      "false",
+    );
+    await byFocus(panel.shadow, "explorer-sidebar").emit("click");
+    assert.equal(byClass(panel.shadow, "explorer-sidebar").length, 1);
+    assert.equal(
+      byFocus(panel.shadow, "explorer-sidebar").getAttribute("aria-expanded"),
+      "true",
+    );
+  } finally {
+    if (match) globalThis.matchMedia = match;
+    else delete globalThis.matchMedia;
+  }
+});
+
+class ThemeTransfer {
+  data = new Map();
+  files = [];
+  get types() {
+    return [...this.data.keys()];
+  }
+  setData(type, value) {
+    this.data.set(type, value);
+  }
+  getData(type) {
+    return this.data.get(type) || "";
+  }
+}
+
+test("theme drag moves selected themes in one atomic batch to main folders, preserving favorites, tags, packages, revisions and bindings", async () => {
+  const { panel, catalog, requests } = setup("");
+  explorerCatalog(panel, catalog);
+  panel.groupFilter = "root";
+  panel.librarySelection = new Set(["theme.0003", "theme.0005"]);
+  panel.render();
+  const contents = JSON.stringify(catalog.themes);
+  const bindings = JSON.stringify(catalog.bindings);
+  const before = structuredClone(catalog.organization.themes);
+  const drag = new ThemeTransfer();
+  const source = mainTheme(panel, "theme.0003");
+  assert.equal(source.getAttribute("draggable"), "true");
+  await source.emit("dragstart", { dataTransfer: drag });
+  assert.equal(drag.effectAllowed, "move");
+  const target = mainFolder(panel, "unit");
+  let accepts = 0;
+  await target.emit("dragover", {
+    dataTransfer: drag,
+    preventDefault: () => accepts++,
+  });
+  assert.equal(accepts, 1);
+  assert.equal(target.getAttribute("data-drop-hover"), "true");
+  await target.emit("drop", { dataTransfer: drag });
+  const batches = requests.filter(({ op }) => op === "organization-batch");
+  assert.equal(batches.length, 1);
+  assert.deepEqual(batches[0].changes, [
+    { id: "theme.0003", metadata: { groupId: "unit" } },
+    { id: "theme.0005", metadata: { groupId: "unit" } },
+  ]);
+  for (const id of ["theme.0003", "theme.0005"])
+    assert.deepEqual(catalog.organization.themes[id], {
+      ...before[id],
+      groupId: "unit",
+    });
+  assert.equal(JSON.stringify(catalog.themes), contents);
+  assert.equal(JSON.stringify(catalog.bindings), bindings);
+  assert.equal(panel.librarySelection.size, 2);
+  assert.equal(panel.groupFilter, "root");
+  assert.equal(panel.selected, "theme.0000");
+  assert.equal(byClass(mainItems(panel), "skin-card").length, 0);
+  assert.deepEqual(
+    requests.map(({ op }) => op),
+    ["organization-batch"],
+  );
+});
+
+test("dragging a 1200-theme selection writes once and renders twice rather than per theme", async () => {
+  const { panel, catalog, requests } = setup();
+  const before = JSON.stringify(catalog.themes);
+  panel.librarySelection = new Set(Object.keys(catalog.themes));
+  panel.render();
+  const render = panel.render;
+  let renders = 0;
+  panel.render = function () {
+    renders++;
+    render.call(this);
+  };
+  const transfer = new ThemeTransfer();
+  await mainTheme(panel, "theme.0000").emit("dragstart", {
+    dataTransfer: transfer,
+  });
+  await byFocus(panel.shadow, "sidebar-folder-group.10").emit("drop", {
+    dataTransfer: transfer,
+  });
+  assert.equal(requests.length, 1);
+  assert.equal(requests[0].op, "organization-batch");
+  assert.equal(requests[0].changes.length, 1200);
+  assert.equal(renders, 2, "only the busy state and final summary render");
+  assert.equal(JSON.stringify(catalog.themes), before);
+  assert.equal(panel.librarySelection.size, 1200);
+  assert.ok(
+    Object.values(catalog.organization.themes).every(
+      (metadata) => metadata.groupId === "group.10",
+    ),
+  );
+});
+
+test("unselected themes drag alone in all four view combinations and sidebar folders accept the same validated move", async () => {
+  for (const view of ["folders", "tree"])
+    for (const display of ["preview", "list"]) {
+      const { panel, catalog, requests } = setup("");
+      explorerCatalog(panel, catalog);
+      panel.libraryView = view;
+      panel.libraryDisplay = display;
+      panel.librarySelection = new Set(["theme.0000", "theme.0001"]);
+      panel.render();
+      const transfer = new ThemeTransfer();
+      await mainTheme(panel, "theme.0005").emit("dragstart", {
+        dataTransfer: transfer,
+      });
+      const target =
+        view === "tree"
+          ? byFocus(panel.shadow, "sidebar-folder-other")
+          : mainFolder(panel, "other");
+      await target.emit("drop", { dataTransfer: transfer });
+      assert.deepEqual(
+        requests.filter(({ op }) => op === "organization-batch")[0].changes,
+        [{ id: "theme.0005", metadata: { groupId: "other" } }],
+      );
+      assert.equal(catalog.organization.themes["theme.0000"].groupId, "battle");
+      assert.equal(catalog.organization.themes["theme.0001"].groupId, "motion");
+      assert.equal(panel.librarySelection.size, 2);
+      assert.equal(panel.libraryView, view);
+      assert.equal(panel.libraryDisplay, display);
+    }
+});
+
+test("a failed folder drop retains the previous contents and metadata and reports the atomic failure", async () => {
+  const { panel, catalog, requests } = setup("");
+  explorerCatalog(panel, catalog);
+  const before = JSON.stringify(catalog);
+  const original = panel.c.request;
+  panel.c.request = async (op, data) => {
+    if (op === "organization-batch") {
+      requests.push({ op, ...data });
+      throw Error("store unavailable");
+    }
+    return original.call(panel.c, op, data);
+  };
+  const transfer = new ThemeTransfer();
+  await mainTheme(panel, "theme.0005").emit("dragstart", {
+    dataTransfer: transfer,
+  });
+  await mainFolder(panel, "other").emit("drop", { dataTransfer: transfer });
+  assert.equal(JSON.stringify(catalog), before);
+  assert.ok(mainTheme(panel, "theme.0005"));
+  assert.equal(panel.groupFilter, "");
+  assert.equal(panel.busy, false);
+  assert.match(panel.message, /saving 0 of 1.*store unavailable/);
+  assert.deepEqual(
+    requests.map(({ op }) => op),
+    ["organization-batch", "list"],
+  );
+});
+
+test("drop rejects external files and unknown, empty, duplicate, excessive or altered internal identities without host calls", async () => {
+  const cases = [
+    (transfer) => {
+      transfer.files = [{}];
+    },
+    (transfer) => {
+      transfer.data.clear();
+      transfer.setData("text/plain", "theme.0005");
+    },
+    (transfer) => {
+      transfer.setData(themeDragMime, "malformed JSON");
+    },
+    (transfer) => {
+      transfer.setData(themeDragMime, "null");
+    },
+    (transfer) => {
+      transfer.setData(themeDragMime, "[]");
+    },
+    (_transfer, payload) => {
+      payload.ids = [];
+    },
+    (_transfer, payload) => {
+      payload.ids = ["unknown.theme"];
+    },
+    (_transfer, payload) => {
+      payload.ids = ["theme.0005", "theme.0005"];
+    },
+    (_transfer, payload) => {
+      payload.ids = Array(2049).fill("theme.0005");
+    },
+    (_transfer, payload) => {
+      payload.token = "external-token";
+    },
+    (_transfer, payload) => {
+      payload.kind = "folder";
+    },
+    (_transfer, payload) => {
+      payload.version = 2;
+    },
+    (_transfer, _payload, panel) => {
+      panel.libraryDrag = null;
+    },
+    (_transfer, _payload, panel) => {
+      panel.busy = true;
+    },
+    (_transfer, _payload, panel) => {
+      panel.c.externalApplying = true;
+    },
+    (_transfer, _payload, panel) => {
+      panel.externalApplying = true;
+    },
+  ];
+  for (const corrupt of cases) {
+    const { panel, catalog, requests } = setup("");
+    explorerCatalog(panel, catalog);
+    const before = JSON.stringify(catalog);
+    const transfer = new ThemeTransfer();
+    await mainTheme(panel, "theme.0005").emit("dragstart", {
+      dataTransfer: transfer,
+    });
+    const payload = JSON.parse(transfer.getData(themeDragMime));
+    const previous = JSON.stringify(payload);
+    corrupt(transfer, payload, panel);
+    if (JSON.stringify(payload) !== previous)
+      transfer.setData(themeDragMime, JSON.stringify(payload));
+    await mainFolder(panel, "other").emit("drop", { dataTransfer: transfer });
+    assert.equal(requests.length, 0);
+    assert.equal(JSON.stringify(catalog), before);
+    assert.match(panel.message, /Only themes from this library can be moved/);
+  }
+  const { panel, catalog, requests } = setup("");
+  explorerCatalog(panel, catalog);
+  panel.groupFilter = "root";
+  panel.librarySelection = new Set(["theme.0000"]);
+  panel.render();
+  const transfer = new ThemeTransfer();
+  await mainTheme(panel, "theme.0003").emit("dragstart", {
+    dataTransfer: transfer,
+  });
+  await byFocus(panel.shadow, "sidebar-folder-root").emit("drop", {
+    dataTransfer: transfer,
+  });
+  assert.match(panel.message, /already in this folder/);
+  assert.equal(requests.length, 0);
 });

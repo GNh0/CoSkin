@@ -9,8 +9,11 @@ import {
 } from "../core/library-folders.js";
 import { paginationState } from "../core/library-pagination.js";
 import { libraryPagination, restoreLibraryFocus } from "./library-controls.js";
+import { attachFolderDrop } from "./library-explorer.js";
 
 export function folderBrowser(panel, onChange) {
+  const blocked = () =>
+    !!(panel.busy || panel.externalApplying || panel.c.externalApplying);
   const data = organization(panel);
   const groups = data.groups;
   const parents = data.groupParents || {};
@@ -26,13 +29,7 @@ export function folderBrowser(panel, onChange) {
   root.addEventListener("toggle", () => {
     panel.folderBrowserOpen = root.open;
   });
-  const current =
-    panel.groupFilter === "ungrouped"
-      ? t("ungrouped")
-      : options.get(panel.groupFilter) || t("allGroups");
-  root.append(
-    h("summary", { text: t("folderBrowserTitle", { name: current }) }),
-  );
+  root.append(h("summary", { text: t("folderNavigation") }));
   const body = h("div", { class: "folder-browser-body" });
   const search = h("input", {
     type: "search",
@@ -46,7 +43,7 @@ export function folderBrowser(panel, onChange) {
   });
   const pages = h("div");
   const select = (id) => {
-    onChange(id, "folder-" + (id || "all"));
+    if (!blocked()) onChange(id, "sidebar-folder-" + (id || "home"));
   };
   const makeFolder = (id, name, count) => {
     const button = h(
@@ -54,16 +51,19 @@ export function folderBrowser(panel, onChange) {
       {
         type: "button",
         class: "folder-button",
-        text: name,
-        "data-library-focus": "folder-" + (id || "all"),
+        "data-library-focus": "sidebar-folder-" + (id || "home"),
         "data-folder-id": id,
         onclick: () => select(id),
       },
-      [h("span", { class: "folder-count", text: String(count) })],
+      [
+        h("span", { class: "folder-name", text: name }),
+        h("span", { class: "folder-count", text: String(count) }),
+      ],
     );
-    button.disabled = !!panel.busy;
+    button.disabled = blocked();
     if ((panel.groupFilter || "") === id)
       button.setAttribute("aria-current", "true");
+    if (Object.hasOwn(groups, id)) attachFolderDrop(panel, button, id);
     return button;
   };
   const paint = () => {
@@ -76,7 +76,8 @@ export function folderBrowser(panel, onChange) {
     const page = paginationState(rows.length, panel.folderTreePage, 24);
     panel.folderTreePage = page.page;
     tree.replaceChildren(
-      makeFolder("", t("allGroups"), counts.total),
+      makeFolder("", t("explorerHome"), Object.keys(groups).length),
+      makeFolder("all", t("allGroups"), counts.total),
       makeFolder("ungrouped", t("ungrouped"), counts.ungrouped),
     );
     for (const row of rows.slice(page.start, page.end)) {
@@ -93,6 +94,7 @@ export function folderBrowser(panel, onChange) {
           }),
           "data-library-focus": "folder-expand-" + row.id,
           onclick: () => {
+            if (blocked()) return;
             if (panel.folderExpanded.has(row.id))
               panel.folderExpanded.delete(row.id);
             else panel.folderExpanded.add(row.id);
@@ -100,7 +102,7 @@ export function folderBrowser(panel, onChange) {
             restoreLibraryFocus(root, "folder-expand-" + row.id);
           },
         });
-        expand.disabled = !!panel.busy || !!panel.folderTreeQuery;
+        expand.disabled = blocked() || !!panel.folderTreeQuery;
         item.append(expand);
       } else
         item.append(
@@ -150,6 +152,7 @@ export function folderBrowser(panel, onChange) {
     if (event.key === "Enter") event.preventDefault();
   });
   tree.addEventListener("keydown", (event) => {
+    if (blocked()) return;
     const id = event.target?.getAttribute("data-folder-id");
     if (id === null || id === undefined) return;
     const buttons = [...tree.querySelectorAll("[data-folder-id]")];
@@ -178,30 +181,19 @@ export function folderBrowser(panel, onChange) {
       if (event.key === "ArrowRight") panel.folderExpanded.add(id);
       else if (panel.folderExpanded.has(id)) panel.folderExpanded.delete(id);
       else {
-        restoreLibraryFocus(root, "folder-" + (index.parents[id] || "all"));
+        restoreLibraryFocus(
+          root,
+          "sidebar-folder-" + (index.parents[id] || "home"),
+        );
         return;
       }
       paint();
-      restoreLibraryFocus(root, "folder-" + id);
+      restoreLibraryFocus(root, "sidebar-folder-" + id);
     }
   });
-  const include = h("input", {
-    type: "checkbox",
-    "aria-label": t("includeSubfolders"),
-  });
-  include.checked = !!panel.folderIncludeChildren;
-  include.disabled = !Object.hasOwn(groups, panel.groupFilter) || !!panel.busy;
-  include.onchange = () => {
-    panel.folderIncludeChildren = include.checked;
-    onChange(panel.groupFilter, "folder-" + panel.groupFilter);
-  };
   body.append(
     h("div", { class: "folder-tree-tools" }, [
       search,
-      h("label", { class: "folder-include" }, [
-        include,
-        h("span", { text: t("includeSubfolders") }),
-      ]),
       panel.button(
         t("newSubfolder"),
         () => {

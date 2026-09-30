@@ -3,7 +3,18 @@ import { h, busyImage, icon } from "./components.js";
 import { mountPreview } from "./previews.js";
 import { themeMetadata } from "./theme-metadata.js";
 import { folderBrowser } from "./library-folders.js";
-import { folderDescendants, folderOptions } from "../core/library-folders.js";
+import { folderOptions } from "../core/library-folders.js";
+import {
+  explorerContents,
+  navigateExplorer,
+} from "../core/library-explorer.js";
+import {
+  explorerToolbar,
+  explorerFolder,
+  explorerIcon,
+  explorerKeyboard,
+  attachThemeDrag,
+} from "./library-explorer.js";
 import {
   filterLibrary,
   libraryFacets,
@@ -119,7 +130,12 @@ export function galleryPage(panel, section) {
   }
   const data = organization(panel);
   const themes = panel.c.summary.themes;
-  panel.folderIncludeChildren ??= true;
+  panel.folderIncludeChildren ??= false;
+  panel.libraryView ??= "folders";
+  panel.libraryDisplay ??= "preview";
+  panel.explorerExpanded ??= new Set();
+  panel.explorerSidebarOpen ??=
+    !globalThis.matchMedia?.("(max-width: 600px)").matches;
   const facets = libraryFacets(themes, data);
   panel.librarySelection ??= new Set();
   for (const id of panel.librarySelection)
@@ -132,25 +148,15 @@ export function galleryPage(panel, section) {
   }
   if (
     panel.groupFilter &&
+    panel.groupFilter !== "all" &&
     panel.groupFilter !== "ungrouped" &&
     !data.groups[panel.groupFilter]
   )
     panel.groupFilter = "";
-  const entries = sortLibrary(
+  const matching = sortLibrary(
     filterLibrary(themes, data, {
       query: panel.filter,
       favorites: panel.favoriteFilter,
-      group: panel.groupFilter,
-      groupIds:
-        panel.folderIncludeChildren &&
-        panel.groupFilter &&
-        panel.groupFilter !== "ungrouped"
-          ? folderDescendants(
-              data.groups,
-              data.groupParents || {},
-              panel.groupFilter,
-            )
-          : null,
       tag: panel.tagFilter,
       character: panel.characterFilter,
       skin: panel.skinFilter,
@@ -159,10 +165,28 @@ export function galleryPage(panel, section) {
     data,
     panel.librarySort,
   );
+  const faceted = !!(
+    panel.favoriteFilter ||
+    panel.tagFilter ||
+    panel.characterFilter ||
+    panel.skinFilter ||
+    panel.typeFilter
+  );
+  const model = explorerContents(themes, data, {
+    entries: matching,
+    location: panel.groupFilter,
+    view: panel.libraryView,
+    includeChildren: panel.folderIncludeChildren,
+    expanded: panel.explorerExpanded,
+    query: panel.filter,
+    faceted,
+    filtered: faceted || !!panel.filter,
+  });
+  const entries = model.themes;
   const pageSize = libraryPageSizes.includes(panel.libraryPageSize)
     ? panel.libraryPageSize
     : 24;
-  const page = paginateLibrary(entries, panel.page, pageSize);
+  const page = paginateLibrary(model.items, panel.page, pageSize);
   panel.page = page.page;
   const filter = (key, value, focus = key) => {
     panel[key] = value;
@@ -241,17 +265,21 @@ export function galleryPage(panel, section) {
       emptyLabel,
       value: panel[key] || "",
       state: panel.libraryPickers[key],
-      onChange: (value, focus) => filter(key, value, focus),
+      onChange: (value, focus) =>
+        key === "groupFilter"
+          ? navigateExplorer(panel, value, focus)
+          : filter(key, value, focus),
     });
   };
   const group = picker(
     "groupFilter",
     t("group"),
     [
+      ["all", t("allGroups")],
       ["ungrouped", t("ungrouped")],
       ...folderOptions(data.groups, data.groupParents || {}),
     ],
-    t("allGroups"),
+    t("explorerHome"),
   );
   const tag = picker(
     "tagFilter",
@@ -270,9 +298,6 @@ export function galleryPage(panel, section) {
   selectionToggle.setAttribute(
     "aria-pressed",
     String(!!panel.librarySelectionMode),
-  );
-  section.append(
-    folderBrowser(panel, (value, focus) => filter("groupFilter", value, focus)),
   );
   section.append(
     h("div", { class: "library-filters" }, [
@@ -298,7 +323,6 @@ export function galleryPage(panel, section) {
       }),
       selectionToggle,
       ...(panel.favoriteFilter ||
-      panel.groupFilter ||
       panel.tagFilter ||
       panel.characterFilter ||
       panel.skinFilter ||
@@ -307,7 +331,7 @@ export function galleryPage(panel, section) {
         ? [
             panel.button(t("clearFilters"), () => {
               panel.favoriteFilter = false;
-              panel.groupFilter = panel.tagFilter = panel.filter = "";
+              panel.tagFilter = panel.filter = "";
               panel.characterFilter = panel.skinFilter = panel.typeFilter = "";
               panel.page = 0;
               panel.libraryScrollTop = 0;
@@ -316,12 +340,39 @@ export function galleryPage(panel, section) {
         : []),
     ]),
   );
+  section.append(explorerToolbar(panel, model));
   if (panel.manageGroups) section.append(groupManager(panel));
   if (panel.librarySelectionMode)
-    section.append(batchOrganization(panel, page.entries, entries));
+    section.append(
+      batchOrganization(
+        panel,
+        page.entries
+          .filter((item) => item.kind === "theme")
+          .map(({ id, entry }) => [id, entry]),
+        entries,
+      ),
+    );
+  const shell = h("div", {
+    class: "library-explorer-shell",
+    "data-sidebar": String(panel.explorerSidebarOpen !== false),
+  });
+  if (panel.explorerSidebarOpen !== false)
+    shell.append(
+      h(
+        "aside",
+        { class: "explorer-sidebar", "aria-label": t("folderNavigation") },
+        [
+          folderBrowser(panel, (value, focus) =>
+            navigateExplorer(panel, value, focus),
+          ),
+        ],
+      ),
+    );
+  const content = h("div", { class: "explorer-content" });
+  shell.append(content);
   const pager = (position) =>
     libraryPagination(panel, {
-      total: entries.length,
+      total: model.items.length,
       page: page.page,
       pageSize,
       key: "library-" + position,
@@ -332,9 +383,32 @@ export function galleryPage(panel, section) {
         panel.render();
       },
     });
-  section.append(pager("top"));
-  const grid = h("div", { class: "grid" });
-  for (const [id, entry] of page.entries) {
+  content.append(
+    h("p", {
+      class: "explorer-result muted",
+      text: t("explorerResultCount", {
+        folders: model.folders,
+        themes: entries.length,
+      }),
+    }),
+    pager("top"),
+  );
+  const grid = h("div", {
+    class:
+      "grid explorer-items" +
+      (panel.libraryDisplay === "list" ? " explorer-list" : "") +
+      (panel.libraryView === "tree" ? " explorer-tree" : ""),
+    "aria-label": t("explorerContents"),
+    ...(panel.libraryView === "tree" ? { role: "tree" } : {}),
+  });
+  explorerKeyboard(grid);
+  for (const item of page.entries) {
+    if (item.kind === "folder") {
+      grid.append(explorerFolder(panel, item));
+      continue;
+    }
+    const { id, entry } = item;
+    const previewVisible = panel.libraryDisplay !== "list";
     const open = panel.action(async () => {
       await panel.load(id);
       panel.detail = true;
@@ -344,7 +418,7 @@ export function galleryPage(panel, section) {
       scope.scope === "global" ? "global" : scope.scope + ":" + scope.contextId;
     const applied =
       panel.c.summary.enabled && panel.c.summary.bindings[scopeKey]?.id === id;
-    const thumbnail = busyImage();
+    const thumbnail = previewVisible ? busyImage() : null;
     const metadata = data.themes[id] || {};
     const labels = libraryLabels(entry, metadata);
     const body = h(
@@ -353,47 +427,57 @@ export function galleryPage(panel, section) {
         type: "button",
         class: "card-body",
         onclick: open,
+        "data-explorer-item": id,
+        "data-library-focus": "theme-" + id,
         "aria-label": t("detail", { name: entry.name }),
       },
       [
-        thumbnail,
+        previewVisible ? thumbnail : explorerIcon(),
         h("div", { class: "card-info" }, [
           h("h3", { text: entry.name }),
           h("span", {
             class: "muted",
-            text: applied ? t("applied") : t("skin"),
+            text: applied
+              ? t("applied")
+              : previewVisible
+                ? t("skin")
+                : labels.type.join(" · ") || t("skin"),
           }),
-          h(
-            "div",
-            { class: "theme-labels" },
-            [
-              ["character", "characterLabel"],
-              ["skin", "skinLabel"],
-              ["type", "themeTypeLabel"],
-            ]
-              .filter(([key]) => labels[key].length)
-              .map(([key, message]) =>
-                h("span", {
-                  text: t(message) + ": " + labels[key].join(" · "),
-                }),
-              ),
-          ),
-          h("div", { class: "theme-chips" }, [
-            ...(metadata.groupId && data.groups[metadata.groupId]
-              ? [
-                  h("span", {
-                    class: "group-chip",
-                    text: data.groups[metadata.groupId],
-                  }),
-                ]
-              : []),
-            ...(metadata.tags || [])
-              .slice(0, 3)
-              .map((name) => h("span", { text: name })),
-            ...((metadata.tags || []).length > 3
-              ? [h("span", { text: "+" + (metadata.tags.length - 3) })]
-              : []),
-          ]),
+          ...(previewVisible
+            ? [
+                h(
+                  "div",
+                  { class: "theme-labels" },
+                  [
+                    ["character", "characterLabel"],
+                    ["skin", "skinLabel"],
+                    ["type", "themeTypeLabel"],
+                  ]
+                    .filter(([key]) => labels[key].length)
+                    .map(([key, message]) =>
+                      h("span", {
+                        text: t(message) + ": " + labels[key].join(" · "),
+                      }),
+                    ),
+                ),
+                h("div", { class: "theme-chips" }, [
+                  ...(metadata.groupId && data.groups[metadata.groupId]
+                    ? [
+                        h("span", {
+                          class: "group-chip",
+                          text: data.groups[metadata.groupId],
+                        }),
+                      ]
+                    : []),
+                  ...(metadata.tags || [])
+                    .slice(0, 3)
+                    .map((name) => h("span", { text: name })),
+                  ...((metadata.tags || []).length > 3
+                    ? [h("span", { text: "+" + (metadata.tags.length - 3) })]
+                    : []),
+                ]),
+              ]
+            : []),
         ]),
       ],
     );
@@ -414,16 +498,30 @@ export function galleryPage(panel, section) {
     const card = h(
       "article",
       {
-        class: "skin-card",
+        class:
+          "skin-card" +
+          (!previewVisible
+            ? " explorer-row"
+            : panel.libraryView === "tree"
+              ? " explorer-tree-card"
+              : ""),
         "aria-selected": String(panel.selected === id),
         "data-batch-selected": String(panel.librarySelection.has(id)),
+        ...(panel.libraryView === "tree"
+          ? { role: "treeitem", "aria-level": item.depth + 1 }
+          : {}),
       },
       [
         favoriteButton(panel, id, entry.name),
         body,
-        h("div", { class: "card-actions" }, [apply, preview, remove]),
+        ...(previewVisible
+          ? [h("div", { class: "card-actions" }, [apply, preview, remove])]
+          : []),
       ],
     );
+    if (panel.libraryView === "tree")
+      card.style.paddingInlineStart = Math.min(item.depth, 12) * 14 + "px";
+    attachThemeDrag(panel, card, id);
     if (panel.librarySelectionMode) {
       const check = h("input", {
         type: "checkbox",
@@ -450,21 +548,25 @@ export function galleryPage(panel, section) {
       );
     }
     grid.append(card);
-    mountPreview(panel, thumbnail, id, entry.revision);
+    if (previewVisible) mountPreview(panel, thumbnail, id, entry.revision);
   }
-  section.append(grid);
-  if (!entries.length)
-    section.append(
+  content.append(grid);
+  if (!model.items.length)
+    content.append(
       h("div", { class: "empty-state" }, [
         h("div", { class: "empty-icon", text: "✦", "aria-hidden": "true" }),
         h("h2", {
           text: Object.keys(panel.c.summary.themes).length
-            ? t("noResults")
+            ? panel.filter || faceted
+              ? t("noResults")
+              : t("explorerEmptyFolder")
             : t("empty"),
         }),
         h("p", {
           text: Object.keys(themes).length
-            ? t("noResultsHint")
+            ? panel.filter || faceted
+              ? t("noResultsHint")
+              : t("explorerEmptyFolderHint")
             : t("emptyDescription"),
         }),
         ...(Object.keys(themes).length
@@ -472,7 +574,8 @@ export function galleryPage(panel, section) {
           : [panel.button(t("create"), () => panel.create())]),
       ]),
     );
-  if (entries.length > pageSize) section.append(pager("bottom"));
+  if (model.items.length > pageSize) content.append(pager("bottom"));
+  section.append(shell);
   const focus = panel.libraryFocus;
   panel.libraryFocus = null;
   if (focus) queueMicrotask(() => restoreLibraryFocus(section, focus));
