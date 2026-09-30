@@ -56,7 +56,8 @@ internal static class WindowsLauncher
     internal static async Task<CodexInstallation> Discover()
     {
         // Query the package and its original executable signature in one isolated helper.
-        // The same publisher, build and archive checks still gate the returned installation.
+        // Publisher and original package identity gate discovery. Compatibility
+        // is probed from the runtime contract, never inferred from a version list.
         var discoveryClock = Stopwatch.StartNew();
         string output;
         try
@@ -71,9 +72,13 @@ internal static class WindowsLauncher
         var package = JsonNode.Parse(output)?.AsObject() ?? throw new IOException("설치된 Codex 패키지를 확인하지 못했습니다.");
         DiagnosticLog.Record("package-discovery", elapsedMs: package["packageMs"]?.GetValue<long>());
         DiagnosticLog.Record("original-signature", elapsedMs: package["signatureMs"]?.GetValue<long>());
-        var (family, version, app, build) = ValidateDiscovery(package);
+        var (family, version, app) = ValidateDiscovery(package);
+        return ReadInstallation(family, version, app);
+    }
+    private static CodexInstallation ReadInstallation(string family, string version, string app)
+    {
         var metadata = Path.Combine(app, "resources", "owl-app.ini");
-        var appVersion = build.AppVersion;
+        var appVersion = version;
         if (File.Exists(metadata))
         {
             if (new FileInfo(metadata).Length > 4096 || File.GetAttributes(metadata).HasFlag(FileAttributes.ReparsePoint))
@@ -87,27 +92,23 @@ internal static class WindowsLauncher
                     appVersion = line[11..].Trim();
                 }
         }
-        else if (build.ArchiveHash is not null)
-            throw new TrayActionException("unsupported-codex");
-        var hashClock = Stopwatch.StartNew();
-        string archiveHash;
-        try { archiveHash = build.ArchiveHash is null ? "" : HashFile(Path.Combine(app, "resources", "app.asar")); }
-        finally { DiagnosticLog.Record("archive-hash", elapsedMs: hashClock.ElapsedMilliseconds); }
-        if (!CodexBuilds.Matches(build, appVersion, archiveHash))
-            throw new TrayActionException("unsupported-codex");
-        return new(family, version, build.AppVersion, app);
+        if (!Version.TryParse(appVersion, out _))
+            throw new InvalidDataException("Codex 앱 버전 정보의 형식이 올바르지 않습니다.");
+        var archive = Path.Combine(app, "resources", "app.asar");
+        if (!File.Exists(archive) || new FileInfo(archive).Length == 0 || File.GetAttributes(archive).HasFlag(FileAttributes.ReparsePoint))
+            throw new InvalidDataException("Codex 원본 앱 파일을 확인하지 못했습니다.");
+        return new(family, version, appVersion, app);
     }
-    internal static (string Family, string Version, string App, CodexBuild Build) ValidateDiscovery(JsonObject package)
+    internal static (string Family, string Version, string App) ValidateDiscovery(JsonObject package)
     {
         var family = JsonContract.String(package, "family");
         var version = JsonContract.String(package, "version");
-        var build = CodexBuilds.Find(version);
-        if (family != Family || build is null)
-            throw new TrayActionException("unsupported-codex");
+        if (family != Family || !Version.TryParse(version, out var parsed) || parsed.Revision < 0)
+            throw new InvalidDataException("Codex 원본 패키지 정체성을 확인하지 못했습니다.");
         if (package["status"]?.GetValue<string>() != "Valid" || package["publisher"]?.GetValue<string>() != "OpenAI OpCo, LLC")
             throw new InvalidDataException("Codex의 유효한 OpenAI 서명을 확인하지 못했습니다.");
         var app = Path.GetFullPath(Path.Combine(JsonContract.String(package, "location"), "app"));
-        return (family, version, app, build);
+        return (family, version, app);
     }
     internal static async Task VerifySignature(string executable)
     {
@@ -123,8 +124,17 @@ internal static class WindowsLauncher
     }
     internal static async Task<CodexInstallation> VerifyRunning(string executable)
     {
+        // A previous signed package can remain running while the Store installs
+        // an update. Validate that exact original rather than demanding equality
+        // with the newly discovered installation.
+        var original = RunningOriginal(executable, Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles));
+        if (original is not null)
+        {
+            await VerifySignature(executable);
+            return ReadInstallation(Family, original.Value.Version, original.Value.App);
+        }
         var installation = await Discover();
-        // Discover has already verified the signature, version and archive at this exact path.
+        // Discover has already verified the original package and signature at this exact path.
         // Managed copies still require their own signature and content comparisons below.
         if (Path.GetFullPath(executable).Equals(Path.Combine(installation.AppDirectory, "ChatGPT.exe"), StringComparison.OrdinalIgnoreCase))
             return installation;
@@ -136,10 +146,18 @@ internal static class WindowsLauncher
             throw new InvalidDataException("실행 중인 Codex의 원본 무결성을 확인하지 못했습니다.");
         return installation;
     }
+    internal static (string Version, string App)? RunningOriginal(string executable, string programFiles)
+    {
+        if (!ResidentDetection.IsOriginalPath(executable, programFiles)) return null;
+        var app = Path.GetDirectoryName(Path.GetFullPath(executable))!;
+        var package = Path.GetFileName(Path.GetDirectoryName(app)!);
+        var version = package.Split('_')[1];
+        return (version, app);
+    }
     internal static async Task<int> Launch(string store, bool prepareOnly)
     {
         var installation = await Discover();
-        if (NativeAttachment.Available && installation.PackageVersion == "26.924.2738.0")
+        if (NativeAttachment.Available)
         {
             if (prepareOnly) return 0;
             var native = new NativeConnectionDiscovery(store);

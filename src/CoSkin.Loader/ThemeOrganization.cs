@@ -7,7 +7,9 @@ internal static class ThemeOrganization
     internal static JsonObject State(JsonObject library)
     {
         library["organization"] ??= new JsonObject { ["groups"] = new JsonObject(), ["themes"] = new JsonObject() };
-        return library["organization"]!.AsObject();
+        var organization = library["organization"]!.AsObject();
+        organization["groupParents"] ??= new JsonObject();
+        return organization;
     }
     private static string Label(string value, int maximum)
     {
@@ -40,22 +42,62 @@ internal static class ThemeOrganization
         }
         themes[id] = metadata;
     }
-    internal static string WriteGroup(JsonObject library, string? id, string name)
+    internal static string WriteGroup(JsonObject library, string? id, string name, string? parentId = null, bool updateParent = false)
     {
-        var groups = State(library)["groups"]!.AsObject();
+        var organization = State(library);
+        var groups = organization["groups"]!.AsObject();
+        var parents = organization["groupParents"]!.AsObject();
         var label = Label(name, 64);
-        if (groups.Any(group => group.Key != id && string.Equals(group.Value?.GetValue<string>(), label, StringComparison.OrdinalIgnoreCase)))
-            throw new InvalidDataException("이미 같은 이름의 그룹이 있습니다.");
         if (id is not null && groups[id] is null) throw new InvalidDataException("그룹을 찾지 못했습니다.");
-        if (id is null && groups.Count >= 256) throw new InvalidDataException("그룹은 256개까지 만들 수 있습니다.");
+        if (id is null && groups.Count >= 4096) throw new InvalidDataException("폴더는 4096개까지 만들 수 있습니다.");
+        var parent = updateParent ? parentId : id is null ? null : parents[id]?.GetValue<string>();
+        parent = string.IsNullOrEmpty(parent) ? null : parent;
+        var visited = new HashSet<string>(StringComparer.Ordinal);
+        for (var cursor = parent; cursor is not null; cursor = parents[cursor]?.GetValue<string>())
+        {
+            if (cursor == id || !visited.Add(cursor))
+                throw new InvalidDataException("폴더를 자기 자신이나 하위 폴더 안으로 이동할 수 없습니다.");
+            if (groups[cursor] is null) throw new InvalidDataException("상위 폴더를 찾지 못했습니다.");
+            if (visited.Count >= 64) throw new InvalidDataException("폴더는 64단계까지 만들 수 있습니다.");
+        }
+        if (id is not null)
+            foreach (var group in groups)
+            {
+                var trail = new HashSet<string>(StringComparer.Ordinal);
+                var distance = 0;
+                for (string? cursor = group.Key; cursor is not null && trail.Add(cursor); cursor = parents[cursor]?.GetValue<string>())
+                {
+                    if (cursor == id)
+                    {
+                        if (visited.Count + 1 + distance > 64)
+                            throw new InvalidDataException("하위 폴더를 포함하여 64단계를 넘도록 이동할 수 없습니다.");
+                        break;
+                    }
+                    distance++;
+                }
+            }
+        if (groups.Any(group => group.Key != id
+            && parents[group.Key]?.GetValue<string>() == parent
+            && string.Equals(group.Value?.GetValue<string>(), label, StringComparison.OrdinalIgnoreCase)))
+            throw new InvalidDataException("같은 상위 폴더에 이미 같은 이름의 폴더가 있습니다.");
         id ??= Guid.NewGuid().ToString("N");
         groups[id] = label;
+        if (parent is null) parents.Remove(id);
+        else parents[id] = parent;
         return id;
     }
     internal static void DeleteGroup(JsonObject library, string id)
     {
         var organization = State(library);
         if (!organization["groups"]!.AsObject().Remove(id)) throw new InvalidDataException("그룹을 찾지 못했습니다.");
+        var parents = organization["groupParents"]!.AsObject();
+        var parent = parents[id]?.GetValue<string>();
+        parents.Remove(id);
+        foreach (var child in parents.Where(entry => entry.Value?.GetValue<string>() == id).Select(entry => entry.Key).ToArray())
+        {
+            if (parent is null) parents.Remove(child);
+            else parents[child] = parent;
+        }
         foreach (var theme in organization["themes"]!.AsObject())
             if (theme.Value?["groupId"]?.GetValue<string>() == id) theme.Value!.AsObject().Remove("groupId");
     }

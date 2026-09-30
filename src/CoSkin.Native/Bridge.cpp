@@ -2,7 +2,8 @@
 #include <string>
 #include <cstdint>
 
-// This ABI is enabled only after the host verifies the exact supported chrome.dll.
+// The host verifies the original signed package and all required x64 exports.
+// Decorated signatures are the ABI contract; package version is not a gate.
 // No addresses are scanned, no original files are changed, and no thread is suspended.
 static HMODULE ownModule;
 static volatile LONG running;
@@ -67,7 +68,9 @@ static bool Execute(const std::string& source) {
  auto run=(Pointer(*)(Pointer,Pointer*,Pointer))GetProcAddress(chrome,"?Run@Script@v8@@QEAA?AV?$MaybeLocal@VValue@v8@@@2@V?$Local@VContext@v8@@@2@@Z");
  if(!get||!context||!handles||!endHandles||!catcher||!endCatcher||!caught||!text||!compile||!run)return false;
  Pointer isolate=get();if(!isolate)return false;
- alignas(16) unsigned char hs[128]{},tc[256]{};
+ // These objects are constructed/destructed by the running V8, not accessed
+ // using field offsets from a particular Electron build.
+ alignas(16) unsigned char hs[1024]{},tc[4096]{};
  handles(hs,isolate);catcher(tc,isolate);
  Pointer ctx=nullptr,value=nullptr;context(isolate,&ctx);
  if(ctx){

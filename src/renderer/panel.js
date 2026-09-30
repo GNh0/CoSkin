@@ -480,16 +480,33 @@ export class Panel {
     setTimeout(() => URL.revokeObjectURL(url), 30000);
   }
   render() {
+    const previousSection = this.shadow.querySelector("section");
+    // Disposing previews can shrink the old page and clamp its scroll position.
+    if (
+      previousSection &&
+      previousSection.getAttribute("data-library-page") !== null
+    )
+      this.libraryScrollPosition = previousSection.scrollTop;
     this.modeLayout.update(this.editing || this.session.previewing);
     this.editToolbar.update();
     this.previewToolbar.update();
     this.host.dataset.theme = document.documentElement.dataset.theme || "dark";
     for (const dispose of this.pageResources) dispose();
     this.pageResources = [];
-    this.shadow.querySelector("section")?.remove();
+    const library =
+      !this.editing &&
+      !this.detail &&
+      !this.settingsOpen &&
+      !this.metadataMode &&
+      !this.deleteConfirm &&
+      !this.closePrompt;
+    const scrollTop = this.libraryScrollTop ?? this.libraryScrollPosition ?? 0;
+    this.libraryScrollTop = undefined;
+    previousSection?.remove();
     const section = h("section", {
       "aria-label": this.editing ? t("panel.editorTitle") : text.title,
     });
+    if (library) section.setAttribute("data-library-page", "");
     if (this.message)
       section.append(h("output", { role: "status", text: this.message }));
     if (this.closePrompt) {
@@ -540,6 +557,7 @@ export class Panel {
       else this.library(section);
     } else this.editor(section);
     this.shadow.append(section);
+    if (library) section.scrollTop = scrollTop;
   }
   library(section) {
     galleryPage(this, section);

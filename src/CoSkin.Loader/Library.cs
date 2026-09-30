@@ -3,6 +3,7 @@ namespace CoSkin;
 
 internal sealed class Library : IDisposable
 {
+    private const int LibraryJsonLimit = 16 * 1024 * 1024;
     private readonly TransferStore transfers;
     internal Func<bool, Task<UpdateResult>>? CheckUpdate { get; set; }
     internal Func<Task<UpdateResult>>? ApplyUpdate { get; set; }
@@ -29,12 +30,15 @@ internal sealed class Library : IDisposable
         Preferences = new RuntimePreferenceStore(this.root);
     }
     private string FilePath(string name) => Path.Combine(root, name);
-    private JsonObject State() => File.Exists(FilePath("library.json")) ? JsonContract.Read(File.ReadAllBytes(FilePath("library.json"))) : new JsonObject { ["themes"] = new JsonObject(), ["bindings"] = new JsonObject(), ["enabled"] = true };
+    private JsonObject State() => File.Exists(FilePath("library.json")) ? JsonContract.Read(File.ReadAllBytes(FilePath("library.json")), LibraryJsonLimit) : new JsonObject { ["themes"] = new JsonObject(), ["bindings"] = new JsonObject(), ["enabled"] = true };
     private void Write(string name, JsonObject value)
     {
         var dest = FilePath(name);
         var tmp = dest + "." + Guid.NewGuid().ToString("N") + ".tmp";
-        File.WriteAllText(tmp, JsonContract.Serialize(value));
+        var serialized = JsonContract.Serialize(value);
+        if (name == "library.json" && System.Text.Encoding.UTF8.GetByteCount(serialized) > LibraryJsonLimit)
+            throw new InvalidDataException("라이브러리 분류 정보의 크기 제한을 초과했습니다.");
+        File.WriteAllText(tmp, serialized);
         File.Move(tmp, dest, true);
         if (name == "library.json")
             StateChanged?.Invoke(new JsonObject { ["themes"] = value["themes"]!.DeepClone(), ["bindings"] = value["bindings"]!.DeepClone(), ["enabled"] = value["enabled"]!.DeepClone() });
@@ -78,8 +82,23 @@ internal sealed class Library : IDisposable
                     ThemeOrganization.WriteTheme(state, Id(), request["metadata"]?.AsObject() ?? throw new InvalidDataException("분류 정보가 필요합니다."));
                     Write("library.json", state);
                     return Summary(state);
+                case "organization-batch":
+                    var changes = request["changes"]?.AsArray() ?? throw new InvalidDataException("일괄 분류 목록이 필요합니다.");
+                    if (changes.Count is < 1 or > 2048) throw new InvalidDataException("한 번에 1~2048개 테마를 정리할 수 있습니다.");
+                    var changedIds = new HashSet<string>(StringComparer.Ordinal);
+                    foreach (var item in changes)
+                    {
+                        var change = item?.AsObject() ?? throw new InvalidDataException("일괄 분류 항목을 확인해 주세요.");
+                        JsonContract.Fields(change, "id", "metadata");
+                        var changedId = JsonContract.String(change, "id");
+                        if (!changedIds.Add(changedId)) throw new InvalidDataException("일괄 분류 목록에 같은 테마가 중복되었습니다.");
+                        ThemeOrganization.WriteTheme(state, changedId, change["metadata"]?.AsObject() ?? throw new InvalidDataException("분류 정보가 필요합니다."));
+                    }
+                    Write("library.json", state);
+                    return Summary(state);
                 case "group-write":
-                    var groupId = ThemeOrganization.WriteGroup(state, request["groupId"]?.GetValue<string>(), JsonContract.String(request, "name"));
+                    var groupId = ThemeOrganization.WriteGroup(state, request["groupId"]?.GetValue<string>(), JsonContract.String(request, "name"),
+                        request["parentId"]?.GetValue<string>(), request.ContainsKey("parentId"));
                     Write("library.json", state);
                     return new JsonObject { ["groupId"] = groupId };
                 case "group-delete":

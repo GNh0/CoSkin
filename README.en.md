@@ -20,14 +20,14 @@ Style Codex with images, animated backgrounds and effects. Pick a theme, preview
 
 CoSkin waits in the tray if started first. Use the desktop **CoSkin** shortcut to start it independently, or **Codex + CoSkin** in the Start menu to launch both. No development tools are needed.
 
-Currently supports **Windows x64 · Codex 26.924.2738.0**. Run both apps at the same Windows privilege level.
+Run Codex and CoSkin on **Windows x64** at the same Windows privilege level. From CoSkin 0.1.6, connection checks the original signatures and runtime capabilities instead of a fixed Codex version list. Verified on Codex 26.928.2636.0. Future changes to the internal connection APIs may require a CoSkin update.
 
 ## What can you customize?
 
 | Feature                 | What you can do                                                                                         |
 | ----------------------- | ------------------------------------------------------------------------------------------------------- |
 | Theme library           | Create, import and delete; preview and apply directly from cards                                        |
-| Organization and search | Combine groups, favorites and tags to find themes                                                       |
+| Organization and search | Nested folder tree, favorites and tags; numbered pages, sorting and multi-select organization             |
 | Details and editing     | Edit theme information, duplicate, edit in the actual app and export                                    |
 | Images, GIFs and video  | Set backgrounds, decorations and icons; loop muted MP4 video; see resolution and aspect recommendations |
 | Text styles             | Theme-tinted automatic text colors or your own color, installed font and weight                         |
@@ -49,7 +49,7 @@ In editing mode, **right-click** the area you want to customize to adjust its im
 
 **Save** keeps your theme changes; **Apply** uses them in the selected scope. Cancel a preview to return to the previous theme. Add and share your own effects with the [custom effects guide](docs/custom-effects.md).
 
-Use the star on a card to mark a **favorite**, and organize **groups and tags** in the detail view. Search, group, tag and favorite filters work together.
+Use the **folder tree** to create, expand and collapse nested folders. **Include subfolders** shows themes across a parent folder, and selection mode moves multiple themes or updates favorites and tags. Numbered, first/last and direct page navigation with 24/48/96 items make large libraries easier to browse. Returning from details preserves the query and list position. [Library guide](docs/theme-library.md)
 
 **Match text colors automatically** prioritizes contrast with a subtle theme tint. When needed, it strengthens the surface behind text to keep bright video readable. Select **Choose manually** in the text editor to choose a color, installed font and weight for that area.
 

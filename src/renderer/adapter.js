@@ -8,11 +8,10 @@ export function visibleMainSurfaces(document) {
     return bounds.width > 0 && bounds.height > 0;
   });
 }
-// These two source-reviewed builds share the same target markers. Themes cannot supply selectors.
+// Discover supported DOM markers at runtime. Themes cannot supply selectors;
+// the host still verifies the signed original application and page identity.
 export class CodexAdapter {
-  constructor(document, version = "26.924.20706") {
-    if (!["26.924.20706", "26.924.22138"].includes(version))
-      throw Error("Unsupported Codex adapter version");
+  constructor(document, version = "unknown") {
     this.document = document;
     this.version = version;
     this.supportedTargets = [

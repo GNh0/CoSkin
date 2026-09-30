@@ -23,14 +23,17 @@ try
         ["signatureMs"] = 20
     };
     var verifiedDiscovery = WindowsLauncher.ValidateDiscovery(discovered);
-    Check(verifiedDiscovery.Build.PackageVersion == "26.924.2738.0" && verifiedDiscovery.App.EndsWith("app", StringComparison.Ordinal), "통합 패키지·서명 응답은 동일 지원 빌드 계약으로 검증");
+    Check(verifiedDiscovery.Version == "26.924.2738.0" && verifiedDiscovery.App.EndsWith("app", StringComparison.Ordinal), "패키지 정체성과 OpenAI 서명을 검증");
     var badSignature = (JsonObject)discovered.DeepClone(); badSignature["status"] = "UnknownError";
     Reject(() => WindowsLauncher.ValidateDiscovery(badSignature), "통합 조회도 무효 서명을 거절");
     var wrongPublisher = (JsonObject)discovered.DeepClone(); wrongPublisher["publisher"] = "Another Publisher";
     Reject(() => WindowsLauncher.ValidateDiscovery(wrongPublisher), "통합 조회도 게시자 변경을 거절");
-    var wrongBuild = (JsonObject)discovered.DeepClone(); wrongBuild["version"] = "26.924.9999.0";
-    try { WindowsLauncher.ValidateDiscovery(wrongBuild); throw new Exception("지원되지 않는 빌드 허용"); }
-    catch (TrayActionException error) { Check(error.Code == "unsupported-codex", "통합 조회도 지원되지 않는 Codex 빌드를 거절"); }
+    var futureBuild = (JsonObject)discovered.DeepClone(); futureBuild["version"] = "27.101.9999.0";
+    Check(WindowsLauncher.ValidateDiscovery(futureBuild).Version == "27.101.9999.0", "새 버전도 원본 서명 검증 후 기능 검사 단계로 진행");
+    var wrongFamily = (JsonObject)discovered.DeepClone(); wrongFamily["family"] = "OpenAI.Codex_foreign";
+    Reject(() => WindowsLauncher.ValidateDiscovery(wrongFamily), "다른 패키지 계열 거절");
+    var malformedPackageVersion = (JsonObject)discovered.DeepClone(); malformedPackageVersion["version"] = "26.924.2738";
+    Reject(() => WindowsLauncher.ValidateDiscovery(malformedPackageVersion), "잘린 패키지 버전 정보 거절");
     var codexLaunches = 0;
     var probeStore = Path.Combine(scratch, "update-readiness-probe");
     await using (var probeClient = new InstanceChannel(probeStore, claimOwnership: false))
@@ -48,10 +51,48 @@ try
     Reject(() => ImageProbe.Validate("assets/video.png", mp4), "MP4 위장 이미지 확장자 거절");
     Reject(() => ImageProbe.Validate("assets/video.mp4", mp4[..^1]), "잘린 MP4 컨테이너 거절");
     Reject(() => ImageProbe.Validate("assets/video.mp4", Box("ftyp", Encoding.ASCII.GetBytes("isom\0\0\0\0"))), "영상 데이터 없는 MP4 거절");
-    var currentBuild = CodexBuilds.Find("26.924.2738.0")!;
-    Check(CodexBuilds.Find("26.924.1866.0")?.AppVersion == "26.924.20706" && currentBuild.AppVersion == "26.924.22138", "검토한 Codex 패키지와 내부 앱 버전의 정확한 대응");
-    Check(CodexBuilds.Find("26.924.2739.0") is null && CodexBuilds.Find("26.924.2738") is null, "검토하지 않은 인접·축약 버전은 자동 지원하지 않음");
-    Check(CodexBuilds.Matches(currentBuild, "26.924.22138", currentBuild.ArchiveHash!) && !CodexBuilds.Matches(currentBuild, "26.924.20706", currentBuild.ArchiveHash!) && !CodexBuilds.Matches(currentBuild, "26.924.22138", new string('0', 64)), "새 Codex는 내부 앱 버전과 검토한 ASAR 해시가 모두 일치해야 함");
+    byte[] AbiFixture(string? omitted = null, bool forwarded = false, bool wrongMachine = false, bool badOrdinal = false)
+    {
+        var exports = NativeAbi.RequiredExports.Where(name => name != omitted).ToArray();
+        var bytes = new byte[8192];
+        using var buffer = new MemoryStream(bytes);
+        using var writer = new BinaryWriter(buffer);
+        void At(int offset, Action write) { buffer.Position = offset; write(); }
+        At(0, () => writer.Write((ushort)0x5a4d));
+        At(0x3c, () => writer.Write(0x80));
+        At(0x80, () => { writer.Write(0x00004550); writer.Write((ushort)(wrongMachine ? 0x14c : 0x8664)); writer.Write((ushort)1); });
+        At(0x94, () => { writer.Write((ushort)240); writer.Write((ushort)0x2022); });
+        At(0x98, () => writer.Write((ushort)0x20b));
+        At(0x98 + 32, () => { writer.Write(0x1000); writer.Write(0x200); });
+        At(0x98 + 56, () => { writer.Write(0x3000); writer.Write(0x200); });
+        At(0x98 + 108, () => writer.Write(16));
+        At(0x98 + 112, () => { writer.Write(0x1000); writer.Write(0x600); });
+        At(0x188, () => { writer.Write(Encoding.ASCII.GetBytes(".text\0\0\0")); writer.Write(0x1e00); writer.Write(0x1000); writer.Write(0x1e00); writer.Write(0x200); });
+        At(0x188 + 36, () => writer.Write(0x60000020));
+        At(0x200 + 20, () => { writer.Write(exports.Length); writer.Write(exports.Length); writer.Write(0x1040); writer.Write(0x1080); writer.Write(0x10c0); });
+        int strings = 0x300;
+        for (var i = 0; i < exports.Length; i++)
+        {
+            At(0x240 + i * 4, () => writer.Write(forwarded ? 0x1010 : 0x2800));
+            At(0x280 + i * 4, () => writer.Write(strings + 0xe00));
+            At(0x2c0 + i * 2, () => writer.Write((ushort)(badOrdinal ? exports.Length : i)));
+            At(strings, () => { writer.Write(Encoding.ASCII.GetBytes(exports[i])); writer.Write((byte)0); });
+            strings += Encoding.ASCII.GetByteCount(exports[i]) + 1;
+        }
+        return bytes;
+    }
+    NativeAbi.Verify(new MemoryStream(AbiFixture()));
+    Check(true, "새 런타임의 실제 x64 연결 함수 계약을 확인");
+    void RejectAbi(byte[] bytes, string name)
+    {
+        try { NativeAbi.Verify(new MemoryStream(bytes)); throw new Exception(name); }
+        catch (TrayActionException error) { Check(error.Code == "incompatible-runtime", name); }
+    }
+    RejectAbi(AbiFixture(omitted: NativeAbi.RequiredExports[0]), "필수 함수가 없으면 연결하지 않음");
+    RejectAbi(AbiFixture(forwarded: true), "다른 DLL로 전달하는 ABI 함수 거절");
+    RejectAbi(AbiFixture(wrongMachine: true), "32비트 런타임은 x64 훅으로 호출하지 않음");
+    RejectAbi(AbiFixture(badOrdinal: true), "파일 밖 ordinal을 가진 연결 함수 거절");
+    RejectAbi(AbiFixture()[..512], "잘린 PE 런타임 거절");
     Task<int> LaunchCodex() { codexLaunches++; return Task.FromResult(61234); }
     var residentOnly = await ResidentLaunch.Try(false, new RuntimePreferences(), LaunchCodex);
     var disabledLaunch = await ResidentLaunch.Try(true, new RuntimePreferences(LaunchWithCodex: false), LaunchCodex);
@@ -72,6 +113,8 @@ try
     var detectionRoot = Path.Combine(scratch, "Program Files");
     string Original(string package) => Path.Combine(detectionRoot, "WindowsApps", package, "app", "ChatGPT.exe");
     Check(ResidentDetection.IsOriginalPath(Original("OpenAI.Codex_26.924.2738.0_x64__2p2nqsd0c76g0"), detectionRoot), "새 패키지 원본 경로 감지는 연결 허가와 독립");
+    Check(WindowsLauncher.RunningOriginal(Original("OpenAI.Codex_26.928.2636.0_x64__2p2nqsd0c76g0"), detectionRoot)?.Version == "26.928.2636.0", "Store 업데이트 중에도 실행 중인 원본 패키지 버전을 확인");
+    Check(WindowsLauncher.RunningOriginal(Original("OpenAI.Codex_26.928.2636.0_x64__foreign"), detectionRoot) is null, "서명이 다른 패키지 경로는 실행 중 원본으로 취급하지 않음");
     Check(!ResidentDetection.IsOriginalPath(Original("OpenAI.Codex_26.924.2738.0_x64__foreign"), detectionRoot), "다른 게시자 패키지 감지 거절");
     Check(!ResidentDetection.IsOriginalPath(Path.Combine(scratch, "ChatGPT.exe"), detectionRoot), "동명 실행파일은 원본 감지 아님");
     Check(!ResidentDetection.IsOriginalPath(Original("OpenAI.Codex_26.924.2738.0_x64__2p2nqsd0c76g0") + ".copy", detectionRoot), "실행파일 경로 전체 일치 필요");
@@ -521,6 +564,135 @@ try
     await store.Handle(new JsonObject { ["op"] = "group-delete", ["groupId"] = groupId }, Validate, Decode);
     summary = await store.Handle(new JsonObject { ["op"] = "list" }, Validate, Decode);
     Check(summary["organization"]?["themes"]?[id]?["groupId"] is null && summary["organization"]?["themes"]?[id]?["favorite"]?.GetValue<bool>() == true && summary["themes"]?[id] is not null, "그룹 삭제는 테마와 즐겨찾기를 유지하고 그룹 지정만 해제");
+    async Task<string> Folder(string name, string? parent = null) => (await store.Handle(new JsonObject
+    {
+        ["op"] = "group-write", ["name"] = name, ["parentId"] = parent
+    }, Validate, Decode))["groupId"]!.GetValue<string>();
+    var folderRoot = await Folder("니케");
+    var folderCharacter = await Folder("라피", folderRoot);
+    var folderBattle = await Folder("전투", folderCharacter);
+    var folderOther = await Folder("앨리스", folderRoot);
+    var folderOtherBattle = await Folder("전투", folderOther);
+    await store.Handle(new JsonObject { ["op"] = "organization-write", ["id"] = id,
+        ["metadata"] = new JsonObject { ["groupId"] = folderBattle } }, Validate, Decode);
+    await store.Handle(new JsonObject { ["op"] = "group-write", ["groupId"] = folderCharacter,
+        ["name"] = "라피 레드후드" }, Validate, Decode);
+    using (var reopened = new Library(store.StorePath))
+    {
+        var folders = await reopened.Handle(new JsonObject { ["op"] = "list" }, Validate, Decode);
+        Check(folders["organization"]?["groups"]?[folderRoot]?.GetValue<string>() == "니케"
+            && folders["organization"]?["groupParents"]?[folderCharacter]?.GetValue<string>() == folderRoot
+            && folders["organization"]?["groupParents"]?[folderBattle]?.GetValue<string>() == folderCharacter,
+            "기존 문자열 그룹과 중첩 부모는 재시작 후 보존되고 이름 변경은 부모를 유지");
+        Check(folders["organization"]?["groups"]?[folderOtherBattle]?.GetValue<string>() == "전투"
+            && folders["organization"]?["themes"]?[id]?["groupId"]?.GetValue<string>() == folderBattle,
+            "서로 다른 폴더에 같은 이름의 하위 폴더 허용 및 테마 연결 유지");
+    }
+    var folderFile = Path.Combine(store.StorePath, "library.json");
+    var folderBytes = File.ReadAllBytes(folderFile);
+    foreach (var invalidFolder in new[]
+    {
+        new JsonObject { ["op"] = "group-write", ["groupId"] = folderRoot, ["name"] = "니케", ["parentId"] = folderBattle },
+        new JsonObject { ["op"] = "group-write", ["groupId"] = folderCharacter, ["name"] = "라피", ["parentId"] = folderCharacter },
+        new JsonObject { ["op"] = "group-write", ["groupId"] = folderCharacter, ["name"] = "라피", ["parentId"] = "missing" },
+        new JsonObject { ["op"] = "group-write", ["name"] = "전투", ["parentId"] = folderCharacter }
+    })
+    {
+        try { await store.Handle(invalidFolder, Validate, Decode); throw new Exception("잘못된 폴더 구조 승인"); }
+        catch (InvalidDataException) { Check(File.ReadAllBytes(folderFile).SequenceEqual(folderBytes), "순환·자기·없는 부모·형제 중복은 저장 없이 거절"); }
+    }
+    await store.Handle(new JsonObject { ["op"] = "group-write", ["groupId"] = folderCharacter,
+        ["name"] = "라피 레드후드", ["parentId"] = null }, Validate, Decode);
+    summary = await store.Handle(new JsonObject { ["op"] = "list" }, Validate, Decode);
+    Check(summary["organization"]?["groupParents"]?[folderCharacter] is null
+        && summary["organization"]?["groupParents"]?[folderBattle]?.GetValue<string>() == folderCharacter,
+        "명시적인 null 부모로 루트 이동해도 하위 폴더 연결 유지");
+    await store.Handle(new JsonObject { ["op"] = "group-write", ["groupId"] = folderCharacter,
+        ["name"] = "라피 레드후드", ["parentId"] = folderRoot }, Validate, Decode);
+    await store.Handle(new JsonObject { ["op"] = "group-delete", ["groupId"] = folderCharacter }, Validate, Decode);
+    summary = await store.Handle(new JsonObject { ["op"] = "list" }, Validate, Decode);
+    Check(summary["organization"]?["groupParents"]?[folderBattle]?.GetValue<string>() == folderRoot
+        && summary["organization"]?["groups"]?[folderBattle] is not null
+        && summary["organization"]?["themes"]?[id]?["groupId"]?.GetValue<string>() == folderBattle,
+        "폴더 삭제는 자식을 상위로 올리고 하위 폴더의 테마를 보존");
+    await store.Handle(new JsonObject { ["op"] = "group-delete", ["groupId"] = folderRoot }, Validate, Decode);
+    summary = await store.Handle(new JsonObject { ["op"] = "list" }, Validate, Decode);
+    Check(summary["organization"]?["groupParents"]?[folderBattle] is null
+        && summary["organization"]?["groupParents"]?[folderOther] is null
+        && summary["organization"]?["groupParents"]?[folderOtherBattle]?.GetValue<string>() == folderOther,
+        "루트 폴더 삭제는 직접 자식만 루트로 승격하고 더 깊은 트리를 보존");
+    await store.Handle(new JsonObject { ["op"] = "group-delete", ["groupId"] = folderBattle }, Validate, Decode);
+    summary = await store.Handle(new JsonObject { ["op"] = "list" }, Validate, Decode);
+    Check(summary["organization"]?["themes"]?[id]?["groupId"] is null
+        && summary["organization"]?["themes"]?[id]?["favorite"]?.GetValue<bool>() == true,
+        "삭제 폴더의 직접 테마만 미분류로 이동하고 즐겨찾기 보존");
+    var depthLibrary = new JsonObject { ["themes"] = new JsonObject() };
+    string? depthParent = null;
+    var depthIds = new List<string>();
+    for (var level = 1; level <= 64; level++)
+    {
+        depthParent = ThemeOrganization.WriteGroup(depthLibrary, null, $"폴더 {level}", depthParent, true);
+        depthIds.Add(depthParent);
+    }
+    Reject(() => ThemeOrganization.WriteGroup(depthLibrary, null, "너무 깊은 폴더", depthParent, true), "64단계보다 깊은 폴더 생성 거절");
+    var movingFolder = ThemeOrganization.WriteGroup(depthLibrary, null, "이동 폴더");
+    ThemeOrganization.WriteGroup(depthLibrary, null, "이동 자식", movingFolder, true);
+    Reject(() => ThemeOrganization.WriteGroup(depthLibrary, movingFolder, "이동 폴더", depthIds[62], true), "이동 시 하위 폴더까지 포함하여 깊이 한도 검사");
+    var fullGroups = new JsonObject();
+    for (var group = 0; group < 4096; group++) fullGroups[$"group-{group}"] = $"폴더 {group}";
+    var fullFolderLibrary = new JsonObject { ["organization"] = new JsonObject
+    {
+        ["groups"] = fullGroups, ["themes"] = new JsonObject()
+    } };
+    Reject(() => ThemeOrganization.WriteGroup(fullFolderLibrary, null, "추가 폴더"), "대규모 라이브러리도 4096개 폴더 용량 제한");
+    var batchPath = Path.Combine(scratch, "organization-batch");
+    Directory.CreateDirectory(batchPath);
+    var batchThemes = new JsonObject();
+    var batchMetadata = new JsonObject();
+    var batchChanges = new JsonArray();
+    for (var item = 0; item < 1200; item++)
+    {
+        var batchId = $"batch.{item:D4}";
+        batchThemes[batchId] = new JsonObject { ["key"] = batchId, ["name"] = $"테마 {item}", ["revision"] = 1 };
+        var preservedTags = new JsonArray();
+        for (var tag = 0; tag < 24; tag++) preservedTags.Add($"{item:D4}-{tag:D2}-" + new string('가', 36));
+        batchMetadata[batchId] = new JsonObject { ["favorite"] = item % 2 == 0, ["tags"] = preservedTags };
+        batchChanges.Add(new JsonObject { ["id"] = batchId, ["metadata"] = new JsonObject { ["groupId"] = "batch-folder" } });
+    }
+    File.WriteAllText(Path.Combine(batchPath, "library.json"), JsonContract.Serialize(new JsonObject
+    {
+        ["themes"] = batchThemes.DeepClone(), ["bindings"] = new JsonObject(), ["enabled"] = true,
+        ["organization"] = new JsonObject { ["groups"] = new JsonObject { ["batch-folder"] = "일괄 정리" }, ["themes"] = batchMetadata }
+    }));
+    using (var batchStore = new Library(batchPath))
+    {
+        var notifications = 0;
+        batchStore.StateChanged += _ => notifications++;
+        var batchResult = await batchStore.Handle(new JsonObject { ["op"] = "organization-batch", ["changes"] = batchChanges }, Validate, Decode);
+        Check(notifications == 1 && batchResult["organization"]?["themes"]?.AsObject().All(item => item.Value?["groupId"]?.GetValue<string>() == "batch-folder") == true,
+            "1200개 일괄 폴더 이동은 한 번 저장·통지로 완료");
+        Check(batchResult["organization"]?["themes"]?["batch.0000"]?["favorite"]?.GetValue<bool>() == true
+            && batchResult["organization"]?["themes"]?["batch.0001"]?["favorite"]?.GetValue<bool>() == false
+            && batchResult["organization"]?["themes"]?["batch.0000"]?["tags"]?.AsArray().Count == 24
+            && JsonNode.DeepEquals(batchResult["themes"], batchThemes), "대규모 일괄 이동은 즐겨찾기·기존 태그·테마 리비전을 보존");
+        using (var reopened = new Library(batchPath))
+            Check((await reopened.Handle(new JsonObject { ["op"] = "list" }, Validate, Decode))["themes"]?.AsObject().Count == 1200
+                && new FileInfo(Path.Combine(batchPath, "library.json")).Length > 2 * 1024 * 1024,
+                "2MiB를 넘는 대규모 라이브러리도 저장 후 재조회");
+        var batchBytes = File.ReadAllBytes(Path.Combine(batchPath, "library.json"));
+        foreach (var invalidChanges in new[]
+        {
+            new JsonArray(new JsonObject { ["id"] = "batch.0000", ["metadata"] = new JsonObject { ["favorite"] = false } },
+                new JsonObject { ["id"] = "missing", ["metadata"] = new JsonObject { ["favorite"] = false } }),
+            new JsonArray(new JsonObject { ["id"] = "batch.0000", ["metadata"] = new JsonObject { ["favorite"] = false } },
+                new JsonObject { ["id"] = "batch.0000", ["metadata"] = new JsonObject { ["favorite"] = true } }),
+            new JsonArray()
+        })
+        {
+            try { await batchStore.Handle(new JsonObject { ["op"] = "organization-batch", ["changes"] = invalidChanges }, Validate, Decode); throw new Exception("잘못된 일괄 분류 승인"); }
+            catch (InvalidDataException) { Check(notifications == 1 && File.ReadAllBytes(Path.Combine(batchPath, "library.json")).SequenceEqual(batchBytes), "일괄 분류 중 오류·중복·빈 요청은 전부 저장 없이 거절"); }
+        }
+    }
     var output = await store.Handle(new JsonObject { ["op"] = "export", ["id"] = id, ["revision"] = 1 }, Validate, Decode);
     var package = Package.Read(Convert.FromBase64String(output["data"]!.GetValue<string>()));
     Check(!package.Files.Keys.Any(key => key.Contains("organization")) && package.Manifest["organization"] is null, "개인 분류 정보는 내보낸 테마에 포함하지 않음");

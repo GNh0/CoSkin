@@ -449,7 +449,7 @@ internal static class Program
             if (request["sessionId"]?.GetValue<string>() != sessionId || request["contractVersion"]?.GetValue<int>() != 1)
                 throw new InvalidDataException("연결 계약 오류");
             var result = await ExecuteRequest(cdp, library, request, windows);
-            if (request["op"]?.GetValue<string>() is "create" or "save" or "import" or "apply" or "disable" or "enable" or "inherit" or "delete" or "motion-policy" or "organization-write" or "group-write" or "group-delete")
+            if (request["op"]?.GetValue<string>() is "create" or "save" or "import" or "apply" or "disable" or "enable" or "inherit" or "delete" or "motion-policy" or "organization-write" or "organization-batch" or "group-write" or "group-delete")
             {
                 var summary = await library.Handle(new JsonObject { ["op"] = "list" }, _ => Task.CompletedTask, (_, _) => Task.CompletedTask);
                 foreach (var window in windows())

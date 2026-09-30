@@ -32,12 +32,12 @@ internal static class TrayMessages
                 "zh" => "Codex界面就绪后CoSkin会连接。请在登录及加载完成后重新打开，主题和图片会保留。",
                 _ => "CoSkin connects when the Codex interface is ready. Open again after signing in and loading finishes. Themes and images are preserved."
             };
-        if (code == "unsupported-codex") return language switch
+        if (code is "unsupported-codex" or "incompatible-runtime") return language switch
         {
-            "ko" => "CoSkin은 실행 중입니다. 현재 Codex 버전의 연결 지원을 아직 확인하지 못했습니다. 테마와 이미지를 보존하고 트레이에서 대기합니다.",
-            "ja" => "CoSkinは起動しています。現在のCodexバージョンへの接続対応は未確認です。テーマと画像を保持し、トレイで待機します。",
-            "zh" => "CoSkin已启动，尚未确认当前Codex版本的连接支持。主题和图片会保留，并在托盘等待。",
-            _ => "CoSkin is running. Connection support for this Codex version has not been verified yet. Themes and images are preserved while CoSkin waits in the tray."
+            "ko" => "현재 Codex에서 CoSkin 연결에 필요한 기능을 확인하지 못했습니다. 테마와 이미지는 보존됩니다. 트레이에서 연결을 다시 시도하거나 CoSkin 업데이트를 확인해 주세요.",
+            "ja" => "現在のCodexでCoSkin接続に必要な機能を確認できませんでした。テーマと画像は保持されます。トレイから接続を再試行するか、CoSkinの更新をご確認ください。",
+            "zh" => "未能确认当前Codex具备CoSkin连接所需的功能。主题和图片会保留。请从托盘重试连接或检查CoSkin更新。",
+            _ => "The required CoSkin connection capabilities could not be verified in Codex. Themes and images are preserved. Retry the connection from the tray or check for a CoSkin update."
         };
         if (code == "codex-running") return language switch
         {

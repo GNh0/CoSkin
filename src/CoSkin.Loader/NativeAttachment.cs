@@ -8,7 +8,6 @@ internal sealed record NativeConnection(int Port, int ProcessId, long Started, C
 
 internal static class NativeAttachment
 {
-    private const string ChromeHash = "B6F5C2323C642C3AD3DFDC3501AA94482970F88B4C12DB0875CE593AECE75C16";
     [DllImport("user32.dll")] private static extern uint GetWindowThreadProcessId(IntPtr window, out uint process);
     [DllImport("user32.dll", SetLastError = true)] private static extern IntPtr SetWindowsHookEx(int type, IntPtr callback, IntPtr module, uint thread);
     [DllImport("user32.dll", SetLastError = true)] private static extern bool PostThreadMessage(uint thread, uint message, UIntPtr w, IntPtr l);
@@ -22,11 +21,12 @@ internal static class NativeAttachment
         var started = process.StartTime.ToUniversalTime().Ticks;
         var executable = NativeWindow.VerifyExecutable(processId);
         var installation = await WindowsLauncher.VerifyRunning(executable);
-        if (installation.PackageVersion != "26.924.2738.0" || !ResidentDetection.IsOriginalPath(executable, Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles)))
-            throw new TrayActionException("unsupported-codex");
-        using (var chrome = File.OpenRead(Path.Combine(Path.GetDirectoryName(executable)!, "chrome.dll")))
-            if (Convert.ToHexString(SHA256.HashData(chrome)) != ChromeHash)
-                throw new TrayActionException("unsupported-codex");
+        if (!ResidentDetection.IsOriginalPath(executable, Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles)))
+            throw new InvalidDataException("Codex 원본 경로에만 독립 연결할 수 있습니다.");
+        var chromePath = Path.Combine(Path.GetDirectoryName(executable)!, "chrome.dll");
+        await WindowsLauncher.VerifySignature(chromePath);
+        NativeAbi.Verify(chromePath);
+        DiagnosticLog.Record("runtime-abi-verified");
         var handle = NativeWindow.AttachmentWindow(processId);
         var thread = GetWindowThreadProcessId(handle, out var owner);
         if (handle == IntPtr.Zero || thread == 0 || owner != processId)
