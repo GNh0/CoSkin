@@ -1,6 +1,6 @@
 # `.coskin` v1 형식과 테마 제작
 
-이 문서는 **CoSkin 0.1.4 소스의 가져오기·검증 코드**를 기준으로 한 공유 테마 파일 사양과 제작 절차다. 새 테마를 AI에게 요청할 때는 이 문서와 [요청문](theme-request-template.md)을 함께 전달하면 된다. 정확한 검증 기준은 [패키지 검사](../src/CoSkin.Loader/Package.cs), [테마 계약](../src/core/engine.ts), [미디어 검사](../src/CoSkin.Loader/ImageProbe.cs)에 있다. 향후 버전에서 형식이 바뀌면 설치된 버전의 코드와 가져오기 결과를 우선한다.
+이 문서는 **CoSkin 0.1.5 소스의 가져오기·검증 코드**를 기준으로 한 공유 테마 파일 사양과 제작 절차다. 새 테마를 AI에게 요청할 때는 이 문서와 [요청문](theme-request-template.md)을 함께 전달하면 된다. 정확한 검증 기준은 [패키지 검사](../src/CoSkin.Loader/Package.cs), [테마 계약](../src/core/engine.ts), [미디어 검사](../src/CoSkin.Loader/ImageProbe.cs)에 있다. 향후 버전에서 형식이 바뀌면 설치된 버전의 코드와 가져오기 결과를 우선한다.
 
 ## 가장 쉬운 제작 방법
 

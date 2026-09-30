@@ -286,8 +286,16 @@ export class Controller {
       }
     });
     this.resizeObserver = new ResizeObserver((entries) => {
-      for (const entry of entries)
-        this.decorations.get(entry.target)?.position();
+      let mainSurfaceResized = false;
+      for (const entry of entries) {
+        const decoration = this.decorations.get(entry.target);
+        if (decoration?.target.target === "main.surface")
+          mainSurfaceResized = true;
+        decoration?.position();
+      }
+      // Codex keeps inactive tab mains mounted at 0×0. A tab switch can
+      // change only geometry, so ordinary mutation discovery will not run.
+      if (mainSurfaceResized) this.schedule();
     });
     this.render();
     return this.status();
@@ -508,6 +516,21 @@ export class Controller {
     this.render();
     if (!this.panel.host.hidden) this.panel.render();
     return this.status();
+  }
+  refreshDecorations() {
+    if (
+      this.disposed || this.preview || this.panel?.session?.previewing ||
+      this.panel?.dirty || this.panel?.editing || this.panel?.busy ||
+      this.externalApplying || this.pending.size
+    )
+      return false;
+    this.stopReplay(false);
+    for (const [element, decoration] of [...this.decorations]) {
+      decoration.dispose();
+      this.removeDecoration(element);
+    }
+    this.render();
+    return true;
   }
   beginExternalUpdate(allowUpdateRequest = false) {
     if (

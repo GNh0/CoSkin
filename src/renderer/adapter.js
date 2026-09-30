@@ -1,5 +1,13 @@
 import { nativeControlNames } from "./adapter-labels.js";
 import { discoverPaintSources } from "./adapter-paint.js";
+export function visibleMainSurfaces(document) {
+  return [
+    ...document.querySelectorAll('main[data-app-shell-main-surface="default"]'),
+  ].filter((element) => {
+    const bounds = element.getBoundingClientRect();
+    return bounds.width > 0 && bounds.height > 0;
+  });
+}
 // These two source-reviewed builds share the same target markers. Themes cannot supply selectors.
 export class CodexAdapter {
   constructor(document, version = "26.924.20706") {
@@ -68,8 +76,7 @@ export class CodexAdapter {
         });
     };
     add("app.background", d.querySelector("#root"));
-    const main = d.querySelector('main[data-app-shell-main-surface="default"]');
-    add("main.surface", main);
+    for (const main of visibleMainSurfaces(d)) add("main.surface", main);
     const sidebar = d.querySelector(
       'aside[data-app-shell-left-panel-appearance="default"]',
     );

@@ -79,6 +79,7 @@ Screens show an unofficial Wuthering Waves Shorekeeper fan-art theme. [Image and
 ## Startup and updates
 
 Change themes or open **CoSkin settings** from the tray.
+If the dark layer over the background disappears, choose **Refresh theme** from the tray to redraw the current theme.
 
 - **Start at Windows sign-in**: keep CoSkin ready to connect when Codex starts.
 - **Exit with Codex**: close CoSkin when the last connected Codex exits.

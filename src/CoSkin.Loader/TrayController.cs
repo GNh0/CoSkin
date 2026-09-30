@@ -162,6 +162,13 @@ internal sealed class TrayController : IDisposable
                 await window.Evaluate("window.__coskin?.panel?.notify(window.__coskin?.trayBusyMessage())");
                 return;
             }
+        if (command.Action == TrayAction.Refresh)
+        {
+            foreach (var window in participants)
+                if ((await window.Evaluate("window.__coskin?.refreshDecorations()"))?.GetValue<bool>() != true)
+                    throw new TrayActionException("busy");
+            return;
+        }
         JsonObject operation;
         if (command.Action == TrayAction.Apply)
             operation = new()

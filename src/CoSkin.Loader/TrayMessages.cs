@@ -1,6 +1,6 @@
 namespace CoSkin;
 
-internal sealed record TrayLabels(string Library, string Settings, string Decoration, string Launch, string ExitTogether, string Exit, string AutomaticUpdates);
+internal sealed record TrayLabels(string Library, string Settings, string Decoration, string Refresh, string Launch, string ExitTogether, string Exit, string AutomaticUpdates);
 internal static class TrayMessages
 {
     internal static TrayLabels For(string locale)
@@ -8,10 +8,10 @@ internal static class TrayMessages
         var language = locale.Split('-', '_')[0].ToLowerInvariant();
         return language switch
         {
-            "ko" => new("테마스킨 목록", "설정", "꾸미기 켜기", "전용 바로가기에서 Codex와 함께 실행", "마지막 Codex 창 종료 시 함께 종료", "CoSkin 종료", "CoSkin 자동 업데이트"),
-            "ja" => new("テーマ一覧", "設定", "カスタマイズを有効にする", "専用ショートカットでCodexと起動", "最後のCodex終了時に終了", "CoSkinを終了", "CoSkinの自動更新"),
-            "zh" => new("主题列表", "设置", "启用装饰", "通过专用快捷方式随Codex启动", "最后一个Codex退出时一起退出", "退出CoSkin", "自动更新CoSkin"),
-            _ => new("Theme library", "Settings", "Enable decoration", "Start with Codex using dedicated shortcut", "Exit when the last Codex window closes", "Exit CoSkin", "Automatically update CoSkin")
+            "ko" => new("테마스킨 목록", "설정", "꾸미기 켜기", "테마 새로고침", "전용 바로가기에서 Codex와 함께 실행", "마지막 Codex 창 종료 시 함께 종료", "CoSkin 종료", "CoSkin 자동 업데이트"),
+            "ja" => new("テーマ一覧", "設定", "カスタマイズを有効にする", "テーマを再表示", "専用ショートカットでCodexと起動", "最後のCodex終了時に終了", "CoSkinを終了", "CoSkinの自動更新"),
+            "zh" => new("主题列表", "设置", "启用装饰", "刷新主题", "通过专用快捷方式随Codex启动", "最后一个Codex退出时一起退出", "退出CoSkin", "自动更新CoSkin"),
+            _ => new("Theme library", "Settings", "Enable decoration", "Refresh theme", "Start with Codex using dedicated shortcut", "Exit when the last Codex window closes", "Exit CoSkin", "Automatically update CoSkin")
         };
     }
     internal static string Error(string locale, string code)

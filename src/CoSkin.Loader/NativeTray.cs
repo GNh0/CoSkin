@@ -3,7 +3,7 @@ namespace CoSkin;
 
 internal enum TrayAction
 {
-    Library, Settings, OpenCodex, ToggleStartup, ToggleDecoration, ToggleLaunch, ToggleExit, ToggleUpdates, Apply, Exit
+    Library, Settings, OpenCodex, ToggleStartup, ToggleDecoration, Refresh, ToggleLaunch, ToggleExit, ToggleUpdates, Apply, Exit
 }
 internal sealed record TrayCommand(TrayAction Action, string? Theme = null);
 internal sealed record TrayTheme(string Id, string Name, bool Applied);
@@ -25,15 +25,18 @@ internal sealed class NativeTray : IDisposable
     private int busy;
     private string lastLocale = "en";
     private bool disposed;
+    private bool menuOpen;
     private readonly Action? targetChanged;
     private readonly WinEventProcedure targetEvent;
-    private IntPtr eventHook;
+    private readonly WinEventProcedure menuFocusEvent;
+    private IntPtr eventHook, menuFocusHook;
     internal NativeTray(Func<TraySnapshot> snapshot, Func<TrayCommand, Task> execute, Action? targetChanged = null)
     {
         this.snapshot = snapshot;
         this.execute = execute;
         this.targetChanged = targetChanged;
         targetEvent = (_, _, hwnd, objectId, childId, _, _) => { if (hwnd != IntPtr.Zero && objectId == 0 && childId == 0) TargetWindowChanged(hwnd); };
+        menuFocusEvent = (_, _, _, _, _, _, _) => CancelMenuWhenFocusLeaves();
         procedure = WindowMessage;
         thread = new Thread(Run) { IsBackground = true, Name = "CoSkin notification icon" };
         thread.SetApartmentState(ApartmentState.STA);
@@ -51,6 +54,20 @@ internal sealed class NativeTray : IDisposable
                 targetChanged?.Invoke();
         }
         catch (Exception error) when (error is ArgumentException or InvalidOperationException or System.ComponentModel.Win32Exception) { }
+    }
+    private void CancelMenuWhenFocusLeaves()
+    {
+        if (!menuOpen || window == IntPtr.Zero)
+            return;
+        var foreground = GetForegroundWindow();
+        if (foreground == IntPtr.Zero || foreground == window)
+            return;
+        // The menu's own popup windows belong to this thread. A different
+        // foreground thread means the user moved to another application.
+        if (GetWindowThreadProcessId(foreground, out _) == GetWindowThreadProcessId(window, out _))
+            return;
+        if (EndMenu())
+            DiagnosticLog.Record("tray-menu-focus-cancel");
     }
     internal Task Ready => ready.Task;
     internal void ShowNotice(string message)
@@ -87,6 +104,8 @@ internal sealed class NativeTray : IDisposable
         catch (Exception error) { ready.TrySetException(error); }
         finally
         {
+            if (menuFocusHook != IntPtr.Zero)
+                UnhookWinEvent(menuFocusHook);
             if (eventHook != IntPtr.Zero)
                 UnhookWinEvent(eventHook);
             var data = IconData();
@@ -149,8 +168,20 @@ internal sealed class NativeTray : IDisposable
             var action = (uint)lParam.ToInt64() & 0xffff;
             if (action is 0x0205 or 0x007B)
             {
-                var packed = wParam.ToUInt64();
-                ShowMenu(new Point { X = unchecked((short)(packed & 0xffff)), Y = unchecked((short)((packed >> 16) & 0xffff)) });
+                // TrackPopupMenu runs a nested message loop. A second shell
+                // callback must not open a second menu inside the first one.
+                if (menuOpen)
+                    DiagnosticLog.Record("tray-menu-reentrant-callback");
+                else
+                {
+                    menuOpen = true;
+                    try
+                    {
+                        var packed = wParam.ToUInt64();
+                        ShowMenu(new Point { X = unchecked((short)(packed & 0xffff)), Y = unchecked((short)((packed >> 16) & 0xffff)) });
+                    }
+                    finally { menuOpen = false; }
+                }
             }
             else if (action is 0x0203 or 0x0400 or 0x0401)
                 Dispatch(new(TrayAction.Library));
@@ -164,6 +195,8 @@ internal sealed class NativeTray : IDisposable
         }
         if (message == Close)
         {
+            if (menuOpen)
+                EndMenu();
             PostQuitMessage(0);
             return IntPtr.Zero;
         }
@@ -194,6 +227,7 @@ internal sealed class NativeTray : IDisposable
         Item(labels.Library, new(TrayAction.Library), blocked, parent: themeMenu);
         AppendMenu(menu, 0x10, (UIntPtr)themeMenu, ResidentMessages.Themes(state.Locale));
         Item(labels.Decoration, new(TrayAction.ToggleDecoration), blocked || !state.Connected, state.Enabled);
+        Item(labels.Refresh, new(TrayAction.Refresh), blocked || !state.Connected || !state.Enabled);
         if (!state.Connected)
             Item(ResidentMessages.OpenCodex(state.Locale), new(TrayAction.OpenCodex), blocked);
         var settingsMenu = CreatePopupMenu();
@@ -214,17 +248,26 @@ internal sealed class NativeTray : IDisposable
                 GetCursorPos(out cursor);
             // A hidden owner cannot reliably become foreground above Windows 11
             // notification overflow. Show a transparent tool owner only for the menu.
-            if (!SetWindowPos(window, new IntPtr(-1), cursor.X, cursor.Y, 1, 1, 0x0010 | 0x0040))
+            if (!SetWindowPos(window, new IntPtr(-1), cursor.X, cursor.Y, 1, 1, 0x0040))
                 throw new System.ComponentModel.Win32Exception(Marshal.GetLastWin32Error());
-            var foreground = SetForegroundWindow(window);
-            if (!foreground)
-                Console.Error.WriteLine("트레이 메뉴 전경 전환이 제한되었습니다. 최상위 팝업 소유 창을 유지합니다.");
+            // TrackPopupMenu does not dismiss on outside clicks unless its owner
+            // is foreground. Never show a menu after foreground activation fails.
+            if (!SetForegroundWindow(window) || GetForegroundWindow() != window)
+                throw new InvalidOperationException("트레이 메뉴 소유 창을 전경으로 활성화하지 못했습니다.");
+            // If another app becomes foreground while the native menu is
+            // tracking, cancel it even when Windows misses the usual dismissal.
+            menuFocusHook = SetWinEventHook(0x0003, 0x0003, IntPtr.Zero, menuFocusEvent, 0, 0, 2);
             selected = TrackPopupMenu(menu, 0x0100 | 0x0002, cursor.X, cursor.Y, 0, window, IntPtr.Zero);
             PostMessage(window, 0, UIntPtr.Zero, IntPtr.Zero);
             returnFocus = selected == 0 && GetForegroundWindow() == window;
         }
         finally
         {
+            if (menuFocusHook != IntPtr.Zero)
+            {
+                UnhookWinEvent(menuFocusHook);
+                menuFocusHook = IntPtr.Zero;
+            }
             ShowWindow(window, 0);
             SetWindowPos(window, new IntPtr(-2), 0, 0, 0, 0, 0x0001 | 0x0002 | 0x0010);
             DestroyMenu(menu);
@@ -326,6 +369,7 @@ internal sealed class NativeTray : IDisposable
     [DllImport("user32.dll")] private static extern IntPtr GetForegroundWindow();
     [DllImport("user32.dll")] private static extern bool SetForegroundWindow(IntPtr window);
     [DllImport("user32.dll")] private static extern bool DestroyMenu(IntPtr menu);
+    [DllImport("user32.dll")] private static extern bool EndMenu();
     [DllImport("user32.dll", SetLastError = true)] private static extern IntPtr CreateIcon(IntPtr instance, int width, int height, byte planes, byte bits, byte[] mask, byte[] pixels);
     [DllImport("user32.dll", CharSet = CharSet.Unicode)] private static extern int MessageBox(IntPtr window, string text, string caption, uint type);
     [DllImport("user32.dll")] private static extern bool DestroyIcon(IntPtr icon);
