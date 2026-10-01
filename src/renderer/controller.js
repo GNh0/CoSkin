@@ -4,7 +4,11 @@ import {
 } from "./scroll-media-policy.js";
 import { applyThemeTypography } from "./theme-typography.js";
 import { heartbeatExpired } from "./heartbeat-policy.js";
-import { mediaMemoryBytes, mediaCacheBudget } from "../core/media-budget.js";
+import {
+  mediaMemoryBytes,
+  mediaCacheBudget,
+  mediaCacheLimits,
+} from "../core/media-budget.js";
 import { t } from "./messages.js";
 import { downloadBytes } from "./file-transfer.js";
 import { isMotionPaused } from "../core/motion-policy.ts";
@@ -393,13 +397,14 @@ export class Controller {
     for (const cached of this.assetCache.values())
       bytes += this.mediaBytes(cached);
     for (const [key, cached] of this.assetCache) {
-      if (bytes <= budget && this.assetCache.size < 64) break;
+      if (bytes <= budget && this.assetCache.size < mediaCacheLimits.assets)
+        break;
       if (active.has(cached)) continue;
       this.assetCache.delete(key);
       bytes -= this.mediaBytes(cached);
       disposeMedia(cached);
     }
-    if (bytes > budget || this.assetCache.size >= 64) {
+    if (bytes > budget || this.assetCache.size >= mediaCacheLimits.assets) {
       disposeMedia(media);
       throw Error(
         "움직이는 이미지와 이미지의 메모리 예산을 초과했습니다. 이미지 크기나 프레임 수를 줄여 주세요.",
@@ -519,9 +524,14 @@ export class Controller {
   }
   refreshDecorations() {
     if (
-      this.disposed || this.preview || this.panel?.session?.previewing ||
-      this.panel?.dirty || this.panel?.editing || this.panel?.busy ||
-      this.externalApplying || this.pending.size
+      this.disposed ||
+      this.preview ||
+      this.panel?.session?.previewing ||
+      this.panel?.dirty ||
+      this.panel?.editing ||
+      this.panel?.busy ||
+      this.externalApplying ||
+      this.pending.size
     )
       return false;
     this.stopReplay(false);
@@ -588,6 +598,7 @@ export class Controller {
   }
   async prepare(summary) {
     const verifiedHashes = new Set();
+    const verifiedMedia = new Set();
     let decodedBytes = 0;
     for (const doc of Object.values(summary.documents)) {
       await validateDocument(doc);
@@ -601,13 +612,20 @@ export class Controller {
         if (verifiedHashes.has(hash)) continue;
         verifiedHashes.add(hash);
         const media = await this.loadMedia(hash);
+        verifiedMedia.add(media);
         decodedBytes += this.mediaBytes(media);
-        if (decodedBytes > 128 * 1024 * 1024)
+        if (decodedBytes > mediaCacheLimits.uhdVideo)
           throw Error(
             "테마 전체 이미지의 메모리 예산을 초과했습니다. 이미지 크기나 프레임 수를 줄여 주세요.",
           );
       }
     }
+    // Determine the same budget as the runtime cache after inspecting all
+    // assets, so a UHD video appearing later cannot make asset order matter.
+    if (decodedBytes > mediaCacheBudget(null, verifiedMedia))
+      throw Error(
+        "테마 전체 이미지의 메모리 예산을 초과했습니다. 이미지 크기나 프레임 수를 줄여 주세요.",
+      );
     return true;
   }
   releaseUnusedMedia() {

@@ -1,10 +1,11 @@
 import { decodeMedia, disposeMedia } from "./media.js";
-import { downloadBytes } from "./file-transfer.js";
+import { downloadBytes, throwIfAborted } from "./file-transfer.js";
 import { resolve } from "../core/engine.ts";
 import { applyThemeTypography } from "./theme-typography.js";
 import { t } from "./messages.js";
 /** Draws a code-owned sample workspace. No current Codex content is read. */
-export async function drawPreviewScene(context, controller, document) {
+export async function drawPreviewScene(context, controller, document, signal) {
+  throwIfAborted(signal);
   const profile = document.theme.profiles.find(
     (p) => p.id === document.manifest.defaultProfile,
   );
@@ -50,12 +51,14 @@ export async function drawPreviewScene(context, controller, document) {
     ])
       for (const layer of Object.values(style(target)))
         if (layer?.image && document.assets[layer.image]) {
+          throwIfAborted(signal);
           const hash = document.assets[layer.image];
           if (images.has(hash)) continue;
           const transfer = await controller.request("asset-read", { hash });
           const mime = transfer.mime;
           if (mime === "image/gif") animatedAssets.add(hash);
-          const bytes = await downloadBytes(controller, transfer);
+          const bytes = await downloadBytes(controller, transfer, signal);
+          throwIfAborted(signal);
           if (mime === "video/mp4") {
             const media = await decodeMedia(bytes, mime);
             videos.push(media);
@@ -65,7 +68,9 @@ export async function drawPreviewScene(context, controller, document) {
               hash,
               await createImageBitmap(new Blob([bytes], { type: mime })),
             );
+          throwIfAborted(signal);
         }
+    throwIfAborted(signal);
     for (const [hash, image] of images)
       previewMedia.set(hash, {
         width: image.width,

@@ -125,7 +125,19 @@ test("행의 동일 스타일 및 불투명도 전환은 미디어 재생성과 
     style: {},
     removeAttribute() {
       writes++;
+      this.style = {};
     },
+  };
+  decoration.position = function () {
+    positions++;
+    if (this.style.icon)
+      Object.assign(this.layers.icon.style, {
+        inset: "auto",
+        left: "8px",
+        top: "3px",
+        width: "26px",
+        height: "26px",
+      });
   };
   const iconStyle = {
     icon: { image: "sha256:delayed", opacity: 1, sizePx: 26 },
@@ -144,6 +156,28 @@ test("행의 동일 스타일 및 불투명도 전환은 미디어 재생성과 
   decoration.set(structuredClone(iconStyle));
   assert.equal(decoration.players.get("icon"), player);
   assert.equal(writes, stableWrites);
+  const fixedIconPaintBox = { ...decoration.layers.icon.style };
+  const beforeBackgroundPositions = positions;
+  decoration.set({
+    ...structuredClone(iconStyle),
+    background: { color: "#654321", opacity: 0.3 },
+  });
+  assert.deepEqual(
+    decoration.layers.icon.style,
+    fixedIconPaintBox,
+    "changing themes or hovering with the same icon must preserve its native glyph-sized paint box",
+  );
+  assert.equal(
+    positions,
+    beforeBackgroundPositions,
+    "an unchanged icon must not trigger a new layout measurement",
+  );
+  assert.equal(decoration.players.get("icon"), player);
+  decoration.set({
+    ...structuredClone(iconStyle),
+    background: { color: "#654321", opacity: 0.5 },
+  });
+  assert.deepEqual(decoration.layers.icon.style, fixedIconPaintBox);
   ready = { frames: [{}] };
   decoration.set(structuredClone(iconStyle));
   assert.notEqual(decoration.players.get("icon"), player);
@@ -243,7 +277,9 @@ test("행의 동일 스타일 및 불투명도 전환은 미디어 재생성과 
   const video = { videoUrl: "blob:wallpaper" };
   const appLayer = {
     style: {},
-    removeAttribute() { this.style = {}; },
+    removeAttribute() {
+      this.style = {};
+    },
   };
   const app = Object.create(context.module.exports.Decoration.prototype);
   Object.assign(app, {
@@ -275,7 +311,9 @@ test("행의 동일 스타일 및 불투명도 전환은 미디어 재생성과 
   assert.equal(app.root.style.borderRadius, "0px");
   const sidebarLayer = {
     style: {},
-    removeAttribute() { this.style = {}; },
+    removeAttribute() {
+      this.style = {};
+    },
   };
   const sidebar = Object.create(context.module.exports.Decoration.prototype);
   Object.assign(sidebar, {

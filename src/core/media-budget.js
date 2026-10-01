@@ -1,5 +1,8 @@
-const IMAGE_BUDGET = 128 * 1024 * 1024;
-const UHD_VIDEO_BUDGET = 256 * 1024 * 1024;
+export const mediaCacheLimits = Object.freeze({
+  standard: 128 * 1024 * 1024,
+  uhdVideo: 256 * 1024 * 1024,
+  assets: 64,
+});
 
 export function mediaMemoryBytes(media) {
   return (
@@ -16,8 +19,8 @@ export function mediaCacheBudget(incoming, active) {
   // plus the current 1080p video while its replacement is prepared.
   // Animated images keep their existing limit; unused videos do not raise it.
   const uhd = (media) =>
-    !!media.videoUrl && media.width * media.height >= 3840 * 2160;
+    !!media?.videoUrl && media.width * media.height >= 3840 * 2160;
   return uhd(incoming) || [...active].some(uhd)
-    ? UHD_VIDEO_BUDGET
-    : IMAGE_BUDGET;
+    ? mediaCacheLimits.uhdVideo
+    : mediaCacheLimits.standard;
 }

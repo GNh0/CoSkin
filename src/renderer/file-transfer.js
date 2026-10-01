@@ -1,16 +1,26 @@
 import { localizedFailure } from "./error-messages.js";
 const CHUNK_BYTES = 24 * 1024;
 
-export async function downloadBytes(controller, { token, length }) {
+export function throwIfAborted(signal) {
+  if (signal?.aborted)
+    throw (
+      signal.reason || new DOMException("Operation cancelled", "AbortError")
+    );
+}
+
+export async function downloadBytes(controller, { token, length }, signal) {
   if (!Number.isSafeInteger(length) || length < 1 || length > 100 * 1024 * 1024)
     throw new Error(localizedFailure({ code: "validation" }));
-  const bytes = new Uint8Array(length);
   try {
+    throwIfAborted(signal);
+    const bytes = new Uint8Array(length);
     for (let offset = 0; offset < length; offset += CHUNK_BYTES) {
+      throwIfAborted(signal);
       const { data } = await controller.request("transfer-read", {
         token,
         offset,
       });
+      throwIfAborted(signal);
       const binary = atob(data);
       if (binary.length !== Math.min(CHUNK_BYTES, length - offset))
         throw new Error(localizedFailure({ code: "validation" }));

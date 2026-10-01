@@ -157,6 +157,10 @@ export class Decoration {
     if (this.summaryStyles && this.style.background)
       this.target.el.setAttribute("data-coskin-summary-paint", "");
     for (const [name, el] of Object.entries(this.layers)) {
+      // The unchanged icon already occupies its native glyph's paint box.
+      // Resetting its inset here without positioning it again stretches its
+      // canvas over the entire row when only another layer changes.
+      if (name === "icon" && !needsPosition) continue;
       el.removeAttribute("style");
       Object.assign(el.style, {
         position: "absolute",
@@ -200,7 +204,10 @@ export class Decoration {
         el.style.backgroundColor = rgba(v.color, 1);
         el.style.opacity = String(v.opacity ?? 1);
         el.style.filter = `blur(${v.blurPx || 0}px)`;
-        if (this.target.target === "app.background" && this.players.get(name)?.media) {
+        if (
+          this.target.target === "app.background" &&
+          this.players.get(name)?.media
+        ) {
           const railTop =
             document
               .querySelector('nav[data-app-navigation-rail="true"]')

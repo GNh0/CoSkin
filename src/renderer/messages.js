@@ -199,6 +199,7 @@ export const messages = {
     close: "Codex 화면으로",
     loadingPreview: "미리보기 준비 중",
     previewAlt: "예시 프로젝트와 채팅으로 만든 테마 미리보기",
+    previewFailed: "테마 미리보기를 준비하지 못했습니다. 다시 열어 주세요.",
     sampleProject: "예시 프로젝트",
     sampleChat: "예시 채팅",
     samplePrompt: "무엇을 만들까요?",
@@ -405,6 +406,8 @@ Keep native controls, text, and buttons readable. Make project and chat rows dis
     close: "Return to Codex",
     loadingPreview: "Preparing preview",
     previewAlt: "Theme preview with sample projects and chats",
+    previewFailed:
+      "The theme preview could not be prepared. Reopen it to try again.",
     sampleProject: "Sample project",
     sampleChat: "Sample chat",
     samplePrompt: "What will you create?",
@@ -610,6 +613,8 @@ Keep native controls, text, and buttons readable. Make project and chat rows dis
     close: "Codex に戻る",
     loadingPreview: "プレビューを準備中",
     previewAlt: "サンプルのプロジェクトとチャットを使ったテーマプレビュー",
+    previewFailed:
+      "テーマのプレビューを準備できませんでした。開き直してください。",
     sampleProject: "サンプルプロジェクト",
     sampleChat: "サンプルチャット",
     samplePrompt: "何を作りましょうか？",
@@ -797,6 +802,7 @@ Keep native controls, text, and buttons readable. Make project and chat rows dis
     close: "返回 Codex",
     loadingPreview: "正在准备预览",
     previewAlt: "使用示例项目和聊天的主题预览",
+    previewFailed: "无法准备主题预览。请重新打开以重试。",
     sampleProject: "示例项目",
     sampleChat: "示例聊天",
     samplePrompt: "想创建什么？",
