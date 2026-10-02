@@ -517,6 +517,21 @@ try
     }
     await using (var restarted = new InstanceChannel(Path.Combine(scratch, "instance")))
         Check(restarted.IsOwner, "종료 뒤 단일 인스턴스 소유권 반환");
+    await using (var importOwner = new InstanceChannel(Path.Combine(scratch, "slow-import-instance")))
+    await using (var importClient = new InstanceChannel(Path.Combine(scratch, "slow-import-instance")))
+    {
+        importOwner.Start(async (command, cancellationToken) =>
+        {
+            if (command["op"]?.GetValue<string>() == "import")
+                await Task.Delay(TimeSpan.FromSeconds(31), cancellationToken);
+            return new JsonObject { ["ok"] = true };
+        });
+        using var importReplyDeadline = new CancellationTokenSource(TimeSpan.FromSeconds(40));
+        var imported = await importClient.Send(new JsonObject { ["op"] = "import" }, importReplyDeadline.Token);
+        Check(imported["ok"]!.GetValue<bool>(), "30초를 넘는 실제 가져오기 채널도 응답을 보존");
+        var healthy = await importClient.Send(new JsonObject { ["op"] = "health" }, importReplyDeadline.Token);
+        Check(healthy["ok"]!.GetValue<bool>(), "느린 가져오기 뒤 같은 소유 채널 정상 요청 유지");
+    }
     var bundle = Path.Combine(scratch, "bundle");
     Directory.CreateDirectory(bundle);
     foreach (var name in new[] { "CoSkin.Loader.exe", "renderer.js", "THIRD-PARTY-NOTICES.txt" })

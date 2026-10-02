@@ -20,6 +20,10 @@ internal sealed class InstanceChannel : IAsyncDisposable
         get;
     }
 
+    internal static TimeSpan CommandTimeout(JsonObject command) => command["op"]?.GetValue<string>() == "import"
+        ? TimeSpan.FromMinutes(15)
+        : TimeSpan.FromSeconds(30);
+
     internal InstanceChannel(string store, bool claimOwnership = true)
     {
         var canonical = Path.TrimEndingDirectorySeparator(Path.GetFullPath(store)).ToUpperInvariant();
@@ -74,7 +78,11 @@ internal sealed class InstanceChannel : IAsyncDisposable
                     var request = await Read(pipe, deadline.Token);
                     if (request.Count != 2 || request["version"]?.GetValue<int>() != 1 || request["command"] is not JsonObject)
                         throw new InvalidDataException("실행 요청 형식이 올바르지 않습니다.");
-                    reply = await handler(request["command"]!.AsObject(), deadline.Token);
+                    var command = request["command"]!.AsObject();
+                    // Reading an initial request stays short. Validating and storing a large
+                    // media package uses the same bounded budget as a renderer import.
+                    deadline.CancelAfter(CommandTimeout(command));
+                    reply = await handler(command, deadline.Token);
                 }
                 catch (Exception error) when (error is not OperationCanceledException)
                 {

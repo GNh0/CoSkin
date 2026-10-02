@@ -5,6 +5,7 @@ import {
   GreetingVisibility,
 } from "../src/renderer/background-view.js";
 import { structuralShellPaintSources } from "../src/renderer/adapter-paint.js";
+import { mutationNeedsDiscovery } from "../src/renderer/mutation-impact.js";
 
 const descendants = (element) => [
   element,
@@ -14,6 +15,8 @@ function matches(element, selector) {
   return selector.split(",").some((part) => {
     const tag = part.trim().match(/^[a-z][\w-]*/i)?.[0];
     if (tag && tag.toUpperCase() !== element.tagName) return false;
+    const id = part.trim().match(/#([\w-]+)/)?.[1];
+    if (id && element.getAttribute("id") !== id) return false;
     const classes = [...part.matchAll(/\.([\w-]+)/g)].map((m) => m[1]);
     if (
       !classes.every((name) =>
@@ -22,20 +25,25 @@ function matches(element, selector) {
     )
       return false;
     return [
-      ...part.matchAll(/\[([\w-]+)(?:(=|\*=)"([^"]*)"(?:\s+(i))?)?\]/g),
+      ...part.matchAll(/\[([\w-]+)(?:(=|\*=|~=)"([^"]*)"(?:\s+(i))?)?\]/g),
     ].every((m) => {
       const actual = element.getAttribute(m[1]);
       if (actual === null) return false;
       if (!m[2]) return true;
       const value = m[4] ? actual.toLowerCase() : actual;
       const expected = m[4] ? m[3].toLowerCase() : m[3];
-      return m[2] === "*=" ? value.includes(expected) : value === expected;
+      return m[2] === "*="
+        ? value.includes(expected)
+        : m[2] === "~="
+          ? value.split(/\s+/).includes(expected)
+          : value === expected;
     });
   });
 }
 class Element extends EventTarget {
   constructor(tag, owner) {
     super();
+    this.nodeType = 1;
     this.tagName = tag.toUpperCase();
     this.ownerDocument = owner;
     this.children = [];
@@ -157,6 +165,9 @@ function fixture() {
   const root = doc.createElement("div");
   root.style.setProperty("top", "40px");
   doc.body.append(root);
+  const backgroundLayer = doc.createElement("div");
+  backgroundLayer.style.setProperty("clip-path", "inset(80px 0 0 0)");
+  root.append(backgroundLayer);
   const video = {},
     player = {
       video,
@@ -174,6 +185,7 @@ function fixture() {
     target: { target: "app.background" },
     style: { background: { image: "sha256:fixture", color: "#171b24" } },
     players: new Map([["background", player]]),
+    layers: { background: backgroundLayer },
   };
   const c = {
     decorations: new Map([[root, decoration]]),
@@ -195,6 +207,7 @@ function fixture() {
     foreground,
     input,
     root,
+    backgroundLayer,
     player,
     decoration,
     c,
@@ -258,6 +271,22 @@ test("the button stays in native flex flow with added controls and falls back wh
   f.view.refresh();
   assert.ok(f.view.button.parentElement === f.header);
   assert.equal(f.view.toggle(false), true);
+  f.view.dispose();
+});
+
+test("background-only excludes the native titlebar once and restores the original image clip on exit", () => {
+  const f = fixture();
+  const sourceClip = f.backgroundLayer.style.getPropertyValue("clip-path");
+  f.view.toggle(true);
+  assert.equal(f.root.style.getPropertyValue("top"), "40px");
+  assert.equal(f.backgroundLayer.style.getPropertyValue("clip-path"), "none");
+  assert.equal(f.player.viewportTop, 0);
+  assert.equal(f.decoration.players.get("background"), f.player);
+  f.view.toggle(false);
+  assert.equal(
+    f.backgroundLayer.style.getPropertyValue("clip-path"),
+    sourceClip,
+  );
   f.view.dispose();
 });
 test("a retained inert titlebar is ignored and a live div titlebar keeps its native controls", () => {
@@ -393,6 +422,120 @@ test("greeting hiding excludes chat messages and controls and restores the lates
   assert.equal(glyph.style.getPropertyValue("visibility"), "");
   f.view.dispose();
 });
+test("native project hero with an inline project selector hides its text, logo and home suggestions without hiding the composer", () => {
+  const f = fixture();
+  const hero = f.doc.createElement("div"),
+    logoWrapper = f.doc.createElement("div"),
+    logo = f.doc.createElement("svg"),
+    heading = f.doc.createElement("div"),
+    title = f.doc.createElement("span"),
+    project = f.doc.createElement("button");
+  heading.setAttribute("data-feature", "game-source");
+  heading.setAttribute("class", "heading-xl text-center");
+  heading.textContent = "CustomCodex에서 무엇을 만들어볼까요?";
+  title.textContent = heading.textContent;
+  project.setAttribute("type", "button");
+  project.textContent = "CustomCodex";
+  title.append(project);
+  heading.append(title);
+  logoWrapper.append(logo);
+  hero.append(logoWrapper, heading);
+  const suggestions = f.doc.createElement("div"),
+    suggestion = f.doc.createElement("button"),
+    elsewhere = f.doc.createElement("aside"),
+    otherSuggestion = f.doc.createElement("button");
+  suggestions.setAttribute("class", "group/home-suggestion-list-item relative");
+  suggestion.setAttribute("data-home-suggestion-id", "local-project-task");
+  suggestion.setAttribute("aria-describedby", "project-task-tooltip");
+  suggestions.append(suggestion);
+  f.foreground.append(hero, suggestions);
+  otherSuggestion.setAttribute(
+    "data-home-suggestion-id",
+    "unrelated-page-task",
+  );
+  elsewhere.append(otherSuggestion);
+  f.doc.body.append(elsewhere);
+  const tooltip = f.doc.createElement("div"),
+    otherTooltip = f.doc.createElement("div");
+  tooltip.setAttribute("id", "project-task-tooltip");
+  tooltip.setAttribute("role", "tooltip");
+  otherTooltip.setAttribute("id", "other-tooltip");
+  otherTooltip.setAttribute("role", "tooltip");
+  f.doc.body.append(tooltip, otherTooltip);
+  const visibility = new GreetingVisibility();
+  visibility.refresh(true);
+  assert.equal(heading.style.getPropertyValue("visibility"), "hidden");
+  assert.equal(logo.style.getPropertyValue("visibility"), "hidden");
+  assert.equal(suggestions.style.getPropertyValue("visibility"), "hidden");
+  assert.equal(tooltip.style.getPropertyValue("visibility"), "hidden");
+  assert.equal(otherSuggestion.style.getPropertyValue("visibility"), "");
+  assert.equal(otherTooltip.style.getPropertyValue("visibility"), "");
+  assert.equal(f.input.style.getPropertyValue("visibility"), "");
+  visibility.refresh(false);
+  for (const element of [heading, logo, suggestions, tooltip])
+    assert.equal(element.style.getPropertyValue("visibility"), "");
+  visibility.dispose();
+  f.view.dispose();
+});
+
+test("Home task suggestions and a later linked tooltip hide before the hero mounts", () => {
+  const f = fixture();
+  f.foreground.setAttribute("data-new-tab-scroll-root", "");
+  const row = f.doc.createElement("div"),
+    trigger = f.doc.createElement("button"),
+    tooltip = f.doc.createElement("div");
+  row.setAttribute("class", "group/home-suggestion-list-item relative");
+  trigger.setAttribute("data-home-suggestion-id", "local-project-task");
+  row.append(trigger);
+  f.foreground.append(row);
+  const message = f.doc.createElement("article"),
+    quotedRow = f.doc.createElement("div");
+  quotedRow.setAttribute("class", "group/home-suggestion-list-item");
+  message.append(quotedRow);
+  f.foreground.append(message);
+  const visibility = new GreetingVisibility();
+  visibility.refresh(true);
+  assert.equal(row.style.getPropertyValue("visibility"), "hidden");
+  assert.equal(quotedRow.style.getPropertyValue("visibility"), "");
+  trigger.setAttribute("aria-describedby", "late-home-tooltip");
+  tooltip.setAttribute("id", "late-home-tooltip");
+  tooltip.setAttribute("role", "tooltip");
+  f.doc.body.append(tooltip);
+  visibility.refresh(true);
+  assert.equal(tooltip.style.getPropertyValue("visibility"), "hidden");
+  assert.equal(f.input.style.getPropertyValue("visibility"), "");
+  visibility.refresh(false);
+  assert.equal(row.style.getPropertyValue("visibility"), "");
+  assert.equal(tooltip.style.getPropertyValue("visibility"), "");
+  visibility.dispose();
+  f.view.dispose();
+});
+
+test("streamed paragraphs do not rediscover decorations while a newly mounted greeting does", () => {
+  const f = fixture();
+  const message = f.doc.createElement("article"),
+    paragraph = f.doc.createElement("p"),
+    greeting = f.doc.createElement("p");
+  paragraph.textContent = "A new conversation paragraph";
+  greeting.textContent = "무엇을 만들까요?";
+  message.append(paragraph);
+  f.foreground.append(message, greeting);
+  const mutation = (target, added) => ({
+    type: "childList",
+    target,
+    addedNodes: [added],
+    removedNodes: [],
+  });
+  assert.equal(mutationNeedsDiscovery([mutation(message, paragraph)]), false);
+  assert.equal(
+    mutationNeedsDiscovery([mutation(f.foreground, greeting)]),
+    true,
+  );
+  message.append(greeting);
+  assert.equal(mutationNeedsDiscovery([mutation(message, greeting)]), false);
+  f.view.dispose();
+});
+
 test("new page shell wrappers are detected by geometry while the computer panel and message cards keep native paint", () => {
   const f = fixture();
   const bounds = {

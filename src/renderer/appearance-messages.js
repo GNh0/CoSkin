@@ -4,7 +4,7 @@ const messages = {
   ko: {
     hideGreeting: "시작 화면 안내 숨기기",
     hideGreetingHelp:
-      "새 채팅과 프로젝트의 시작 문구·장식 아이콘을 숨깁니다. 입력창은 유지됩니다.",
+      "새 채팅과 프로젝트의 시작 문구·장식 아이콘·작업 제안을 숨깁니다. 입력창은 유지됩니다.",
     backgroundOnly: "배경만 보기",
     restore: "화면 복구",
     restoreHelp: "화면 복구 · Esc",
@@ -19,7 +19,7 @@ const messages = {
   en: {
     hideGreeting: "Hide start screen greeting",
     hideGreetingHelp:
-      "Hide the greeting and decorative icon on new chats and projects. Keep the composer visible.",
+      "Hide the greeting, decorative icon and Home suggestions on new chats and projects. Keep the composer visible.",
     backgroundOnly: "Background only",
     restore: "Restore interface",
     restoreHelp: "Restore interface · Esc",
@@ -34,7 +34,7 @@ const messages = {
   ja: {
     hideGreeting: "開始画面の案内を非表示",
     hideGreetingHelp:
-      "新しいチャットとプロジェクトの案内・装飾アイコンを隠します。入力欄は残ります。",
+      "新しいチャットとプロジェクトの案内・装飾アイコン・作業提案を隠します。入力欄は残ります。",
     backgroundOnly: "背景のみ表示",
     restore: "画面を復元",
     restoreHelp: "画面を復元 · Esc",
@@ -48,7 +48,7 @@ const messages = {
   },
   "zh-CN": {
     hideGreeting: "隐藏开始页面提示",
-    hideGreetingHelp: "隐藏新聊天和项目的提示与装饰图标，保留输入框。",
+    hideGreetingHelp: "隐藏新聊天和项目的提示、装饰图标与主页任务建议，保留输入框。",
     backgroundOnly: "仅显示背景",
     restore: "恢复界面",
     restoreHelp: "恢复界面 · Esc",

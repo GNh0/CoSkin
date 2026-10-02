@@ -5,6 +5,9 @@ export const titlebarSelector =
   '.h-toolbar.draggable,[data-app-shell-titlebar="true"]';
 const greetings = new Set([
   "무엇을 만들까요?",
+  "무엇을 작업할까요?",
+  "어떤 작업을 할까요?",
+  "What should we build?",
   "What shall we build?",
   "What would you like to build?",
   "何を作りましょうか？",
@@ -12,12 +15,39 @@ const greetings = new Set([
 ]);
 const protectedGreeting =
   '[data-coskin-ui],[data-coskin-decoration],[data-message-id],[data-message-author-role],[data-app-action-timeline-scroll],article,pre,iframe,webview,[role="dialog"],[role="menu"],.monaco-editor,.cm-editor,[contenteditable="true"]';
-const greetingHeadingSelector = 'h1,h2,[role="heading"],p';
+export const nativeGreetingSelector = '[data-feature="game-source"].heading-xl';
+export const homeSuggestionSelector =
+  '[data-home-suggestion-id],[class~="group/home-suggestion-list-item"]';
+export const greetingHeadingSelector =
+  'h1,h2,h3,[role="heading"],p,[data-start-screen-greeting],[data-home-empty-state],' +
+  nativeGreetingSelector;
+const greetingInputs = 'input,textarea,select,form,[contenteditable="true"]';
 function isGreeting(element) {
   const text = (element.textContent || "").trim().replace(/\s+/g, " ");
   return (
     greetings.has(text) ||
-    /^(?:.{1,200}에서\s+)?무엇을\s+(?:만들까요|만들어\s*볼까요)\?$/.test(text)
+    /^(?:.{1,200}에서\s*)?무엇을\s*(?:만들까요|만들어\s*볼까요|작업할까요)\?$/.test(
+      text,
+    ) ||
+    /^What should we (?:build|work on) in .{1,200}\?$/.test(text)
+  );
+}
+export function greetingMutationNeedsDiscovery(record) {
+  const element =
+    record.target.nodeType === 1 ? record.target : record.target.parentElement;
+  if (!element || element.closest(protectedGreeting)) return false;
+  const candidate = element.closest(
+    greetingHeadingSelector + "," + homeSuggestionSelector,
+  );
+  return !!(
+    candidate &&
+    (candidate.matches(
+      nativeGreetingSelector +
+        "," +
+        homeSuggestionSelector +
+        ',h1,h2,h3,[role="heading"],[data-start-screen-greeting],[data-home-empty-state]',
+    ) ||
+      ((candidate.textContent || "").length <= 350 && isGreeting(candidate)))
   );
 }
 export function greetingElements(root) {
@@ -45,26 +75,79 @@ export function greetingElements(root) {
   }
   for (const element of candidates) {
     if (element.closest(protectedGreeting)) continue;
-    if (element.querySelector('input,textarea,button,[contenteditable="true"]'))
+    const nativeHeading = element.matches(nativeGreetingSelector);
+    if (
+      element.querySelector(greetingInputs) ||
+      (!nativeHeading && element.querySelector('button,[role="button"]'))
+    )
       continue;
     if (
       element.matches("[data-start-screen-greeting],[data-home-empty-state]") &&
       !element.querySelector('input,textarea,button,[contenteditable="true"]')
     ) {
       result.add(element);
-    } else if (isGreeting(element)) {
+    } else if (nativeHeading || isGreeting(element)) {
       result.add(element);
-      const parent = element.parentElement;
-      if (
-        parent &&
-        !parent.querySelector('input,textarea,button,[contenteditable="true"]')
-      )
+      // The current project hero has a nested project selector button. Only
+      // that heading's control is part of the greeting; nearby controls remain protected.
+      for (
+        let parent = element.parentElement, depth = 0;
+        parent && depth < 3;
+        parent = parent.parentElement, depth++
+      ) {
+        if (
+          parent.closest(protectedGreeting) ||
+          parent.querySelector(greetingInputs) ||
+          [...parent.querySelectorAll('button,a,[role="button"]')].some(
+            (control) => !element.contains(control),
+          )
+        )
+          break;
         for (const icon of parent.querySelectorAll(
           "svg,[data-start-screen-icon]",
         ))
-          result.add(icon);
+          if (!icon.closest('button,a,[role="button"]')) result.add(icon);
+      }
+      const screen = element.closest(
+        '[data-new-tab-scroll-root],main,[role="main"],[data-app-shell-focus-area="main"]',
+      );
+      if (screen)
+        for (const candidate of screen.querySelectorAll(
+          homeSuggestionSelector,
+        )) {
+          const row =
+            candidate.closest('[class~="group/home-suggestion-list-item"]') ||
+            candidate;
+          if (!row.closest(protectedGreeting)) result.add(row);
+        }
     }
   }
+  // The Home list and hero mount independently. Its exact native row contract
+  // inside the new-tab screen is enough to hide a suggestion before the hero arrives.
+  for (const candidate of root.querySelectorAll(homeSuggestionSelector)) {
+    const row =
+      candidate.closest('[class~="group/home-suggestion-list-item"]') ||
+      candidate;
+    if (
+      row.closest("[data-new-tab-scroll-root]") &&
+      !row.closest(protectedGreeting)
+    )
+      result.add(row);
+  }
+  // A tooltip can live in a portal outside the Home main. Hide only descriptions
+  // explicitly linked to the opening elements, never unrelated menus/tooltips.
+  const descriptions = new Set();
+  for (const element of result)
+    for (const control of [
+      element,
+      ...element.querySelectorAll("[aria-describedby]"),
+    ])
+      for (const id of (control.getAttribute("aria-describedby") || "").split(
+        /\s+/,
+      ))
+        if (id) descriptions.add(id);
+  for (const tooltip of root.querySelectorAll('[role="tooltip"]'))
+    if (descriptions.has(tooltip.getAttribute("id"))) result.add(tooltip);
   return result;
 }
 export class GreetingVisibility {
@@ -297,6 +380,10 @@ export class BackgroundView {
       "background-color": dec.style.background.color || "#171b24",
     }))
       this.scope.set(dec.root, key, value);
+    // The fixed root already begins below the native controls. Reusing the
+    // normal app layer's titlebar clip would cut that inset from the image a second time.
+    if (dec.layers?.background)
+      this.scope.set(dec.layers.background, "clip-path", "none");
     const preserve = [dec.root, header, this.button].filter(Boolean);
     const covered = new Set();
     const release = (element) => {

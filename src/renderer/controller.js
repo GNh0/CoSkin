@@ -315,6 +315,7 @@ export class Controller {
     this.observer.observe(document.body, {
       subtree: true,
       childList: true,
+      characterData: true,
       attributes: true,
       attributeFilter: [
         "hidden",
@@ -335,6 +336,9 @@ export class Controller {
         "data-app-shell-focus-area",
         "data-start-screen-greeting",
         "data-home-empty-state",
+        "data-feature",
+        "data-home-suggestion-id",
+        "aria-describedby",
         "role",
         "data-app-action-sidebar-thread-id",
         "data-app-action-sidebar-thread-selected",

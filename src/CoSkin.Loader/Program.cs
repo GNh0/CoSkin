@@ -50,7 +50,7 @@ internal static class Program
                 launchRequest["path"] = options.ImportPath;
             if (!instance.IsOwner)
             {
-                using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(35));
+                using var deadline = new CancellationTokenSource(InstanceChannel.CommandTimeout(launchRequest) + TimeSpan.FromSeconds(5));
                 var reply = await instance.Send(launchRequest, deadline.Token);
                 if (reply["ok"]?.GetValue<bool>() != true)
                     throw new TrayActionException(reply["code"]?.GetValue<string>() ?? "startup");
