@@ -403,6 +403,8 @@ export class Panel {
     }, 400);
   }
   declare() {
+    const required = new Set(this.doc.manifest.requirements?.required || []);
+    const optional = new Set(this.doc.manifest.requirements?.optional || []);
     const used = new Set();
     for (const p of this.doc.theme.profiles)
       for (const r of p.rules) {
@@ -411,7 +413,10 @@ export class Panel {
           for (const effects of Object.values(s.motion?.events || {}))
             for (const e of effects) used.add("effect:" + e.effect + "@1");
       }
-    this.doc.manifest.requirements = { required: [...used], optional: [] };
+    this.doc.manifest.requirements = {
+      required: [...used].filter((id) => required.has(id) || !optional.has(id)),
+      optional: [...used].filter((id) => optional.has(id) && !required.has(id)),
+    };
   }
   preview() {
     this.c.preview = { document: this.doc, profile: this.profile };

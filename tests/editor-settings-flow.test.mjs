@@ -306,6 +306,45 @@ test("saving an unchanged inspector is disabled and a draft save retains separat
   assert.equal(panel.c.summary.bindings.global.id, "applied.other");
 });
 
+test("editing a theme retains its optional UI targets and effects when a Codex window lacks them", () => {
+  const { panel } = setup();
+  panel.doc.manifest.requirements = {
+    required: ["target:app.background", "effect:icon.pulse@1"],
+    optional: ["target:message.surface", "target:popover.surface", "effect:move.slide@1"],
+  };
+  panel.doc.theme.profiles[0].rules = [
+    { target: "app.background", states: { base: {} } },
+    { target: "message.surface", states: { base: {} } },
+    { target: "popover.surface", states: { hover: { motion: { events: { hover: [{ effect: "move.slide" }, { effect: "icon.pulse" }] } } } } },
+  ];
+  panel.declare();
+  assert.deepEqual(panel.doc.manifest.requirements, {
+    required: ["target:app.background", "effect:icon.pulse@1"],
+    optional: ["target:message.surface", "target:popover.surface", "effect:move.slide@1"],
+  });
+  // Repeated style edits must not progressively turn optional decorations into
+  // requirements that reject a different Codex window.
+  panel.declare();
+  assert.equal(panel.doc.manifest.requirements.required.includes("target:popover.surface"), false);
+});
+
+test("declaration still requires new features and removes capabilities whose rules were deleted", () => {
+  const { panel } = setup();
+  panel.doc.manifest.requirements = {
+    required: ["target:main.surface", "target:sidebar.surface"],
+    optional: ["target:sidebar.surface", "target:popover.surface"],
+  };
+  panel.doc.theme.profiles[0].rules = [
+    { target: "sidebar.surface", states: { base: {} } },
+    { target: "app.background", states: { base: {} } },
+  ];
+  panel.declare();
+  assert.deepEqual(panel.doc.manifest.requirements, {
+    required: ["target:sidebar.surface", "target:app.background"],
+    optional: [],
+  });
+});
+
 test("metadata cancel discards only the form and never writes the underlying theme", async () => {
   const { panel, calls, original } = setup({ metadataMode: "edit" });
   const form = themeMetadata(panel);
