@@ -12,7 +12,7 @@ internal sealed record TraySnapshot(string Locale, bool Connected, bool Enabled,
 /// <summary>A native message loop owns the notification icon. Async commands never block that loop.</summary>
 internal sealed class NativeTray : IDisposable
 {
-    private const uint Callback = 0x8001, Notice = 0x8002, Close = 0x0010;
+    private const uint Callback = 0x8001, Notice = 0x8002, Close = 0x0010, Timer = 0x0113;
     private readonly System.Collections.Concurrent.ConcurrentQueue<string> notices = new();
     private readonly Func<TraySnapshot> snapshot;
     private readonly Func<TrayCommand, Task> execute;
@@ -24,12 +24,15 @@ internal sealed class NativeTray : IDisposable
     private uint taskbarCreated;
     private int busy;
     private string lastLocale = "en";
-    private bool disposed;
+    private volatile bool disposed;
     private bool menuOpen;
     private readonly Action? targetChanged;
     private readonly WinEventProcedure targetEvent;
     private readonly WinEventProcedure menuFocusEvent;
     private IntPtr eventHook, menuFocusHook;
+    private readonly TrayIconRecovery iconRecovery;
+    private UIntPtr retryTimer;
+    private uint retryTimerSequence = 0xC500;
     internal NativeTray(Func<TraySnapshot> snapshot, Func<TrayCommand, Task> execute, Action? targetChanged = null)
     {
         this.snapshot = snapshot;
@@ -38,6 +41,8 @@ internal sealed class NativeTray : IDisposable
         targetEvent = (_, _, hwnd, objectId, childId, _, _) => { if (hwnd != IntPtr.Zero && objectId == 0 && childId == 0) TargetWindowChanged(hwnd); };
         menuFocusEvent = (_, _, _, _, _, _, _) => CancelMenuWhenFocusLeaves();
         procedure = WindowMessage;
+        iconRecovery = new TrayIconRecovery(NotifyIcon, ScheduleIconRetry, CancelIconRetry,
+            (stage, reason) => DiagnosticLog.Record(stage, reason: reason));
         thread = new Thread(Run) { IsBackground = true, Name = "CoSkin notification icon" };
         thread.SetApartmentState(ApartmentState.STA);
         thread.Start();
@@ -70,6 +75,7 @@ internal sealed class NativeTray : IDisposable
             DiagnosticLog.Record("tray-menu-focus-cancel");
     }
     internal Task Ready => ready.Task;
+    internal bool IconAvailable => iconRecovery.Registered;
     internal void ShowNotice(string message)
     {
         notices.Enqueue(message);
@@ -90,7 +96,9 @@ internal sealed class NativeTray : IDisposable
                 throw new System.ComponentModel.Win32Exception(Marshal.GetLastWin32Error());
             icon = CreateOwnIcon();
             taskbarCreated = RegisterWindowMessage("TaskbarCreated");
-            AddIcon();
+            // Explorer can be restarting or unavailable in a restricted session.
+            // The resident message loop remains usable while its icon recovers.
+            iconRecovery.Restore();
             eventHook = SetWinEventHook(0x8000, 0x8002, IntPtr.Zero, targetEvent, 0, 0, 2);
             ready.SetResult();
             if (disposed)
@@ -108,8 +116,7 @@ internal sealed class NativeTray : IDisposable
                 UnhookWinEvent(menuFocusHook);
             if (eventHook != IntPtr.Zero)
                 UnhookWinEvent(eventHook);
-            var data = IconData();
-            ShellNotifyIcon(2, ref data);
+            iconRecovery.Dispose();
             if (icon != IntPtr.Zero)
                 DestroyIcon(icon);
             if (window != IntPtr.Zero)
@@ -130,14 +137,25 @@ internal sealed class NativeTray : IDisposable
         Info = "",
         InfoTitle = ""
     };
-    private void AddIcon()
+    private int? NotifyIcon(uint command, uint version)
     {
         var data = IconData();
-        if (!ShellNotifyIcon(0, ref data))
-            throw new System.ComponentModel.Win32Exception(Marshal.GetLastWin32Error());
-        data.Timeout = 4; // NOTIFYICON_VERSION_4 shares the uTimeout/uVersion field.
-        if (!ShellNotifyIcon(4, ref data))
-            throw new System.ComponentModel.Win32Exception(Marshal.GetLastWin32Error());
+        data.Timeout = version; // NOTIFYICON_VERSION_4 shares uTimeout/uVersion.
+        Marshal.SetLastPInvokeError(0);
+        return ShellNotifyIcon(command, ref data) ? null : Marshal.GetLastPInvokeError();
+    }
+    private bool ScheduleIconRetry(uint delayMs)
+    {
+        CancelIconRetry();
+        // Distinct timer IDs discard already queued events from a previous retry.
+        retryTimer = SetTimer(window, new UIntPtr(++retryTimerSequence), delayMs, IntPtr.Zero);
+        return retryTimer != UIntPtr.Zero;
+    }
+    private void CancelIconRetry()
+    {
+        if (retryTimer == UIntPtr.Zero) return;
+        KillTimer(window, retryTimer);
+        retryTimer = UIntPtr.Zero;
     }
     private IntPtr WindowMessage(IntPtr hwnd, uint message, UIntPtr wParam, IntPtr lParam)
     {
@@ -160,7 +178,12 @@ internal sealed class NativeTray : IDisposable
     {
         if (message == taskbarCreated && taskbarCreated != 0)
         {
-            AddIcon();
+            iconRecovery.Restore();
+            return IntPtr.Zero;
+        }
+        if (message == Timer && retryTimer != UIntPtr.Zero && wParam == retryTimer)
+        {
+            iconRecovery.Retry();
             return IntPtr.Zero;
         }
         if (message == Callback)
@@ -197,6 +220,7 @@ internal sealed class NativeTray : IDisposable
         {
             if (menuOpen)
                 EndMenu();
+            iconRecovery.Dispose();
             PostQuitMessage(0);
             return IntPtr.Zero;
         }
@@ -357,6 +381,8 @@ internal sealed class NativeTray : IDisposable
     [DllImport("user32.dll")] private static extern bool DestroyWindow(IntPtr window);
     [DllImport("user32.dll")] private static extern void PostQuitMessage(int exit);
     [DllImport("user32.dll")] private static extern bool PostMessage(IntPtr window, uint message, UIntPtr wParam, IntPtr lParam);
+    [DllImport("user32.dll", SetLastError = true)] private static extern UIntPtr SetTimer(IntPtr window, UIntPtr id, uint delayMs, IntPtr callback);
+    [DllImport("user32.dll")] private static extern bool KillTimer(IntPtr window, UIntPtr id);
     [DllImport("user32.dll", CharSet = CharSet.Unicode)] private static extern uint RegisterWindowMessage(string name);
     [DllImport("shell32.dll", EntryPoint = "Shell_NotifyIconW", CharSet = CharSet.Unicode, SetLastError = true)] private static extern bool ShellNotifyIcon(uint command, ref NotificationIcon icon);
     [DllImport("user32.dll")] private static extern IntPtr CreatePopupMenu();
@@ -373,4 +399,84 @@ internal sealed class NativeTray : IDisposable
     [DllImport("user32.dll", SetLastError = true)] private static extern IntPtr CreateIcon(IntPtr instance, int width, int height, byte planes, byte bits, byte[] mask, byte[] pixels);
     [DllImport("user32.dll", CharSet = CharSet.Unicode)] private static extern int MessageBox(IntPtr window, string text, string caption, uint type);
     [DllImport("user32.dll")] private static extern bool DestroyIcon(IntPtr icon);
+}
+
+/// <summary>All operations run on the tray owner thread; a failed shell call is not a resident failure.</summary>
+internal sealed class TrayIconRecovery : IDisposable
+{
+    private static readonly uint[] RetryDelays = [500, 1000, 2000, 5000, 10000];
+    private readonly Func<uint, uint, int?> notify;
+    private readonly Func<uint, bool> schedule;
+    private readonly Action cancel;
+    private readonly Action<string, string> record;
+    private bool active, retryPending, ownedIcon, disposed;
+    private volatile bool registered;
+    internal bool Registered => registered;
+    internal int Attempts { get; private set; }
+    internal bool RetryPending => retryPending;
+    internal TrayIconRecovery(Func<uint, uint, int?> notify, Func<uint, bool> schedule, Action cancel, Action<string, string> record)
+    {
+        this.notify = notify; this.schedule = schedule; this.cancel = cancel; this.record = record;
+    }
+    internal void Restore()
+    {
+        if (disposed || active) return;
+        registered = false;
+        active = true;
+        Attempts = 0;
+        Attempt();
+    }
+    internal void Retry()
+    {
+        if (disposed || !active || !retryPending) return;
+        retryPending = false;
+        cancel();
+        Attempt();
+    }
+    private void RemoveOwnedIcon()
+    {
+        if (ownedIcon && notify(2, 0) is null) ownedIcon = false;
+    }
+    private void Attempt()
+    {
+        Attempts++;
+        RemoveOwnedIcon();
+        var error = notify(0, 0);
+        var operation = "NIM_ADD";
+        if (error is null)
+        {
+            ownedIcon = true;
+            operation = "NIM_SETVERSION";
+            error = notify(4, 4);
+            if (error is null)
+            {
+                registered = true;
+                active = false;
+                cancel();
+                record("tray-icon-ready", "attempt=" + Attempts);
+                return;
+            }
+            // An icon with unknown callback packing must not expose a broken menu.
+            RemoveOwnedIcon();
+        }
+        record("tray-icon-registration-failed", operation + ";error=" + error + ";attempt=" + Attempts);
+        if (Attempts <= RetryDelays.Length)
+        {
+            retryPending = true;
+            if (schedule(RetryDelays[Attempts - 1])) return;
+            retryPending = false;
+            record("tray-icon-retry-unavailable", "SetTimer failed; resident remains active");
+        }
+        else record("tray-icon-retries-exhausted", "Waiting for a future TaskbarCreated message; resident remains active");
+        active = false;
+        cancel();
+    }
+    public void Dispose()
+    {
+        if (disposed) return;
+        disposed = true;
+        active = retryPending = registered = false;
+        cancel();
+        RemoveOwnedIcon();
+    }
 }

@@ -16,10 +16,11 @@ from typing import Optional
 import zipfile
 
 
-MAX_PACKAGE = 100 * 1024 * 1024
-MAX_EXPANDED = 250 * 1024 * 1024
+MAX_PACKAGE = 768 * 1024 * 1024
+MAX_EXPANDED = 768 * 1024 * 1024
 MAX_JSON = 2 * 1024 * 1024
 MAX_MEDIA = 25 * 1024 * 1024
+MAX_VIDEO = 512 * 1024 * 1024
 MAX_FILES = 512
 PATH_PATTERN = re.compile(r"^[a-z0-9_./-]{1,240}$")
 RESERVED = re.compile(r"^(con|prn|aux|nul|com[1-9]|lpt[1-9])(\.|$)")
@@ -67,13 +68,15 @@ def collect(source: Path) -> dict[str, bytes]:
         if not safe_path(name):
             raise ValueError(f"Invalid package path: {name}")
         if name.startswith(("assets/", "preview/")) and not name.endswith(
-            (".png", ".jpg", ".jpeg", ".gif", ".mp4")
+            (".png", ".jpg", ".jpeg", ".gif", ".mp4", ".webm")
         ):
             raise ValueError(f"Unsupported media extension: {name}")
         if name.lower() in (previous.lower() for previous in files):
             raise ValueError(f"Duplicate package path: {name}")
+        limit = MAX_JSON if name.endswith(".json") else MAX_VIDEO if name.endswith((".mp4", ".webm")) else MAX_MEDIA
+        if path.stat().st_size > limit:
+            raise ValueError(f"File exceeds size limit: {name}")
         data = path.read_bytes()
-        limit = MAX_JSON if name.endswith(".json") else MAX_MEDIA
         if len(data) > limit:
             raise ValueError(f"File exceeds size limit: {name}")
         files[name] = data
@@ -142,7 +145,7 @@ def package(source: Path, destination: Path) -> None:
                 entry.create_system = 0
                 archive.writestr(entry, files[name])
         if temporary.stat().st_size > MAX_PACKAGE:
-            raise ValueError("Archive exceeds 100 MiB")
+            raise ValueError("Archive exceeds 768 MiB")
         with zipfile.ZipFile(temporary) as archive:
             if archive.testzip() is not None:
                 raise ValueError("ZIP integrity check failed")

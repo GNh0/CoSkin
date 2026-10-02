@@ -9,6 +9,8 @@ internal sealed class NativeConnectionDiscovery(string store, int? requestedProc
     private NativeConnection? verified;
     private volatile bool retryPending;
     internal bool RetryPending => retryPending;
+    internal NativeConnection? VerifiedConnection(int processId, int port) => VerifiedInstallation(processId, port) is null ? null : Volatile.Read(ref verified);
+    internal void Invalidate() => Volatile.Write(ref verified, null);
     internal CodexInstallation? VerifiedInstallation(int processId, int port)
     {
         var current = Volatile.Read(ref verified);
@@ -26,6 +28,9 @@ internal sealed class NativeConnectionDiscovery(string store, int? requestedProc
         try
         {
         retryPending = false;
+        var current = Volatile.Read(ref verified);
+        if (current is not null && VerifiedInstallation(current.ProcessId, current.Port) is not null && NativeWindow.ListenerProcess(current.Port) == current.ProcessId)
+            return current.Port;
         foreach (var id in ResidentDetection.OriginalProcesses().Where(id => requestedProcess is null || id == requestedProcess).Order())
         {
             token.ThrowIfCancellationRequested();

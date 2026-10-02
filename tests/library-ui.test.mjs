@@ -69,6 +69,7 @@ class Element {
   append(...children) {
     for (const child of children) {
       child.parent = this;
+      for (const element of all(child)) element.isConnected = this.isConnected;
       this.children.push(child);
     }
   }
@@ -77,7 +78,10 @@ class Element {
     this.children.unshift(...children);
   }
   replaceChildren(...children) {
-    for (const child of this.children) child.parent = null;
+    for (const child of this.children) {
+      for (const element of all(child)) element.isConnected = false;
+      child.parent = null;
+    }
     this.children = [];
     this.content = "";
     this.append(...children);
@@ -88,6 +92,7 @@ class Element {
         (child) => child !== this,
       );
     this.parent = null;
+    for (const element of all(this)) element.isConnected = false;
   }
   querySelectorAll(selector) {
     return all(this)
@@ -120,15 +125,27 @@ class Element {
   reportValidity() {
     return true;
   }
+  showModal() {
+    this.open = this.modal = true;
+  }
+  close() {
+    this.open = this.modal = false;
+  }
   async emit(key, values = {}) {
     const event = {
       target: this,
-      preventDefault() {},
-      stopPropagation() {},
+      defaultPrevented: false,
+      preventDefault() {
+        this.defaultPrevented = true;
+      },
+      stopPropagation() {
+        this.cancelBubble = true;
+      },
       ...values,
     };
     if (this["on" + key]) await this["on" + key](event);
     for (const listener of this.listeners[key] || []) await listener(event);
+    return event;
   }
 }
 const all = (root) => [root, ...root.children.flatMap(all)];
@@ -202,6 +219,19 @@ function setup(location = "all") {
         if (data.parentId)
           catalog.organization.groupParents[id] = data.parentId;
         else delete catalog.organization.groupParents[id];
+      }
+      if (op === "group-delete") {
+        const parents = catalog.organization.groupParents || {};
+        const parent = parents[data.groupId];
+        for (const [id, previous] of Object.entries(parents))
+          if (previous === data.groupId) {
+            if (parent) parents[id] = parent;
+            else delete parents[id];
+          }
+        delete catalog.organization.groups[data.groupId];
+        delete parents[data.groupId];
+        for (const metadata of Object.values(catalog.organization.themes))
+          if (metadata.groupId === data.groupId) delete metadata.groupId;
       }
       return {};
     },
@@ -418,12 +448,9 @@ test("folder creation sets the selected parent and reparenting excludes itself a
     { op: "group-write", name: "New child", parentId: "root" },
   );
   panel.groupManagerQuery = "NIKKE";
+  panel.groupManagerSelected = "root";
   const edit = groupManager(panel);
-  const rootRow = byClass(edit, "group-row").find(
-    (row) =>
-      row.children.find((element) => element.tagName === "INPUT")?.value ===
-      "NIKKE",
-  );
+  const rootRow = edit.querySelector('[data-group-edit="root"]');
   const parentPicker = byClass(rootRow, "library-picker")[0];
   const labels = byClass(parentPicker, "picker-options")[0].children.map(
     (element) => element.textContent,
@@ -449,6 +476,7 @@ test("moving a folder's last descendant themes preserves selection and shows the
   await byText(panel.shadow, "Select all 2 results").emit("click");
   panel.batchGroup = "other";
   panel.render();
+  await byFocus(panel.shadow, "batch-organize").emit("click");
   await byText(panel.shadow, "Move to selected folder").emit("click");
   assert.equal(
     requests.filter((request) => request.op === "organization-batch").length,
@@ -469,21 +497,44 @@ test("moving a folder's last descendant themes preserves selection and shows the
   assert.equal(panel.selected, "theme.0999");
 });
 
-test("4096-folder gallery and manager mount only bounded tree rows and picker options", async () => {
+test("4096-folder tree scrolls continuously with bounded rows and keyboard access to the last folder", async () => {
   const { panel, catalog } = setup();
   catalog.organization.groups = Object.fromEntries(
     Array.from({ length: 4096 }, (_, i) => ["folder." + i, "Folder " + i]),
   );
   panel.render();
-  assert.equal(byClass(panel.shadow, "folder-tree-row").length, 24);
+  assert.ok(byClass(panel.shadow, "folder-tree-row").length <= 40);
   for (const options of byClass(panel.shadow, "picker-options"))
     assert.ok(options.children.length <= 13);
-  await byFocus(panel.shadow, "folder-tree-last").emit("click");
-  assert.equal(panel.folderTreePage, 170);
-  assert.equal(byClass(panel.shadow, "folder-tree-row").length, 16);
+  const tree = byClass(panel.shadow, "folder-tree")[0];
+  await tree.emit("keydown", {
+    key: "End",
+    target: byFocus(panel.shadow, "sidebar-folder-folder.0"),
+  });
+  assert.ok(panel.folderTreeScrollTop > 100000);
+  assert.ok(byClass(panel.shadow, "folder-tree-row").length <= 40);
   assert.ok(byFocus(panel.shadow, "sidebar-folder-folder.4095"));
+  assert.equal(
+    document.activeElement.getAttribute("data-folder-id"),
+    "folder.4095",
+  );
+  await tree.emit("keydown", {
+    key: "ArrowUp",
+    target: document.activeElement,
+  });
+  assert.equal(
+    document.activeElement.getAttribute("data-folder-id"),
+    "folder.4094",
+  );
+  await tree.emit("keydown", { key: "Home", target: document.activeElement });
+  assert.equal(
+    document.activeElement.getAttribute("data-folder-id"),
+    "folder.0",
+  );
+  assert.equal(panel.folderTreeScrollTop, 0);
   const manager = groupManager(panel);
-  assert.equal(byClass(manager, "group-row").length, 12);
+  assert.equal(byClass(manager, "group-list-row").length, 12);
+  assert.equal(byClass(manager, "group-row").length, 0);
   for (const options of byClass(manager, "picker-options"))
     assert.ok(options.children.length <= 13);
   assert.ok(all(manager).length < 1200);
@@ -551,7 +602,7 @@ test("gallery keeps bounded options and cards, page size position, empty results
   const { panel, observers } = setup();
   for (const picker of byClass(panel.shadow, "picker-options"))
     assert.ok(picker.children.length <= 13);
-  assert.equal(byClass(panel.shadow, "library-picker").length, 5);
+  assert.equal(byClass(panel.shadow, "library-picker").length, 4);
   await byFocus(panel.shadow, "library-top-page-3").emit("click");
   const size = byLabel(panel.shadow, "Themes per page");
   size.value = "48";
@@ -578,7 +629,7 @@ test("gallery keeps bounded options and cards, page size position, empty results
   assert.equal(observers(), 0);
   assert.equal(panel.librarySelection.size, 1);
   assert.match(
-    byClass(panel.shadow, "batch-organization")[0].textContent,
+    byClass(panel.shadow, "batch-selection-bar")[0].textContent,
     /1 selected themes outside/,
   );
   assert.equal(byFocus(panel.shadow, "library-top-next").disabled, true);
@@ -627,34 +678,25 @@ test("group manager bounds 240 groups, preserves drafts and leaves the gallery p
   const { panel } = setup();
   panel.page = 7;
   const manager = groupManager(panel);
-  assert.equal(byClass(manager, "group-row").length, 12);
-  const field = byClass(manager, "group-row")[0].children.find(
-    (element) => element.tagName === "INPUT",
-  );
+  assert.equal(byClass(manager, "group-list-row").length, 12);
+  await byClass(manager, "group-list-row")[0].emit("click");
+  assert.equal(byClass(manager, "group-row").length, 1);
+  const field = byLabel(manager, "Folder name");
   field.value = "Pending new name";
   await field.emit("input");
   await byFocus(manager, "group-manager-next").emit("click");
   assert.equal(panel.groupManagerPage, 1);
   assert.equal(panel.page, 7);
   await byFocus(manager, "group-manager-first").emit("click");
-  assert.equal(
-    byClass(manager, "group-row")[0].children.find(
-      (element) => element.tagName === "INPUT",
-    ).value,
-    "Pending new name",
-  );
+  assert.equal(byLabel(manager, "Folder name").value, "Pending new name");
   const search = byLabel(manager, "Search folders to manage");
   search.value = "Group 239";
   await search.emit("input");
-  assert.equal(byClass(manager, "group-row").length, 1);
+  assert.equal(byClass(manager, "group-list-row").length, 1);
+  await byClass(manager, "group-list-row")[0].emit("click");
   assert.equal(panel.groupManagerPage, 0);
   assert.equal(panel.page, 7);
-  assert.equal(
-    byClass(manager, "group-row")[0].children.find(
-      (element) => element.tagName === "INPUT",
-    ).value,
-    "Group 239",
-  );
+  assert.equal(byLabel(manager, "Folder name").value, "Group 239");
 });
 
 test("detail organization uses searchable groups and submits only the chosen group and tags", async () => {
@@ -1285,4 +1327,198 @@ test("drop rejects external files and unknown, empty, duplicate, excessive or al
   });
   assert.match(panel.message, /already in this folder/);
   assert.equal(requests.length, 0);
+});
+
+test("the initial browser keeps advanced controls closed and management forms out of the contents", () => {
+  const { panel } = setup("");
+  const toolbar = byClass(panel.shadow, "library-toolbar")[0];
+  assert.equal(toolbar.children.length, 2);
+  assert.equal(toolbar.querySelectorAll("select").length, 0);
+  assert.equal(byClass(panel.shadow, "library-filter-menu")[0].open, false);
+  assert.equal(byClass(panel.shadow, "library-options-menu")[0].open, false);
+  assert.equal(byClass(panel.shadow, "explorer-view-menu")[0].open, false);
+  assert.equal(byClass(panel.shadow, "group-manager").length, 0);
+  assert.equal(byClass(panel.shadow, "batch-organization").length, 0);
+  assert.equal(byClass(panel.shadow, "library-dialog").length, 0);
+});
+
+test("folder creation uses a modal, closes a nested picker before the modal, and keeps drafts and navigation on cancellation", async () => {
+  const { panel, catalog, requests } = setup("");
+  panel.page = 4;
+  panel.filter = "Group";
+  panel.render();
+  const contents = JSON.stringify(catalog);
+  await byFocus(panel.shadow, "explorer-create-folder").emit("click");
+  const dialog = panel.shadow.querySelector('[data-library-dialog="folders"]');
+  assert.equal(dialog.open, true);
+  assert.equal(dialog.modal, true);
+  assert.equal(
+    byClass(panel.shadow, "explorer-content")[0].contains(dialog),
+    false,
+  );
+  const name = byLabel(dialog, "Folder name");
+  assert.equal(document.activeElement, name);
+  name.value = "Unsaved folder";
+  await name.emit("input");
+  const picker = byClass(dialog, "library-picker")[0];
+  picker.open = true;
+  const escape = await dialog.emit("keydown", {
+    key: "Escape",
+    target: picker.children[1].children[0],
+    composedPath: () => [picker.children[1].children[0], picker, dialog],
+  });
+  assert.equal(escape.defaultPrevented, true);
+  await picker.emit("keydown", escape);
+  assert.equal(picker.open, false);
+  assert.equal(panel.manageGroups, true);
+  await dialog.emit("keydown", { key: "Escape" });
+  assert.equal(panel.manageGroups, false);
+  assert.equal(dialog.open, false);
+  assert.equal(byClass(panel.shadow, "library-dialog").length, 0);
+  assert.equal(
+    document.activeElement,
+    byFocus(panel.shadow, "explorer-create-folder"),
+  );
+  assert.equal(panel.groupCreateDraft, "Unsaved folder");
+  assert.equal(panel.page, 4);
+  assert.equal(panel.filter, "Group");
+  assert.equal(panel.selected, "theme.0999");
+  assert.equal(requests.length, 0);
+  assert.equal(JSON.stringify(catalog), contents);
+  await byFocus(panel.shadow, "explorer-create-folder").emit("click");
+  assert.equal(
+    byLabel(panel.shadow.querySelector("dialog"), "Folder name").value,
+    "Unsaved folder",
+  );
+  await panel.shadow.querySelector("dialog").emit("cancel");
+});
+
+test("folder management edits one selected folder and deletion confirms before the existing metadata-only API", async () => {
+  const { panel, catalog, requests } = setup("");
+  explorerCatalog(panel, catalog);
+  const themes = JSON.stringify(catalog.themes);
+  const bindings = JSON.stringify(catalog.bindings);
+  const original = JSON.stringify(catalog.organization);
+  await byFocus(panel.shadow, "folder-actions-root").emit("click");
+  let dialog = panel.shadow.querySelector("dialog");
+  assert.equal(dialog.open, true);
+  assert.equal(byClass(dialog, "group-row").length, 1);
+  assert.equal(byClass(dialog, "group-list-row").length, 7);
+  assert.equal(dialog.querySelector('[data-group-edit="root"]') !== null, true);
+  await byText(dialog, "Delete").emit("click");
+  dialog = panel.shadow.querySelector("dialog");
+  assert.equal(byClass(dialog, "group-delete-confirm").length, 1);
+  assert.equal(requests.length, 0);
+  await byText(byClass(dialog, "group-delete-confirm")[0], "Cancel").emit(
+    "click",
+  );
+  assert.equal(JSON.stringify(catalog.organization), original);
+  await byText(panel.shadow.querySelector("dialog"), "Delete").emit("click");
+  await byText(
+    byClass(panel.shadow.querySelector("dialog"), "group-delete-confirm")[0],
+    "Delete",
+  ).emit("click");
+  assert.equal(requests.filter(({ op }) => op === "group-delete").length, 1);
+  assert.equal(catalog.organization.groups.root, undefined);
+  assert.equal(catalog.organization.groupParents.unit, undefined);
+  assert.equal(catalog.organization.themes["theme.0003"].groupId, undefined);
+  assert.equal(catalog.organization.themes["theme.0000"].groupId, "battle");
+  assert.equal(JSON.stringify(catalog.themes), themes);
+  assert.equal(JSON.stringify(catalog.bindings), bindings);
+});
+
+test("selection opens a separate move dialog and applies one batch while preserving hidden selections, media and bindings", async () => {
+  const { panel, catalog, requests } = setup();
+  const themes = JSON.stringify(catalog.themes);
+  const bindings = JSON.stringify(catalog.bindings);
+  await byText(panel.shadow, "Select to organize").emit("click");
+  assert.equal(byClass(panel.shadow, "batch-organization").length, 0);
+  assert.equal(byFocus(panel.shadow, "batch-organize").disabled, true);
+  for (const id of ["theme.0000", "theme.0001"]) {
+    const checkbox = byFocus(panel.shadow, "select-" + id);
+    checkbox.checked = true;
+    await checkbox.emit("change");
+  }
+  const metadata = structuredClone(catalog.organization.themes);
+  const search = byLabel(panel.shadow, "Search name, character, skin, or type");
+  search.value = "0000";
+  await search.emit("change");
+  await byFocus(panel.shadow, "batch-organize").emit("click");
+  const dialog = panel.shadow.querySelector(
+    '[data-library-dialog="organization"]',
+  );
+  assert.equal(dialog.open, true);
+  assert.equal(
+    byClass(panel.shadow, "explorer-content")[0].contains(dialog),
+    false,
+  );
+  assert.match(dialog.textContent, /1 selected themes outside/);
+  const picker = byClass(dialog, "library-picker")[0];
+  await byText(picker, "Group 11").emit("click");
+  await byText(dialog, "Move to selected folder").emit("click");
+  const batch = requests.filter(({ op }) => op === "organization-batch");
+  assert.equal(batch.length, 1);
+  assert.deepEqual(batch[0].changes, [
+    { id: "theme.0000", metadata: { groupId: "group.11" } },
+    { id: "theme.0001", metadata: { groupId: "group.11" } },
+  ]);
+  for (const id of ["theme.0000", "theme.0001"])
+    assert.deepEqual(catalog.organization.themes[id], {
+      ...metadata[id],
+      groupId: "group.11",
+    });
+  assert.equal(JSON.stringify(catalog.themes), themes);
+  assert.equal(JSON.stringify(catalog.bindings), bindings);
+  await panel.shadow.querySelector("dialog").emit("cancel");
+  assert.equal(panel.batchOrganizationOpen, false);
+  assert.equal(panel.librarySelectionMode, true);
+  assert.deepEqual([...panel.librarySelection], ["theme.0000", "theme.0001"]);
+  assert.equal(document.activeElement, byFocus(panel.shadow, "batch-organize"));
+});
+
+test("a deep selection is revealed in a 4096-folder virtual tree while later manual scroll survives rerenders", async () => {
+  const { panel, catalog } = setup();
+  catalog.organization.groups = Object.fromEntries(
+    Array.from({ length: 4072 }, (_, i) => ["folder." + i, "Folder " + i]),
+  );
+  catalog.organization.groupParents = {};
+  for (let i = 0; i < 24; i++) {
+    const id = "deep." + i;
+    catalog.organization.groups[id] = "Deep " + i;
+    catalog.organization.groupParents[id] = i
+      ? "deep." + (i - 1)
+      : "folder.4071";
+  }
+  panel.groupFilter = "deep.23";
+  panel.folderTreeScrollTop = 0;
+  panel.render();
+  await Promise.resolve();
+  assert.ok(panel.folderTreeScrollTop > 100000);
+  assert.equal(panel.folderExpanded.size, 24);
+  const selected = byFocus(panel.shadow, "sidebar-folder-deep.23");
+  assert.equal(selected.getAttribute("aria-selected"), "true");
+  assert.equal(selected.getAttribute("aria-level"), "25");
+  assert.equal(selected.getAttribute("tabindex"), "0");
+  assert.ok(byClass(panel.shadow, "folder-tree-row").length <= 40);
+  let tree = byClass(panel.shadow, "folder-tree")[0];
+  tree.scrollTop = 640;
+  await tree.emit("scroll");
+  panel.render();
+  await Promise.resolve();
+  assert.equal(panel.folderTreeScrollTop, 640);
+  assert.equal(byFocus(panel.shadow, "sidebar-folder-deep.23"), undefined);
+  assert.ok(byClass(panel.shadow, "folder-tree-row").length <= 40);
+  tree = byClass(panel.shadow, "folder-tree")[0];
+  const first = byClass(panel.shadow, "folder-tree-row")[0].children.at(-1);
+  await tree.emit("keydown", { key: "End", target: first });
+  assert.equal(
+    document.activeElement.getAttribute("data-folder-id"),
+    "deep.23",
+  );
+  await tree.emit("keydown", { key: "Home", target: document.activeElement });
+  assert.equal(
+    document.activeElement.getAttribute("data-folder-id"),
+    "folder.0",
+  );
+  assert.equal(panel.folderTreeScrollTop, 0);
 });

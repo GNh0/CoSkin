@@ -530,6 +530,11 @@ export const controlMessages = {
 };
 
 Object.assign(controlMessages.ko, {
+  runtimeStorageTitle: "테마 전체 보관 폴더",
+  runtimeStorageHelp: "모든 테마의 이미지와 영상을 한 폴더에 함께 보관합니다. 저장하면 기존 파일을 복사하고 확인한 뒤 새 폴더를 사용합니다. 원래 폴더의 파일은 남겨 둡니다.",
+  runtimeStorageCurrent: "현재 폴더: {path}", runtimeStorageUsed: "테마 파일 사용량: {size}",
+  runtimeStoragePath: "보관 폴더 경로", runtimeStorageChoose: "폴더 선택", runtimeStorageDefault: "기본 폴더 사용",
+  runtimeStorageUnavailable: "현재 보관 폴더에 연결할 수 없습니다. 폴더를 다시 연결한 뒤 변경해 주세요.",
   runtimeStartup: "Windows 로그인 시 CoSkin 실행", runtimeStartupHelp: "트레이에서 대기하다 Codex가 켜지면 연결합니다. 설치된 CoSkin에서 설정할 수 있습니다.",
   runtimeUpdateTitle: "GitHub 업데이트", runtimeInstallUpdate: "업데이트 설치",
   runtimeUpdateidle: "GitHub의 서명된 안정 버전을 확인합니다.",
@@ -542,6 +547,11 @@ Object.assign(controlMessages.ko, {
   runtimeUpdateupdating: "업데이트를 설치합니다. CoSkin이 다시 시작되고 테마와 Codex는 유지됩니다.",
 });
 Object.assign(controlMessages.en, {
+  runtimeStorageTitle: "Folder for all themes",
+  runtimeStorageHelp: "Keep images and videos for every theme together in one folder. Saving copies and verifies the existing files before using the new folder. Files in the original folder are retained.",
+  runtimeStorageCurrent: "Current folder: {path}", runtimeStorageUsed: "Theme files used: {size}",
+  runtimeStoragePath: "Storage folder path", runtimeStorageChoose: "Choose folder", runtimeStorageDefault: "Use default folder",
+  runtimeStorageUnavailable: "The current storage folder is unavailable. Reconnect it before changing folders.",
   runtimeStartup: "Start CoSkin at Windows sign-in", runtimeStartupHelp: "Wait in the tray and connect when Codex opens. Available for installed CoSkin.",
   runtimeUpdateTitle: "GitHub updates", runtimeInstallUpdate: "Install update",
   runtimeUpdateidle: "Check signed stable releases on GitHub.",
@@ -554,6 +564,11 @@ Object.assign(controlMessages.en, {
   runtimeUpdateupdating: "Installing the update. CoSkin will restart; themes and Codex stay intact.",
 });
 Object.assign(controlMessages.ja, {
+  runtimeStorageTitle: "すべてのテーマの保存フォルダー",
+  runtimeStorageHelp: "すべてのテーマの画像と動画を1つのフォルダーに保存します。保存時に既存ファイルをコピーして確認した後、新しいフォルダーを使用します。元のフォルダーのファイルは保持します。",
+  runtimeStorageCurrent: "現在のフォルダー: {path}", runtimeStorageUsed: "テーマファイル使用量: {size}",
+  runtimeStoragePath: "保存フォルダーのパス", runtimeStorageChoose: "フォルダーを選択", runtimeStorageDefault: "既定のフォルダーを使用",
+  runtimeStorageUnavailable: "現在の保存フォルダーに接続できません。再接続してから変更してください。",
   runtimeStartup: "Windowsログイン時にCoSkinを起動", runtimeStartupHelp: "トレイで待機し、Codex起動時に接続します。インストール済みCoSkinで設定できます。",
   runtimeUpdateTitle: "GitHub更新", runtimeInstallUpdate: "更新をインストール",
   runtimeUpdateidle: "GitHubの署名済み安定版を確認します。",
@@ -566,6 +581,11 @@ Object.assign(controlMessages.ja, {
   runtimeUpdateupdating: "更新をインストール中です。CoSkinは再起動し、テーマとCodexは保持されます。",
 });
 Object.assign(controlMessages['zh-CN'], {
+  runtimeStorageTitle: "所有主题的存储文件夹",
+  runtimeStorageHelp: "将所有主题的图片和视频保存在同一个文件夹中。保存时会先复制并验证现有文件，再使用新文件夹。原文件夹中的文件将保留。",
+  runtimeStorageCurrent: "当前文件夹：{path}", runtimeStorageUsed: "主题文件占用：{size}",
+  runtimeStoragePath: "存储文件夹路径", runtimeStorageChoose: "选择文件夹", runtimeStorageDefault: "使用默认文件夹",
+  runtimeStorageUnavailable: "当前存储文件夹不可用。请重新连接后再更改。",
   runtimeStartup: "Windows登录时启动CoSkin", runtimeStartupHelp: "在托盘等待，并在Codex启动后连接。仅限已安装的CoSkin。",
   runtimeUpdateTitle: "GitHub更新", runtimeInstallUpdate: "安装更新",
   runtimeUpdateidle: "检查GitHub上的签名稳定版本。",

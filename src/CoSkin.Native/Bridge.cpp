@@ -1,6 +1,7 @@
 #include <windows.h>
 #include <string>
 #include <cstdint>
+#include "SessionSource.h"
 
 // The host verifies the original signed package and all required x64 exports.
 // Decorated signatures are the ABI contract; package version is not a gate.
@@ -8,6 +9,9 @@
 static HMODULE ownModule;
 static volatile LONG running;
 using Pointer = void*;
+template<size_t Count> static std::string Joined(const char* const (&pieces)[Count]) {
+ std::string result;for(const auto* piece:pieces)result+=piece;return result;
+}
 static std::string Quoted(const std::wstring& value) {
  int size=WideCharToMultiByte(CP_UTF8,WC_ERR_INVALID_CHARS,value.data(),(int)value.size(),nullptr,0,nullptr,nullptr);
  if(size<=0) return "\"\"";
@@ -24,34 +28,11 @@ static std::string Startup() {
  std::wstring base(path,length);
  base=base.substr(0,base.find_last_of(L"\\/")+1);
  auto pid=std::to_wstring(GetCurrentProcessId());
- std::string source="(()=>{const fs=process.getBuiltinModule('fs');const input="+Quoted(base+L"request-"+pid+L".json")+";const output="+Quoted(base+L"response-"+pid+L".json")+";";
- source+=R"JS(
- if(fs.statSync(input).size>4096)throw Error('Invalid CoSkin connection request');
- const request=JSON.parse(fs.readFileSync(input,'utf8'));
- if(request.contractVersion!==1||request.pid!==process.pid||!Number.isSafeInteger(request.ownerPid)||request.ownerPid<=0||!/^[a-f0-9]{64}$/.test(request.nonce)||Math.abs(Date.now()-request.created)>30000)throw Error('Expired CoSkin connection request');
- let result;
- try{
- const inspector=process.getBuiltinModule('inspector');
- let endpoint=globalThis.__coskinNativeEndpoint;
- if(inspector.url() && endpoint?.contractVersion!==1)throw Error('A different inspector owns this process');
- if(inspector.url() && endpoint.closing)throw Error('CoSkin connection is closing; retry shortly');
- if(inspector.url() && endpoint.ownerPid!==request.ownerPid){
-  let active=false;try{process.kill(endpoint.ownerPid,0);active=true;}catch{}
-  if(active)throw Error('Another CoSkin instance owns this Codex connection');
- }
- if(!inspector.url()){
-  inspector.open(0,'127.0.0.1');
-  endpoint=globalThis.__coskinNativeEndpoint={contractVersion:1,pid:process.pid,ownerPid:request.ownerPid,url:inspector.url()};
- }
- endpoint.ownerPid=request.ownerPid;
- result={contractVersion:1,pid:process.pid,url:inspector.url(),nonce:request.nonce};
- }catch(error){result={contractVersion:1,pid:process.pid,error:String(error.message).slice(0,200),nonce:request.nonce};}
- const temporary=output+'.'+request.nonce+'.tmp';
- fs.writeFileSync(temporary,JSON.stringify(result),{flag:'wx',mode:0o600});
- fs.renameSync(temporary,output);
- })()
- )JS";
- return source;
+ // Never send CoSkin data through the Node inspector WebSocket decoder.
+ return "("+Joined(CoSkinPipeSessionSource)+")("+
+   Quoted(base+L"request-"+pid+L".json")+","+
+   Quoted(base+L"response-"+pid+L".json")+",()=>"+
+   Joined(CoSkinRendererBridgeSource)+")";
 }
 static bool Execute(const std::string& source) {
  if(source.empty())return false;

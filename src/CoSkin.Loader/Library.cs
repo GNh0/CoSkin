@@ -1,10 +1,22 @@
 using System.Text.Json.Nodes;
+using System.Collections.Concurrent;
 namespace CoSkin;
 
 internal sealed class Library : IDisposable
 {
     private const int LibraryJsonLimit = 16 * 1024 * 1024;
     private readonly TransferStore transfers;
+    private readonly AssetStorageLocation assetStorage;
+    internal Func<string, string, long, string, Task<JsonObject>>? OpenAssetMedia { get; set; }
+    internal Func<string, Task>? ReleaseAssetMedia { get; set; }
+    private sealed record MediaLease(string? Owner, Func<string, Task> Release);
+    private readonly ConcurrentDictionary<string, MediaLease> mediaLeases = new(StringComparer.Ordinal);
+    private async Task ReleaseMedia(string token)
+    {
+        if (mediaLeases.TryRemove(token, out var lease))
+            try { await lease.Release(token); } catch { }
+    }
+    internal Func<string?, string?>? PickAssetStoragePath { get; set; }
     internal Func<bool, Task<UpdateResult>>? CheckUpdate { get; set; }
     internal Func<Task<UpdateResult>>? ApplyUpdate { get; set; }
     internal Action<bool>? SetStartup { get; set; }
@@ -14,7 +26,7 @@ internal sealed class Library : IDisposable
     }
     internal event Action<JsonObject>? StateChanged;
     internal string Locale { get; private set; } = UiLocale.Normalize(System.Globalization.CultureInfo.CurrentUICulture.Name);
-    internal string StageTransfer(byte[] bytes) => transfers.Stage(bytes);
+    internal string StageTransfer(byte[] bytes, int chunkBytes = TransferStore.ChunkBytes) => transfers.Stage(bytes, chunkBytes);
     internal void CancelTransfer(string token) => transfers.Cancel(token);
     public void Dispose()
     {
@@ -28,6 +40,7 @@ internal sealed class Library : IDisposable
         Directory.CreateDirectory(root);
         transfers = new TransferStore(Path.GetTempPath());
         Preferences = new RuntimePreferenceStore(this.root);
+        assetStorage = new AssetStorageLocation(this.root, Preferences);
     }
     private string FilePath(string name) => Path.Combine(root, name);
     private JsonObject State() => File.Exists(FilePath("library.json")) ? JsonContract.Read(File.ReadAllBytes(FilePath("library.json")), LibraryJsonLimit) : new JsonObject { ["themes"] = new JsonObject(), ["bindings"] = new JsonObject(), ["enabled"] = true };
@@ -45,13 +58,26 @@ internal sealed class Library : IDisposable
     }
     internal async Task<JsonNode> Handle(JsonObject request, Func<JsonObject, Task> validate, Func<byte[], string, Task> decode, Func<JsonObject, JsonObject, Task>? applyPlan = null)
     {
+        // A verified file copy must not block liveness requests from other windows.
+        if (request["op"]?.GetValue<string>() == "list") return Summary(State());
+        if (request["op"]?.GetValue<string>() == "runtime-settings-read") return RuntimeSettingsDocument();
+        if (request["op"]?.GetValue<string>() is "asset-storage-read" or "asset-storage-pick")
+        {
+            var storageRequest = new JsonObject();
+            foreach (var property in request.Where(p => p.Key is not ("contractVersion" or "sessionId" or "requestId")))
+                storageRequest[property.Key] = property.Value?.DeepClone();
+            return await Task.Run(() => assetStorage.Handle(storageRequest, PickAssetStoragePath));
+        }
+        var ownerMatch = System.Text.RegularExpressions.Regex.Match(request["requestId"]?.GetValue<string>() ?? "", "^([a-f0-9]{32}):[0-9]+$");
+        var transferOwner = ownerMatch.Success ? ownerMatch.Groups[1].Value : null;
         switch (request["op"]?.GetValue<string>())
         {
             case "transfer-begin":
-                return new JsonObject { ["token"] = transfers.Begin(request["length"]!.GetValue<long>()) };
+                var chunkBytes = request["chunkBytes"]?.GetValue<int>() ?? TransferStore.ChunkBytes;
+                return new JsonObject { ["token"] = transfers.Begin(request["length"]!.GetValue<long>(), chunkBytes, transferOwner), ["chunkBytes"] = chunkBytes };
             case "transfer-append":
                 var encoded = JsonContract.String(request, "data");
-                if (encoded.Length > TransferStore.ChunkBytes * 4 / 3)
+                if (encoded.Length > (TransferStore.LargeChunkBytes + 2) / 3 * 4)
                     throw new InvalidDataException("전송 조각 크기 제한");
                 transfers.Append(JsonContract.String(request, "token"), request["offset"]!.GetValue<long>(), Convert.FromBase64String(encoded));
                 return new JsonObject { ["ok"] = true };
@@ -60,12 +86,83 @@ internal sealed class Library : IDisposable
             case "transfer-cancel":
                 transfers.Cancel(JsonContract.String(request, "token"));
                 return new JsonObject { ["ok"] = true };
+            case "transfer-cancel-owner":
+                if (transferOwner is null) throw new InvalidDataException("전송 소유자 계약 오류");
+                transfers.CancelOwner(transferOwner);
+                foreach (var lease in mediaLeases.Where(pair => pair.Value.Owner == transferOwner).ToArray())
+                    await ReleaseMedia(lease.Key);
+                return new JsonObject { ["ok"] = true };
         }
         byte[] InputBytes() => request["token"] is not null ? transfers.Consume(JsonContract.String(request, "token")) : Convert.FromBase64String(JsonContract.String(request, "data"));
+        if (request["op"]?.GetValue<string>() == "asset-media-release")
+        {
+            await ReleaseMedia(JsonContract.String(request, "token"));
+            return new JsonObject { ["ok"] = true };
+        }
+        if (request["op"]?.GetValue<string>() == "asset-open")
+        {
+            var open = OpenAssetMedia;
+            var release = ReleaseAssetMedia;
+            if (open is null || release is null) return new JsonObject { ["available"] = false };
+            if (transfers.IsOwnerCanceled(transferOwner)) throw new InvalidDataException("이 창의 전송 요청은 취소되었습니다.");
+            var hash = JsonContract.String(request, "hash");
+            if (!System.Text.RegularExpressions.Regex.IsMatch(hash, "^[a-f0-9]{64}$")) throw new InvalidDataException("자산 해시 오류");
+            var path = assetStorage.PathForHash(hash);
+            var descriptor = await Task.Run(() => {
+                using var source = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read, 64 * 1024, FileOptions.SequentialScan);
+                if (source.Length < 1 || source.Length > MediaLimits.VideoBytes) throw new InvalidDataException("미디어 파일 크기 제한을 초과했습니다.");
+                var header = new byte[(int)Math.Min(64 * 1024, source.Length)]; source.ReadExactly(header);
+                var mime = ImageProbe.Mime(header); source.Position = 0;
+                if (Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(source)).ToLowerInvariant() != hash)
+                    throw new InvalidDataException("내부 자산이 손상되었습니다.");
+                return (mime, source.Length);
+            });
+            if (transfers.IsOwnerCanceled(transferOwner)) throw new InvalidDataException("이 창의 전송 요청은 취소되었습니다.");
+            var source = await open(path, descriptor.mime, descriptor.Length, hash);
+            var mediaToken = JsonContract.String(source, "token");
+            mediaLeases[mediaToken] = new MediaLease(transferOwner, release);
+            if (transfers.IsOwnerCanceled(transferOwner) || !ReferenceEquals(open, OpenAssetMedia) || !ReferenceEquals(release, ReleaseAssetMedia))
+            {
+                await ReleaseMedia(mediaToken);
+                throw new InvalidDataException("이 창의 미디어 요청은 취소되었습니다.");
+            }
+            return source;
+        }
+        if (request["op"]?.GetValue<string>() is "asset-poster-read" or "asset-poster-write")
+        {
+            var hash = JsonContract.String(request, "hash");
+            if (!File.Exists(assetStorage.PathForHash(hash))) throw new InvalidDataException("미리보기의 원본 자산이 없습니다.");
+            return await Task.Run<JsonNode>(() => {
+                var cache = new PosterCache(assetStorage.CurrentPath);
+                if (request["op"]!.GetValue<string>() == "asset-poster-write")
+                {
+                    if (request["token"] is null) throw new InvalidDataException("미리보기 전송이 필요합니다.");
+                    cache.Write(hash, transfers.Consume(JsonContract.String(request, "token"), PosterCache.MaxPosterBytes));
+                    return new JsonObject { ["ok"] = true };
+                }
+                var bytes = cache.Read(hash);
+                if (bytes is null) return new JsonObject { ["available"] = false };
+                var chunkBytes = TransferStore.LargeChunkBytes;
+                var token = transfers.Stage(bytes, chunkBytes, transferOwner);
+                return new JsonObject { ["available"] = true, ["token"] = token, ["length"] = bytes.Length, ["mime"] = "image/png", ["chunkBytes"] = chunkBytes };
+            });
+        }
         if (request["op"]?.GetValue<string>() == "asset-read")
         {
-            var data = ReadAsset(JsonContract.String(request, "hash"));
-            return new JsonObject { ["token"] = transfers.Stage(data), ["length"] = data.Length, ["mime"] = ImageProbe.Mime(data) };
+            var hash = JsonContract.String(request, "hash");
+            if (!System.Text.RegularExpressions.Regex.IsMatch(hash, "^[a-f0-9]{64}$")) throw new InvalidDataException("자산 해시 오류");
+            var path = assetStorage.PathForHash(hash);
+            var chunkBytes = request["largeChunks"]?.GetValue<bool>() == true ? TransferStore.LargeChunkBytes : TransferStore.ChunkBytes;
+            return await Task.Run<JsonNode>(() => {
+                using var source = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read, 64 * 1024, FileOptions.SequentialScan);
+                if (source.Length < 1 || source.Length > MediaLimits.VideoBytes) throw new InvalidDataException("미디어 파일 크기 제한을 초과했습니다.");
+                var header = new byte[(int)Math.Min(64 * 1024, source.Length)];
+                source.ReadExactly(header);
+                var mime = ImageProbe.Mime(header);
+                source.Position = 0;
+                var token = transfers.StageAsset(source, hash, chunkBytes, transferOwner);
+                return new JsonObject { ["token"] = token, ["length"] = source.Length, ["mime"] = mime, ["chunkBytes"] = chunkBytes };
+            });
         }
         await gate.WaitAsync();
         try
@@ -127,18 +224,13 @@ internal sealed class Library : IDisposable
                 case "asset-write":
                     {
                         var bytes = InputBytes();
-                        if (bytes.Length > 25 * 1024 * 1024)
-                            throw new InvalidDataException("이미지 크기 제한을 초과했습니다.");
                         var mime = ImageProbe.Mime(bytes);
+                        if (bytes.LongLength > MediaLimits.Bytes(mime))
+                            throw new InvalidDataException("미디어 파일 크기 제한을 초과했습니다.");
                         ImageProbe.Validate("assets/image" + ImageProbe.Extension(mime), bytes);
                         await decode(bytes, mime);
                         var hash = StoreAsset(bytes);
                         return new JsonObject { ["hash"] = hash, ["mime"] = mime, ["extension"] = ImageProbe.Extension(mime) };
-                    }
-                case "asset-read":
-                    {
-                        var bytes = ReadAsset(JsonContract.String(request, "hash"));
-                        return new JsonObject { ["data"] = Convert.ToBase64String(bytes), ["mime"] = ImageProbe.Mime(bytes) };
                     }
                 case "runtime-locale":
                     var locale = JsonContract.String(request, "locale");
@@ -147,22 +239,27 @@ internal sealed class Library : IDisposable
                     Locale = locale;
                     return new JsonObject { ["locale"] = Locale };
                 case "runtime-settings-read":
-                    return PreferenceDocument(Preferences.Read());
+                    return RuntimeSettingsDocument();
                 case "runtime-update-check":
                     return UpdateDocument(CheckUpdate is null ? new(UpdateState.Unavailable) : await CheckUpdate(true));
                 case "runtime-update-apply":
                     return UpdateDocument(ApplyUpdate is null ? new(UpdateState.Unavailable) : await ApplyUpdate());
                 case "runtime-settings-write":
                     var settings = request["settings"]?.AsObject() ?? throw new InvalidDataException("실행 설정이 필요합니다.");
-                    JsonContract.Fields(settings, "launchWithCodex", "exitWithCodex", "automaticUpdates", "startAtSignIn");
+                    JsonContract.Fields(settings, "launchWithCodex", "exitWithCodex", "automaticUpdates", "startAtSignIn", "assetStoragePath");
                     var before = Preferences.Read();
-                    var preferences = new RuntimePreferences(settings["launchWithCodex"]!.GetValue<bool>(), settings["exitWithCodex"]!.GetValue<bool>(), settings["automaticUpdates"]!.GetValue<bool>(), settings["startAtSignIn"]?.GetValue<bool>() ?? before.StartAtSignIn);
+                    var preferences = new RuntimePreferences(settings["launchWithCodex"]!.GetValue<bool>(), settings["exitWithCodex"]!.GetValue<bool>(), settings["automaticUpdates"]!.GetValue<bool>(), settings["startAtSignIn"]?.GetValue<bool>() ?? before.StartAtSignIn,
+                        settings.ContainsKey("assetStoragePath") ? settings["assetStoragePath"]?.GetValue<string>() : before.AssetStoragePath);
+                    preferences = preferences with { AssetStoragePath = assetStorage.Normalize(preferences.AssetStoragePath) };
                     var startupChanged = before.StartAtSignIn != preferences.StartAtSignIn;
                     if (startupChanged && SetStartup is null) throw new TrayActionException("not-installed");
                     if (startupChanged) SetStartup!(preferences.StartAtSignIn);
-                    try { Preferences.Write(preferences); }
+                    AssetStorageStatus storageStatus;
+                    try { storageStatus = await Task.Run(() => assetStorage.Change(before, preferences)); }
                     catch { if (startupChanged) SetStartup!(before.StartAtSignIn); throw; }
-                    return PreferenceDocument(preferences);
+                    var settingsResult = PreferenceDocument(preferences);
+                    settingsResult["assetStorage"] = storageStatus.Document();
+                    return settingsResult;
                 case "motion-policy":
                     var policy = JsonContract.String(request, "policy");
                     if (policy is not ("system" or "allow" or "off"))
@@ -334,7 +431,12 @@ internal sealed class Library : IDisposable
                         await validate(doc);
                         var assets = doc["assets"]!.AsObject().ToDictionary(p => p.Key, p => ReadAsset(p.Value!.GetValue<string>()));
                         var bytes = Package.Export(doc["manifest"]!.AsObject(), doc["theme"]!.AsObject(), assets);
-                        return request["chunked"]?.GetValue<bool>() == true ? new JsonObject { ["token"] = transfers.Stage(bytes), ["length"] = bytes.Length } : new JsonObject { ["data"] = Convert.ToBase64String(bytes) };
+                        if (request["chunked"]?.GetValue<bool>() == true)
+                        {
+                            var exportChunkBytes = request["largeChunks"]?.GetValue<bool>() == true ? TransferStore.LargeChunkBytes : TransferStore.ChunkBytes;
+                            return new JsonObject { ["token"] = transfers.Stage(bytes, exportChunkBytes), ["length"] = bytes.Length, ["chunkBytes"] = exportChunkBytes };
+                        }
+                        return new JsonObject { ["data"] = Convert.ToBase64String(bytes) };
                     }
                 default:
                     throw new InvalidDataException("지원하지 않는 요청입니다.");
@@ -354,7 +456,14 @@ internal sealed class Library : IDisposable
             throw new InvalidDataException("안정적인 범위 ID를 확인하지 못했습니다.");
         return kind + ":" + id;
     }
-    internal static JsonObject PreferenceDocument(RuntimePreferences value) => new() { ["launchWithCodex"] = value.LaunchWithCodex, ["exitWithCodex"] = value.ExitWithCodex, ["automaticUpdates"] = value.AutomaticUpdates, ["startAtSignIn"] = value.StartAtSignIn };
+    internal static JsonObject PreferenceDocument(RuntimePreferences value) => new() { ["launchWithCodex"] = value.LaunchWithCodex, ["exitWithCodex"] = value.ExitWithCodex, ["automaticUpdates"] = value.AutomaticUpdates, ["startAtSignIn"] = value.StartAtSignIn, ["assetStoragePath"] = value.AssetStoragePath };
+    private JsonObject RuntimeSettingsDocument()
+    {
+        var snapshot = Preferences.Read();
+        var result = PreferenceDocument(snapshot);
+        result["assetStorage"] = assetStorage.Describe(snapshot).Document();
+        return result;
+    }
     internal static JsonObject UpdateDocument(UpdateResult value) => new() { ["status"] = value.State.ToString().ToLowerInvariant(), ["version"] = value.Update?.Version.ToString() };
     internal async Task<JsonObject> TrayState()
     {
@@ -378,6 +487,7 @@ internal sealed class Library : IDisposable
         result["documents"] = documents;
         result["runtimeSettingsAvailable"] = true;
         result["startupSettingsAvailable"] = SetStartup is not null;
+        result["assetStoragePickerAvailable"] = PickAssetStoragePath is not null;
         return result;
     }
     private static JsonObject Document(ThemePackage p)
@@ -396,7 +506,7 @@ internal sealed class Library : IDisposable
             var hash = asset.Value?.GetValue<string>() ?? throw new InvalidDataException("자산 해시가 필요합니다.");
             var bytes = ReadAsset(hash);
             totalBytes += bytes.Length;
-            if (totalBytes > 250L * 1024 * 1024)
+            if (bytes.LongLength > MediaLimits.Bytes(ImageProbe.Mime(bytes)) || totalBytes > Package.MaxExpanded)
                 throw new InvalidDataException("테마 자산의 총 용량 제한을 초과했습니다.");
             ImageProbe.Validate(asset.Key, bytes);
         }
@@ -404,9 +514,15 @@ internal sealed class Library : IDisposable
     private string StoreAsset(byte[] bytes)
     {
         var hash = Package.Hash(bytes);
-        var directory = FilePath("assets");
+        var directory = assetStorage.CurrentPath;
         Directory.CreateDirectory(directory);
-        var destination = Path.Combine(directory, hash + ".bin");
+        var destination = assetStorage.PathForHash(hash);
+        if (File.Exists(destination))
+        {
+            using var existing = new FileStream(destination, FileMode.Open, FileAccess.Read, FileShare.Read);
+            if (existing.Length != bytes.LongLength || Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(existing)).ToLowerInvariant() != hash)
+                throw new InvalidDataException("같은 자산 주소의 기존 파일이 손상되었습니다. 원본을 보존했습니다.");
+        }
         if (!File.Exists(destination))
         {
             var temporary = destination + "." + Guid.NewGuid().ToString("N") + ".tmp";
@@ -419,7 +535,10 @@ internal sealed class Library : IDisposable
     {
         if (!System.Text.RegularExpressions.Regex.IsMatch(hash, "^[a-f0-9]{64}$"))
             throw new InvalidDataException("자산 해시 오류");
-        var bytes = File.ReadAllBytes(Path.Combine(FilePath("assets"), hash + ".bin"));
+        var path = assetStorage.PathForHash(hash);
+        if (new FileInfo(path).Length > MediaLimits.VideoBytes)
+            throw new InvalidDataException("미디어 파일 크기 제한을 초과했습니다.");
+        var bytes = File.ReadAllBytes(path);
         if (Package.Hash(bytes) != hash)
             throw new InvalidDataException("내부 자산이 손상되었습니다.");
         return bytes;

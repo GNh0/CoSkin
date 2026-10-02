@@ -3,7 +3,6 @@ import { h, busyImage, icon } from "./components.js";
 import { mountPreview } from "./previews.js";
 import { themeMetadata } from "./theme-metadata.js";
 import { folderBrowser } from "./library-folders.js";
-import { folderOptions } from "../core/library-folders.js";
 import {
   explorerContents,
   navigateExplorer,
@@ -34,6 +33,9 @@ import {
   organization,
   favoriteButton,
   groupManager,
+  openGroupManager,
+  libraryDialog,
+  batchSelection,
   batchOrganization,
 } from "./library-organization.js";
 export function galleryPage(panel, section) {
@@ -61,25 +63,32 @@ export function galleryPage(panel, section) {
   close.className = "icon-button";
   close.setAttribute("aria-label", t("close"));
   close.append(icon("close"));
+  const optionsMenu = h("details", { class: "library-options-menu" });
+  optionsMenu.open = !!panel.libraryOptionsOpen;
+  const optionsSummary = h(
+    "summary",
+    {
+      "aria-label": t("libraryOptions"),
+      "data-library-focus": "library-options",
+    },
+    [icon("sliders")],
+  );
+  const optionsContent = h("div", { class: "library-options-panel" });
+  optionsMenu.append(optionsSummary, optionsContent);
+  optionsMenu.addEventListener("toggle", () => {
+    panel.libraryOptionsOpen = optionsMenu.open;
+  });
   section.append(
-    h("header", { class: "page-header" }, [
+    h("header", { class: "page-header library-header" }, [
       h("div", {}, [
         h("span", { class: "brand", text: "✦ CoSkin" }),
         h("h1", { text: t("library") }),
-        h("p", { text: t("tagline") }),
       ]),
       h("div", { class: "row" }, [
         create,
         panel.button(t("import"), () => importer.click()),
-        request,
         importer,
-        ...(panel.c.summary.runtimeSettingsAvailable
-          ? [
-              panel.button(t("control.runtimeTitle"), () =>
-                panel.c.openSettings(),
-              ),
-            ]
-          : []),
+        optionsMenu,
         close,
       ]),
     ]),
@@ -241,21 +250,9 @@ export function galleryPage(panel, section) {
     panel.libraryScrollTop = 0;
     panel.render();
   };
-  section.append(
-    h("div", { class: "library-toolbar" }, [
-      search,
-      sort,
-      size,
-      panel.scope(),
-      h("span", {
-        class: "muted",
-        text: t("resultCount", {
-          count: entries.length,
-          total: Object.keys(themes).length,
-        }),
-      }),
-    ]),
-  );
+  const tools = h("div", { class: "library-toolbar" }, [
+    h("div", { class: "library-search" }, [icon("search"), search]),
+  ]);
   const picker = (key, label, options, emptyLabel) => {
     panel.libraryPickers[key] ??= {};
     return searchablePicker(panel, {
@@ -271,16 +268,6 @@ export function galleryPage(panel, section) {
           : filter(key, value, focus),
     });
   };
-  const group = picker(
-    "groupFilter",
-    t("group"),
-    [
-      ["all", t("allGroups")],
-      ["ungrouped", t("ungrouped")],
-      ...folderOptions(data.groups, data.groupParents || {}),
-    ],
-    t("explorerHome"),
-  );
   const tag = picker(
     "tagFilter",
     t("tags"),
@@ -294,64 +281,107 @@ export function galleryPage(panel, section) {
   favorites.prepend(icon("star"));
   const selectionToggle = panel.button(t("selectThemes"), () => {
     panel.librarySelectionMode = !panel.librarySelectionMode;
+    if (!panel.librarySelectionMode) panel.batchOrganizationOpen = false;
+    panel.libraryOptionsOpen = false;
+    panel.libraryFocus = "library-options";
   });
   selectionToggle.setAttribute(
     "aria-pressed",
     String(!!panel.librarySelectionMode),
   );
-  section.append(
-    h("div", { class: "library-filters" }, [
-      favorites,
-      group,
-      tag,
-      ...[
-        ["character", "characterLabel"],
-        ["skin", "skinLabel"],
-        ["type", "themeTypeLabel"],
-      ]
-        .filter(([facet]) => facets[facet].length)
-        .map(([facet, label]) =>
-          picker(
-            facet + "Filter",
-            t(label),
-            facets[facet].map((name) => [name, name]),
-            t("allValues"),
-          ),
-        ),
-      panel.button(t("manageGroups"), () => {
-        panel.manageGroups = !panel.manageGroups;
+  const clearFilters = () => {
+    panel.favoriteFilter = false;
+    panel.tagFilter = panel.filter = "";
+    panel.characterFilter = panel.skinFilter = panel.typeFilter = "";
+    panel.page = 0;
+    panel.libraryScrollTop = 0;
+  };
+  const filters = h("details", { class: "library-filter-menu" });
+  filters.open = !!panel.libraryFiltersOpen;
+  const filterSummary = h(
+    "summary",
+    {
+      "data-library-focus": "library-filters",
+      "aria-label": t("libraryFilters"),
+    },
+    [icon("sliders"), h("span", { text: t("libraryFilters") })],
+  );
+  const activeFilters = [
+    "tagFilter",
+    "characterFilter",
+    "skinFilter",
+    "typeFilter",
+  ].filter((key) => !!panel[key]);
+  const filterCount = activeFilters.length + Number(!!panel.favoriteFilter);
+  if (filterCount)
+    filterSummary.append(
+      h("span", {
+        class: "filter-count",
+        text: String(filterCount),
       }),
-      selectionToggle,
-      ...(panel.favoriteFilter ||
-      panel.tagFilter ||
-      panel.characterFilter ||
-      panel.skinFilter ||
-      panel.typeFilter ||
-      panel.filter
-        ? [
-            panel.button(t("clearFilters"), () => {
-              panel.favoriteFilter = false;
-              panel.tagFilter = panel.filter = "";
-              panel.characterFilter = panel.skinFilter = panel.typeFilter = "";
-              panel.page = 0;
-              panel.libraryScrollTop = 0;
-            }),
-          ]
-        : []),
+    );
+  filters.addEventListener("toggle", () => {
+    panel.libraryFiltersOpen = filters.open;
+  });
+  filters.addEventListener("keydown", (event) => {
+    if (event.key !== "Escape") return;
+    // A nested picker gets the first Escape; the next one closes the filter panel.
+    if (event.defaultPrevented) return;
+    filters.open = panel.libraryFiltersOpen = false;
+    filterSummary.focus();
+    event.preventDefault();
+  });
+  filters.append(
+    filterSummary,
+    h("div", { class: "library-filter-panel" }, [
+      h("div", { class: "filter-panel-heading" }, [
+        h("strong", { text: t("libraryFilters") }),
+        panel.button(t("clearFilters"), clearFilters),
+      ]),
+      h("div", { class: "library-filters" }, [
+        favorites,
+        tag,
+        ...[
+          ["character", "characterLabel"],
+          ["skin", "skinLabel"],
+          ["type", "themeTypeLabel"],
+        ]
+          .filter(([facet]) => facets[facet].length)
+          .map(([facet, label]) =>
+            picker(
+              facet + "Filter",
+              t(label),
+              facets[facet].map((name) => [name, name]),
+              t("allValues"),
+            ),
+          ),
+      ]),
     ]),
   );
-  section.append(explorerToolbar(panel, model));
-  if (panel.manageGroups) section.append(groupManager(panel));
-  if (panel.librarySelectionMode)
-    section.append(
-      batchOrganization(
-        panel,
-        page.entries
-          .filter((item) => item.kind === "theme")
-          .map(({ id, entry }) => [id, entry]),
-        entries,
-      ),
-    );
+  tools.append(filters);
+  optionsContent.append(
+    h("div", { class: "library-view-options" }, [
+      h("label", { text: t("sortThemes") }),
+      sort,
+      h("label", { text: t("pageSize") }),
+      size,
+    ]),
+    selectionToggle,
+    panel.button(t("manageGroups"), () => {
+      openGroupManager(panel, { selected: panel.groupFilter });
+    }),
+    request,
+    h("div", { class: "library-scope" }, [
+      h("span", { class: "muted", text: t("scope") }),
+      panel.scope(),
+    ]),
+    ...(panel.c.summary.runtimeSettingsAvailable
+      ? [panel.button(t("control.runtimeTitle"), () => panel.c.openSettings())]
+      : []),
+  );
+  const pageThemes = page.entries
+    .filter((item) => item.kind === "theme")
+    .map(({ id, entry }) => [id, entry]);
   const shell = h("div", {
     class: "library-explorer-shell",
     "data-sidebar": String(panel.explorerSidebarOpen !== false),
@@ -370,6 +400,61 @@ export function galleryPage(panel, section) {
     );
   const content = h("div", { class: "explorer-content" });
   shell.append(content);
+  content.append(explorerToolbar(panel, model), tools);
+  if (panel.librarySelectionMode)
+    content.append(batchSelection(panel, pageThemes, entries));
+  if (activeFilters.length || panel.filter || panel.favoriteFilter) {
+    const chips = h("div", { class: "library-active-filters" });
+    for (const key of [
+      ...activeFilters,
+      ...(panel.filter ? ["filter"] : []),
+      ...(panel.favoriteFilter ? ["favoriteFilter"] : []),
+    ]) {
+      const value = key === "favoriteFilter" ? t("favorites") : panel[key];
+      const chip = h(
+        "button",
+        {
+          type: "button",
+          class: "filter-chip",
+          "aria-label": t("removeLibraryFilter", { value }),
+          onclick: () => {
+            if (
+              panel.busy ||
+              panel.c.externalApplying ||
+              panel.externalApplying
+            )
+              return;
+            filter(
+              key,
+              key === "favoriteFilter" ? false : "",
+              "library-filters",
+            );
+          },
+        },
+        [h("span", { text: value }), icon("close")],
+      );
+      chips.append(chip);
+    }
+    content.append(chips);
+  }
+  const menus = [filters, optionsMenu];
+  const dismiss = (event) => {
+    const path = event.composedPath?.() || [];
+    for (const menu of menus)
+      if (menu.open && !path.includes(menu)) menu.open = false;
+  };
+  if (document.addEventListener) {
+    document.addEventListener("pointerdown", dismiss);
+    panel.pageResources.push(() =>
+      document.removeEventListener("pointerdown", dismiss),
+    );
+  }
+  optionsMenu.addEventListener("keydown", (event) => {
+    if (event.key !== "Escape" || event.defaultPrevented) return;
+    optionsMenu.open = panel.libraryOptionsOpen = false;
+    optionsSummary.focus();
+    event.preventDefault();
+  });
   const pager = (position) =>
     libraryPagination(panel, {
       total: model.items.length,
@@ -576,7 +661,35 @@ export function galleryPage(panel, section) {
     );
   if (model.items.length > pageSize) content.append(pager("bottom"));
   section.append(shell);
+  if (panel.manageGroups)
+    section.append(
+      libraryDialog(panel, {
+        key: "folders",
+        title: t(panel.groupManagerCreate ? "newGroup" : "manageGroups"),
+        content: groupManager(panel),
+        initialFocus: panel.groupManagerCreate
+          ? "new-folder-name"
+          : "group-manager-search",
+        close: () => {
+          panel.manageGroups = false;
+          panel.groupDelete = null;
+        },
+      }),
+    );
+  else if (panel.librarySelectionMode && panel.batchOrganizationOpen)
+    section.append(
+      libraryDialog(panel, {
+        key: "organization",
+        title: t("batchOrganization"),
+        content: batchOrganization(panel, pageThemes, entries),
+        initialFocus: "batch-group-summary",
+        close: () => {
+          panel.batchOrganizationOpen = false;
+        },
+      }),
+    );
   const focus = panel.libraryFocus;
   panel.libraryFocus = null;
-  if (focus) queueMicrotask(() => restoreLibraryFocus(section, focus));
+  if (focus && !panel.manageGroups && !panel.batchOrganizationOpen)
+    queueMicrotask(() => restoreLibraryFocus(section, focus));
 }

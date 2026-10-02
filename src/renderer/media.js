@@ -5,18 +5,21 @@ import {
   resumeTimeline,
 } from "../core/media-timeline.ts";
 import gifWorkerSource from "../../dist/gif-worker.json";
-import { MEDIA_LIMITS } from "../core/media-limits.js";
+import { MEDIA_LIMITS, isVideoMime } from "../core/media-limits.js";
 export function disposeMedia(media) {
+  if (media.disposed) return;
+  media.disposed = true;
   for (const frame of media.frames) frame.image.close();
-  if (media.videoUrl) URL.revokeObjectURL(media.videoUrl);
+  if (media.videoUrl && !media.releaseSource) URL.revokeObjectURL(media.videoUrl);
+  media.releaseSource?.();
 }
-async function decodeVideo(bytes) {
-  const videoUrl = URL.createObjectURL(
-    new Blob([bytes], { type: "video/mp4" }),
-  );
+async function decodeVideo(bytes, mime, poster = null, directURL = false) {
+  const blob = directURL ? null : bytes instanceof Blob ? bytes : new Blob([bytes], { type: mime });
+  const videoUrl = directURL ? bytes : URL.createObjectURL(blob);
   const video = document.createElement("video");
   video.muted = true;
   video.playsInline = true;
+  if (directURL) video.crossOrigin = "anonymous";
   video.preload = "auto";
   video.dataset.coskinUi = "";
   Object.assign(video.style, {
@@ -36,11 +39,11 @@ async function decodeVideo(bytes) {
         error ? reject(error) : resolve();
       };
       const timer = setTimeout(
-        () => finish(Error("MP4 디코딩 시간이 초과되었습니다.")),
+        () => finish(Error("영상 디코딩 시간이 초과되었습니다.")),
         10000,
       );
       video.onloadedmetadata = () => finish();
-      video.onerror = () => finish(Error("MP4 영상을 재생할 수 없습니다."));
+      video.onerror = () => finish(Error("영상을 재생할 수 없습니다."));
       video.src = videoUrl;
       // Chromium defers an unconnected, paused video's first frame in hidden windows.
       video.play().catch(finish);
@@ -56,7 +59,7 @@ async function decodeVideo(bytes) {
       video.duration * 1000 > MEDIA_LIMITS.maxDurationMs
     )
       throw Error("영상 해상도 또는 길이 제한을 초과했습니다.");
-    await new Promise((resolve, reject) => {
+    if (!poster) await new Promise((resolve, reject) => {
       const timer = setTimeout(() => {
         video.onseeked = null;
         reject(Error("영상 미리보기를 준비하지 못했습니다."));
@@ -68,18 +71,19 @@ async function decodeVideo(bytes) {
       };
       video.currentTime = Math.min(15, video.duration * 0.15);
     });
-    const image = await createImageBitmap(video);
+    const image = poster || await createImageBitmap(video);
     return {
-      mime: "video/mp4",
-      width: image.width,
-      height: image.height,
+      mime,
+      width: video.videoWidth,
+      height: video.videoHeight,
       frames: [{ image, delay: 0 }],
       videoUrl,
       duration: video.duration,
-      encodedBytes: bytes.length,
+      encodedBytes: blob?.size || 0,
     };
   } catch (error) {
-    URL.revokeObjectURL(videoUrl);
+    if (!directURL) URL.revokeObjectURL(videoUrl);
+    poster?.close();
     throw error;
   } finally {
     video.pause();
@@ -88,13 +92,24 @@ async function decodeVideo(bytes) {
     video.remove();
   }
 }
-export async function decodeMedia(data, mime) {
+export const decodeVideoURL = (url, mime, poster) => decodeVideo(url, mime, poster, true);
+export async function decodeMedia(data, mime, poster = null) {
+  if (data instanceof Blob) {
+    if (data.size > (isVideoMime(mime) ? MEDIA_LIMITS.videoBytes : MEDIA_LIMITS.bytes))
+      throw Error("미디어 파일 크기 제한을 초과했습니다.");
+    if (isVideoMime(mime)) return decodeVideo(data, mime, poster);
+    data = new Uint8Array(await data.arrayBuffer());
+  }
   const bytes =
     typeof data === "string"
       ? Uint8Array.from(atob(data), (c) => c.charCodeAt(0))
       : data;
-  if (bytes.length > 25 * 1024 * 1024) throw Error("이미지 크기 제한");
-  if (mime === "video/mp4") return decodeVideo(bytes);
+  const video = isVideoMime(mime);
+  if (bytes.length > (video ? MEDIA_LIMITS.videoBytes : MEDIA_LIMITS.bytes))
+    throw Error(
+      video ? "영상 파일 크기 제한을 초과했습니다." : "이미지 크기 제한",
+    );
+  if (video) return decodeVideo(bytes, mime, poster);
   if (mime === "image/gif")
     return await new Promise((resolve, reject) => {
       const url = URL.createObjectURL(
@@ -225,8 +240,7 @@ export class MediaPlayer {
       this.video.muted = true;
       this.video.loop = true;
       this.video.playsInline = true;
-      this.video.preload = "metadata";
-      this.video.src = media.videoUrl;
+      this.video.preload = "none";
       Object.assign(this.video.style, {
         position: "absolute",
         inset: "0",
@@ -332,11 +346,19 @@ export class MediaPlayer {
     this.playRequested = play;
     if (this.video) {
       if (play && !this.visibilityPaused) {
+        if (!this.videoSourceSet) {
+          this.video.src = this.media.videoUrl;
+          this.videoSourceSet = true;
+        }
         if (!this.video.paused) return;
         this.video
           .play()
           .then(() => {
-            if (!this.disposed && this.playRequested && !this.video.paused) {
+            if (this.disposed || !this.playRequested || this.visibilityPaused) {
+              this.video.pause();
+              return;
+            }
+            if (!this.video.paused) {
               this.video.style.display = "block";
               this.canvas.style.visibility = "hidden";
             }
@@ -442,6 +464,7 @@ export class MediaPlayer {
       this.video.load();
       this.video.remove();
     }
+    this.canvas.width = this.canvas.height = 0;
     this.canvas.remove();
   }
 }

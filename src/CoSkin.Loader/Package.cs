@@ -7,7 +7,7 @@ namespace CoSkin;
 internal sealed record ThemePackage(JsonObject Manifest, JsonObject Theme, Dictionary<string, byte[]> Files, string Hash);
 internal static partial class Package
 {
-    internal const long MaxPackage = 100 * 1024 * 1024, MaxExpanded = 250 * 1024 * 1024;
+    internal const long MaxPackage = 768L * 1024 * 1024, MaxExpanded = 768L * 1024 * 1024;
     [GeneratedRegex("^[a-z0-9_./-]{1,240}$")] private static partial Regex PathPattern();
     [GeneratedRegex("^(con|prn|aux|nul|com[1-9]|lpt[1-9])(\\.|$)")] private static partial Regex Reserved();
     internal static bool SafePath(string p) => PathPattern().IsMatch(p) && (p is "manifest.json" or "theme.json" || p.StartsWith("assets/", StringComparison.Ordinal) || p.StartsWith("preview/", StringComparison.Ordinal)) && p.Split('/').All(s => s.Length > 0 && s is not "." and not ".." && !s.EndsWith('.') && !Reserved().IsMatch(s));
@@ -30,7 +30,8 @@ internal static partial class Package
                 throw new InvalidDataException("패키지 경로가 잘못되었거나 중복됩니다.");
             if ((entry.ExternalAttributes >> 16 & 0xF000) == 0xA000)
                 throw new InvalidDataException("심볼릭 링크를 허용하지 않습니다.");
-            long limit = entry.FullName.EndsWith(".json", StringComparison.Ordinal) ? 2 * 1024 * 1024 : 25 * 1024 * 1024;
+            long limit = entry.FullName.EndsWith(".json", StringComparison.Ordinal) ? 2 * 1024 * 1024
+                : Path.GetExtension(entry.FullName) is ".mp4" or ".webm" ? MediaLimits.VideoBytes : MediaLimits.ImageBytes;
             if (entry.Length > limit)
                 throw new InvalidDataException("파일 크기 제한을 초과했습니다.");
             using var stream = entry.Open();
@@ -71,7 +72,11 @@ internal static partial class Package
         if (declared.Count != files.Count)
             throw new InvalidDataException("선언되지 않은 파일이 있습니다.");
         foreach (var p in files.Keys.Where(p => p.StartsWith("assets/", StringComparison.Ordinal) || p.StartsWith("preview/", StringComparison.Ordinal)))
+        {
+            if (files[p].LongLength > MediaLimits.Bytes(ImageProbe.Mime(files[p])))
+                throw new InvalidDataException("미디어 파일 크기 제한을 초과했습니다.");
             ImageProbe.Validate(p, files[p]);
+        }
         return new(manifest, theme, files, Hash(data));
     }
     internal static byte[] Export(JsonObject manifest, JsonObject theme, Dictionary<string, byte[]> assets)

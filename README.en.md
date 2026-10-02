@@ -29,7 +29,7 @@ Run Codex and CoSkin on **Windows x64** at the same Windows privilege level. Fro
 | Theme library           | Create, import and delete; preview and apply directly from cards                                        |
 | Organization and search | Nested folder tree, favorites and tags; numbered pages, sorting and multi-select organization           |
 | Details and editing     | Edit theme information, duplicate, edit in the actual app and export                                    |
-| Images, GIFs and video  | Set backgrounds, decorations and icons; loop muted MP4 video; see resolution and aspect recommendations |
+| Images, GIFs and video  | Set backgrounds, decorations and icons; loop muted MP4/WebM video; see resolution and aspect recommendations |
 | Text styles             | Theme-tinted automatic text colors or your own color, installed font and weight                         |
 | Animation effects       | Configure hover, click and selected states, plus enter, exit and repeating effects                      |
 | Application scope       | Apply across the app, projects or chats; override individual items                                      |
@@ -57,7 +57,9 @@ Browse a folder tree on the left and folders with theme files on the right. A si
 
 Combine a GIF background with row hover effects to create your own theme.
 
-Use GIF for short scenes and **MP4** for longer character motion. MP4 loops muted; the **No effects** profile shows a still image. Playback resumes from its position after minimizing and restoring. Image controls show resolution and aspect recommendations for the selected area. Choose **Show entire image** to keep the full action visible.
+Use GIF for short scenes and **MP4/WebM** for longer character motion. Video loops muted; the **No effects** profile shows a still image. Playback resumes from its position after minimizing and restoring. Videos support up to512MiB and10minutes with decoding checks. Image controls show resolution and aspect recommendations for the selected area. Choose **Show entire image** to keep the full action visible.
+
+Choose **Theme storage folder** in settings to set the common folder for all theme images and videos. Migration verifies copied hashes before switching and retains originals. Shared media is stored once by SHA256. Theme records, revisions and runtime settings stay in the existing CoSkin store. Library display and sorting options are grouped in a menu; filters and folder/batch management open on demand.
 
 ![Animated GIF background](docs/media/wuthering-waves/shorekeeper-live-gif.gif)
 

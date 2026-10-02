@@ -1,4 +1,4 @@
-import { h } from "./components.js";
+import { h, icon } from "./components.js";
 import { t } from "./messages.js";
 import {
   navigateExplorer,
@@ -6,6 +6,7 @@ import {
 } from "../core/library-explorer.js";
 import {
   organization,
+  openGroupManager,
   writeOrganizationBatch,
 } from "./library-organization.js";
 
@@ -37,7 +38,7 @@ export function explorerIcon(folder = false) {
 
 export function explorerToolbar(panel, model) {
   const bar = h("div", { class: "explorer-toolbar" });
-  const button = (label, key, run, disabled = false) => {
+  const button = (label, key, run, disabled = false, iconName = null) => {
     const result = h("button", {
       type: "button",
       text: label,
@@ -46,6 +47,13 @@ export function explorerToolbar(panel, model) {
         if (!blocked(panel)) run();
       },
     });
+    if (iconName) {
+      result.textContent = "";
+      result.append(icon(iconName));
+      result.className = "icon-button";
+      result.setAttribute("aria-label", label);
+      result.title = label;
+    }
     result.disabled = blocked(panel) || disabled;
     return result;
   };
@@ -58,12 +66,14 @@ export function explorerToolbar(panel, model) {
         "explorer-back",
         () => traverseExplorer(panel, "back"),
         !panel.explorerBack?.length,
+        "back",
       ),
       button(
         t("explorerForward"),
         "explorer-forward",
         () => traverseExplorer(panel, "forward"),
         !panel.explorerForward?.length,
+        "forward",
       ),
       button(
         t("explorerUp"),
@@ -71,6 +81,7 @@ export function explorerToolbar(panel, model) {
         () =>
           navigateExplorer(panel, model.index.parents[model.location] || ""),
         !model.location,
+        "up",
       ),
     ],
   );
@@ -115,11 +126,17 @@ export function explorerToolbar(panel, model) {
     ["folders", "explorerFolderView"],
     ["tree", "explorerTreeView"],
   ]) {
-    const control = button(t(label), "explorer-view-" + value, () => {
-      panel.libraryView = value;
-      panel.libraryFocus = "explorer-view-" + value;
-      panel.render();
-    });
+    const control = button(
+      t(label),
+      "explorer-view-" + value,
+      () => {
+        panel.libraryView = value;
+        panel.libraryFocus = "explorer-view-" + value;
+        panel.render();
+      },
+      false,
+      value === "folders" ? "folder" : "tree",
+    );
     control.setAttribute("aria-pressed", String(panel.libraryView === value));
     views.append(control);
   }
@@ -132,22 +149,34 @@ export function explorerToolbar(panel, model) {
     ["preview", "explorerPreview"],
     ["list", "explorerList"],
   ]) {
-    const control = button(t(label), "explorer-display-" + value, () => {
-      panel.libraryDisplay = value;
-      panel.libraryFocus = "explorer-display-" + value;
-      panel.render();
-    });
+    const control = button(
+      t(label),
+      "explorer-display-" + value,
+      () => {
+        panel.libraryDisplay = value;
+        panel.libraryFocus = "explorer-display-" + value;
+        panel.render();
+      },
+      false,
+      value === "preview" ? "grid" : "list",
+    );
     control.setAttribute(
       "aria-pressed",
       String(panel.libraryDisplay === value),
     );
     display.append(control);
   }
-  const sidebar = button(t("explorerSidebar"), "explorer-sidebar", () => {
-    panel.explorerSidebarOpen = panel.explorerSidebarOpen === false;
-    panel.libraryFocus = "explorer-sidebar";
-    panel.render();
-  });
+  const sidebar = button(
+    t("explorerSidebar"),
+    "explorer-sidebar",
+    () => {
+      panel.explorerSidebarOpen = panel.explorerSidebarOpen === false;
+      panel.libraryFocus = "explorer-sidebar";
+      panel.render();
+    },
+    false,
+    "sidebar",
+  );
   sidebar.setAttribute(
     "aria-expanded",
     String(panel.explorerSidebarOpen !== false),
@@ -171,31 +200,62 @@ export function explorerToolbar(panel, model) {
     t("newGroup"),
     "explorer-create-folder",
     () => {
-      panel.groupCreateParent = Object.hasOwn(
-        organization(panel).groups,
-        model.location,
-      )
-        ? model.location
-        : "";
-      panel.manageGroups = true;
+      openGroupManager(panel, {
+        create: true,
+        parent: model.location,
+        returnFocus: "explorer-create-folder",
+      });
       panel.render();
     },
     model.location === "all" || model.location === "ungrouped",
   );
-  bar.append(
-    navigation,
-    path,
-    h("div", { class: "explorer-view-controls" }, [
+  create.prepend(icon("plus"));
+  const viewMenu = h("details", { class: "explorer-view-menu" });
+  viewMenu.open = !!panel.libraryViewOptionsOpen;
+  const viewSummary = h(
+    "summary",
+    {
+      "aria-label": t("explorerDisplay"),
+      "data-library-focus": "explorer-display-menu",
+    },
+    [icon(panel.libraryDisplay === "list" ? "list" : "grid")],
+  );
+  viewMenu.append(
+    viewSummary,
+    h("div", { class: "explorer-view-panel" }, [
+      h("span", { class: "muted", text: t("explorerView") }),
       views,
+      h("span", { class: "muted", text: t("explorerDisplay") }),
       display,
-      sidebar,
-      create,
       h("label", { class: "folder-include" }, [
         include,
         h("span", { text: t("includeSubfolders") }),
       ]),
     ]),
-    h("p", { class: "explorer-hint muted", text: t("explorerHint") }),
+  );
+  viewMenu.addEventListener("toggle", () => {
+    panel.libraryViewOptionsOpen = viewMenu.open;
+  });
+  viewMenu.addEventListener("keydown", (event) => {
+    if (event.key !== "Escape") return;
+    viewMenu.open = panel.libraryViewOptionsOpen = false;
+    viewSummary.focus();
+    event.preventDefault();
+  });
+  const dismissView = (event) => {
+    if (viewMenu.open && !event.composedPath?.().includes(viewMenu))
+      viewMenu.open = false;
+  };
+  if (document.addEventListener) {
+    document.addEventListener("pointerdown", dismissView);
+    panel.pageResources.push(() =>
+      document.removeEventListener("pointerdown", dismissView),
+    );
+  }
+  bar.append(
+    navigation,
+    path,
+    h("div", { class: "explorer-view-controls" }, [viewMenu, sidebar, create]),
   );
   navigation.addEventListener("keydown", (event) => {
     if (!event.altKey || blocked(panel)) return;
@@ -308,6 +368,18 @@ export function explorerFolder(panel, item) {
     card.append(expand);
   }
   card.append(body);
+  const manage = panel.button("", () => {
+    openGroupManager(panel, {
+      selected: item.id,
+      returnFocus: "folder-actions-" + item.id,
+    });
+  });
+  manage.className = "icon-button folder-card-actions";
+  manage.setAttribute("aria-label", t("manageGroups") + " · " + item.name);
+  manage.setAttribute("data-library-focus", "folder-actions-" + item.id);
+  manage.title = manage.getAttribute("aria-label");
+  manage.append(icon("sliders"));
+  card.append(manage);
   attachFolderDrop(panel, card, item.id);
   return card;
 }

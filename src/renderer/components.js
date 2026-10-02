@@ -27,6 +27,19 @@ const iconPaths = {
   close: "M6 6l12 12M18 6L6 18",
   play: "M8 5l11 7-11 7z",
   stop: "M6 6h12v12H6z",
+  search: "M21 21l-5-5M18 10a8 8 0 1 1-16 0 8 8 0 0 1 16 0",
+  folder: "M3 7V4h6l3 3h9v13H3z",
+  home: "M3 11l9-8 9 8M5 10v11h14V10M9 21v-7h6v7",
+  grid: "M3 3h7v7H3zM14 3h7v7h-7zM3 14h7v7H3zM14 14h7v7h-7z",
+  list: "M8 5h13M8 12h13M8 19h13M3 5h.01M3 12h.01M3 19h.01",
+  tree: "M4 3v15h5M4 8h5M10 5h10v6H10zM10 15h10v6H10z",
+  sidebar: "M3 3h18v18H3zM9 3v18",
+  chevron: "M9 5l7 7-7 7",
+  back: "M14 5l-7 7 7 7",
+  forward: "M10 5l7 7-7 7",
+  up: "M5 14l7-7 7 7",
+  plus: "M12 4v16M4 12h16",
+  check: "M4 12l5 5L20 6",
 };
 export function icon(name) {
   const element = document.createElementNS("http://www.w3.org/2000/svg", "svg");

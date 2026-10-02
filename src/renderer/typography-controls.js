@@ -1,5 +1,6 @@
 import { h } from "./components.js";
 import { t } from "./messages.js";
+import { requireEngineVersion } from "../core/engine-version.ts";
 export function typographyControls(panel) {
   const automatic = h("input", {
     type: "checkbox",
@@ -10,7 +11,7 @@ export function typographyControls(panel) {
     panel.change(
       () => {
         panel.doc.theme.autoTextColor = automatic.checked;
-        panel.doc.manifest.engine.minVersion = "0.1.2";
+        requireEngineVersion(panel.doc.manifest, "0.1.2");
       },
       { preview: panel.editing || panel.session.previewing },
     );
@@ -30,7 +31,7 @@ export function typographyControls(panel) {
         if (family.value.trim())
           panel.doc.theme.fontFamily = family.value.trim();
         else delete panel.doc.theme.fontFamily;
-        panel.doc.manifest.engine.minVersion = "0.1.2";
+        requireEngineVersion(panel.doc.manifest, "0.1.2");
       },
       { preview: panel.editing || panel.session.previewing },
     );

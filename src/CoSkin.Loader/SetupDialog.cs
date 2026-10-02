@@ -136,7 +136,7 @@ internal static class SetupDialog
                 var id = (int)(wParam.ToUInt64() & 0xffff);
                 if (id == 1)
                 {
-                    result = new(new(settingsOnly ? IsDlgButtonChecked(window, 11) == 1 : initial.LaunchWithCodex, IsDlgButtonChecked(window, 12) == 1, IsDlgButtonChecked(window, 13) == 1, settingsOnly ? IsDlgButtonChecked(window, 14) == 1 : IsDlgButtonChecked(window, 16) == 1), IsDlgButtonChecked(window, 14) == 1, IsDlgButtonChecked(window, 15) == 1);
+                    result = new(new(settingsOnly ? IsDlgButtonChecked(window, 11) == 1 : initial.LaunchWithCodex, IsDlgButtonChecked(window, 12) == 1, IsDlgButtonChecked(window, 13) == 1, settingsOnly ? IsDlgButtonChecked(window, 14) == 1 : IsDlgButtonChecked(window, 16) == 1, initial.AssetStoragePath), IsDlgButtonChecked(window, 14) == 1, IsDlgButtonChecked(window, 15) == 1);
                     EndDialog(window, new IntPtr(1));
                     return new IntPtr(1);
                 }

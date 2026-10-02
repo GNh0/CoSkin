@@ -4,7 +4,7 @@ using System.Security.Cryptography;
 using System.Text.Json.Nodes;
 namespace CoSkin;
 
-internal sealed record NativeConnection(int Port, int ProcessId, long Started, CodexInstallation Installation);
+internal sealed record NativeConnection(int Port, int ProcessId, long Started, CodexInstallation Installation, string PipeName, string Nonce);
 
 internal static class NativeAttachment
 {
@@ -54,7 +54,8 @@ internal static class NativeAttachment
         var responsePath = Path.Combine(directory, $"response-{processId}.json");
         RejectLinks(requestPath); RejectLinks(responsePath);
         var nonce = Convert.ToHexString(RandomNumberGenerator.GetBytes(32)).ToLowerInvariant();
-        var request = new JsonObject { ["contractVersion"] = 1, ["pid"] = processId, ["ownerPid"] = Environment.ProcessId, ["created"] = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(), ["nonce"] = nonce };
+        var expectedPipe = $"CoSkin-{processId}-{Convert.ToHexString(RandomNumberGenerator.GetBytes(16)).ToLowerInvariant()}";
+        var request = new JsonObject { ["contractVersion"] = 2, ["pid"] = processId, ["ownerPid"] = Environment.ProcessId, ["created"] = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(), ["nonce"] = nonce, ["pipeName"] = expectedPipe };
         File.WriteAllText(requestPath, request.ToJsonString());
         var module = NativeLibrary.Load(dll);
         IntPtr hook = IntPtr.Zero;
@@ -77,15 +78,17 @@ internal static class NativeAttachment
                     var response = JsonContract.Read(File.ReadAllBytes(responsePath), 4096);
                     if (response["nonce"]?.GetValue<string>() == nonce)
                     {
-                        JsonContract.Fields(response, "contractVersion", "pid", "url", "nonce", "error");
+                        JsonContract.Fields(response, "contractVersion", "pid", "url", "pipeName", "nonce", "error");
                         if (response["error"] is not null) throw new IOException("Codex 연결 준비 실패: " + JsonContract.String(response, "error"));
                         var url = new Uri(JsonContract.String(response, "url"));
-                        if (response["contractVersion"]?.GetValue<int>() != 1 || response["pid"]?.GetValue<int>() != processId ||
-                            url.Scheme != "ws" || url.Host != "127.0.0.1" || url.Port < 1024 || url.Port > 65535 || url.UserInfo.Length != 0 ||
+                        var pipeName = JsonContract.String(response, "pipeName");
+                        if (response["contractVersion"]?.GetValue<int>() != 2 || response["pid"]?.GetValue<int>() != processId ||
+                            url.Scheme != "http" || url.Host != "127.0.0.1" || url.Port < 1024 || url.Port > 65535 || url.UserInfo.Length != 0 || url.AbsolutePath != "/" || url.Query.Length != 0 || url.Fragment.Length != 0 ||
+                            pipeName != expectedPipe ||
                             NativeWindow.ListenerProcess(url.Port) != processId)
                             throw new InvalidDataException("Codex 연결 모듈의 응답 정체성이 다릅니다.");
                         DiagnosticLog.Record("native-ready", requests: requests, elapsedMs: resend.ElapsedMilliseconds);
-                        return new(url.Port, processId, started, installation);
+                        return new(url.Port, processId, started, installation, pipeName, nonce);
                     }
                 }
                 // A hook can receive the message before V8 has entered a usable context.

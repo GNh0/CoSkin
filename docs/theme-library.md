@@ -4,7 +4,9 @@
 
 ## 한국어
 
-CoSkin 0.1.6부터 왼쪽 폴더 트리와 오른쪽 폴더·테마 목록으로 탐색합니다. 예를 들어 `니케 → 라피 → 기본 → 전투`처럼 폴더 안에 하위 폴더를 만드세요. 홈에는 최상위 폴더와 미분류 테마가 함께 표시됩니다. 폴더 카드를 한 번 누르면 선택하고 **더블 클릭 또는 Enter**로 열면 그 안의 하위 폴더와 직접 테마가 표시됩니다. 테마를 누르면 기존 관리 화면이 열립니다. **전체**는 모든 테마를, **미분류**는 아직 정리하지 않은 테마를 보여줍니다.
+CoSkin 0.1.6부터 왼쪽 폴더 트리와 오른쪽 폴더·테마 목록으로 탐색합니다. 예를 들어 `니케 → 라피` 안에 라피의 모든 테마를 함께 두거나 필요할 때 하위 폴더를 만드세요. 홈에는 최상위 폴더와 미분류 테마가 함께 표시됩니다. 폴더 카드를 한 번 누르면 선택하고 **더블 클릭 또는 Enter**로 열면 그 안의 하위 폴더와 직접 테마가 표시됩니다. 테마를 누르면 기존 관리 화면이 열립니다. **전체**는 모든 테마를, **미분류**는 아직 정리하지 않은 테마를 보여줍니다.
+
+0.1.9는 상단에 검색과 필터 버튼만 두고 정렬·표시 개수·분류 도구는 필요할 때 엽니다. 현재 필터는 지울 수 있는 표시로 보입니다. 폴더 생성·관리와 여러 테마 정리는 별도 대화상자에서 처리하며, 폴더 관리에서는 목록과 선택한 폴더 한 개의 이름·상위 위치를 편집합니다. 기본 탐색 화면에 모든 편집 양식을 쌓지 않습니다. 큰 폴더 트리는 스크롤 영역의 보이는 행만 준비하고 키보드 Home/End·방향키를 지원합니다.
 
 **폴더 보기/트리 보기**는 탐색 구조를, **미리보기 카드/한 줄 목록**은 표시 방식을 전환합니다. 트리 보기에서는 폴더를 펼쳐 하위 폴더와 테마를 같은 목록에서 봅니다. 경로를 누르거나 뒤로·앞으로·상위 버튼으로 이동할 수 있습니다. 기본은 직접 테마만 표시하며 **하위 폴더 테마도 포함**을 켜면 선택한 폴더 아래의 테마를 함께 봅니다. 좁은 화면에서는 왼쪽 트리를 숨기며 폴더 사이드바 버튼으로 다시 열 수 있습니다.
 
@@ -18,7 +20,7 @@ CoSkin 0.1.6부터 왼쪽 폴더 트리와 오른쪽 폴더·테마 목록으로
 
 ## English
 
-CoSkin 0.1.6 uses a folder sidebar and mixed folder/theme contents. Create a path such as `NIKKE → Rapi → Base → Battle`. Folder home shows root folders and ungrouped themes. Click a folder card to select it; **double-click or Enter** opens its child folders and direct themes. Clicking a theme opens management. **All** shows every theme; **Ungrouped** shows unorganized themes.
+CoSkin 0.1.6 uses a folder sidebar and mixed folder/theme contents. Keep a character's themes together, for example `NIKKE → Rapi`, or add child folders when useful. Folder home shows root folders and ungrouped themes. Click a folder card to select it; **double-click or Enter** opens its child folders and direct themes. Clicking a theme opens management. **All** shows every theme; **Ungrouped** shows unorganized themes. From0.1.9, search and filters stay compact; display/organization tools open on demand. Folder and batch editing use dedicated dialogs. The scrollable tree mounts only visible rows and supports keyboard navigation.
 
 Switch **Folder view/Tree view** separately from **Preview cards/One-line list**. Expanded tree branches contain both folders and theme leaves. Use breadcrumbs, back/forward/up and optional **Include subfolders**; direct themes are the default. The sidebar starts hidden on narrow screens and can be reopened. Folder and tag pickers are searchable and paged.
 
@@ -32,6 +34,8 @@ Deleting a folder keeps its themes ungrouped and promotes its immediate children
 
 CoSkin 0.1.6では左のフォルダーツリーと右のフォルダー・テーマ一覧で探索できます。ホームには最上位フォルダーと未分類テーマを表示します。フォルダーはクリックで選択し、**ダブルクリックまたはEnter**で開くとサブフォルダーと直接テーマを表示します。テーマをクリックすると管理画面が開きます。
 
+0.1.9では検索とフィルターを簡潔にまとめ、表示・整理ツールは必要な時に開きます。フォルダーと一括整理は専用ダイアログで編集します。大きなツリーはスクロール内の表示行だけを準備し、キーボードでも移動できます。
+
 **フォルダー表示/ツリー表示**と**プレビューカード/一行一覧**を別々に切り替え、パス・戻る・進む・上へで移動します。標準は直接テーマのみで、**サブフォルダーを含む**を選ぶと配下のテーマも表示します。テーマをフォルダーへドラッグして分類を移動でき、選択済みテーマをドラッグすると選択全体を移動します。選択モードでも複数テーマの移動・お気に入り・タグを一括変更できます。一行一覧はプレビューを読み込まず、カードは画面に見える時に生成し最大48件をメモリーに保持します。
 
 24/48/96件表示、ページ番号、先頭・末尾・指定ページへの移動を利用でき、詳細から戻っても検索・フィルター・一覧位置を保持します。フォルダー削除時は直接テーマを未分類へ移し、直接サブフォルダーを一段上へ移します。テーマとメディアを保持します。
@@ -39,6 +43,8 @@ CoSkin 0.1.6では左のフォルダーツリーと右のフォルダー・テ�
 ## 简体中文
 
 CoSkin 0.1.6通过左侧文件夹树和右侧文件夹、主题列表浏览。主页显示顶层文件夹和未分类主题。单击选择文件夹，**双击或Enter**打开并显示子文件夹和直接主题；单击主题打开管理界面。
+
+0.1.9将搜索与筛选保持简洁，显示和整理工具按需展开。文件夹及批量整理使用专用对话框。大型树只加载滚动区内可见的行，并支持键盘导航。
 
 **文件夹视图/树视图**与**预览卡片/单行列表**可分别切换，支持路径、后退、前进和上级。默认显示直接主题，启用**包含子文件夹**后也显示下级主题。将主题拖到文件夹可移动分类；拖动已选择主题会移动整个选中集合。选择模式支持跨页多选，批量移动主题或修改收藏和标签。单行列表不加载预览；卡片在进入可见区域时生成预览，内存中最多缓存48项。
 

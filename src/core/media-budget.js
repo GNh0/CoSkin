@@ -1,6 +1,9 @@
+import { MEDIA_LIMITS } from "./media-limits.js";
+
 export const mediaCacheLimits = Object.freeze({
   standard: 128 * 1024 * 1024,
   uhdVideo: 256 * 1024 * 1024,
+  largeVideo: 768 * 1024 * 1024,
   assets: 64,
 });
 
@@ -15,6 +18,10 @@ export function mediaMemoryBytes(media) {
 }
 
 export function mediaCacheBudget(incoming, active) {
+  const large = (media) =>
+    !!media?.videoUrl && media.encodedBytes > MEDIA_LIMITS.bytes;
+  if (large(incoming) || [...active].some(large))
+    return mediaCacheLimits.largeVideo;
   // Reserve room for a 4K video's poster, compressed bytes and native buffers,
   // plus the current 1080p video while its replacement is prepared.
   // Animated images keep their existing limit; unused videos do not raise it.

@@ -1,4 +1,4 @@
-import { h } from "./components.js";
+import { h, icon } from "./components.js";
 import { t } from "./messages.js";
 import { text } from "./strings.js";
 
@@ -19,7 +19,7 @@ export function themeMetadata(panel, creating = false) {
   const description = h("textarea", {
     value: manifest.description || "",
     maxLength: 4096,
-    rows: 4,
+    rows: 3,
     "aria-label": t("control.themeDescription"),
   });
   const author = h("input", {
@@ -30,7 +30,9 @@ export function themeMetadata(panel, creating = false) {
   });
   root.append(
     h("header", { class: "panel-form-header" }, [
-      h("span", { class: "panel-heading-mark", "aria-hidden": "true" }),
+      h("span", { class: "panel-heading-mark", "aria-hidden": "true" }, [
+        icon(creating ? "plus" : "sliders"),
+      ]),
       h("div", {}, [
         h("span", { class: "panel-eyebrow", text: "CoSkin" }),
         h("h2", { text: t(creating ? "create" : "control.themeInformation") }),
@@ -62,6 +64,8 @@ export function themeMetadata(panel, creating = false) {
     class: "primary",
     text: creating ? t("create") : text.save,
   });
+  for (const input of [name, description, author])
+    input.disabled = !!panel.busy;
   save.disabled = panel.busy;
   const cancel = panel.button(t("panel.cancel"), () => {
     panel.metadataMode = null;

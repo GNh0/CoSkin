@@ -61,7 +61,9 @@ internal sealed class TrayController : IDisposable
             originalDetected = originals.Count > 0;
         }
     }
+    // Shell registration may recover later; readiness is the resident message loop.
     internal Task Ready => tray.Ready;
+    internal bool NotificationIconAvailable => tray.IconAvailable;
     internal void ReportConnectionFailure(Exception error) => tray.ShowNotice(TrayMessages.Error(library.Locale,
         error is TrayActionException action ? action.Code : Failure.Describe(error).Code));
     private void StateChanged(JsonObject next) => Volatile.Write(ref state, next);
@@ -93,12 +95,19 @@ internal sealed class TrayController : IDisposable
             if (!watched.TryGetValue(id, out var current) || !ReferenceEquals(current, expected))
                 return;
             watched.Remove(id);
+            int? targetExitCode = null;
+            try { targetExitCode = expected.ExitCode; }
+            catch (Exception error) when (error is InvalidOperationException or System.ComponentModel.Win32Exception) { }
+            DiagnosticLog.Record("target-exited", targetPid: id, targetExitCode: targetExitCode, reason: "verified-process-exited");
             expected.Dispose();
         }
         try
         {
             if (lifetime.Exited(id, library.Preferences.Read()))
+            {
+                DiagnosticLog.Record("stop-requested", targetPid: id, reason: "exit-with-codex");
                 stop();
+            }
         }
         catch (Exception error) { Console.Error.WriteLine(Failure.Describe(error).Message); }
     }
@@ -107,6 +116,7 @@ internal sealed class TrayController : IDisposable
         var participants = windows();
         if (command.Action == TrayAction.Exit)
         {
+            DiagnosticLog.Record("stop-requested", reason: "user-tray-exit");
             foreach (var window in participants)
                 await window.Evaluate("window.__coskin?.persistDraftForExit()");
             stop();

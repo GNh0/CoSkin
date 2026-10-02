@@ -203,7 +203,7 @@ export class Decoration {
       if (name === "background") {
         el.style.backgroundColor = rgba(v.color, 1);
         el.style.opacity = String(v.opacity ?? 1);
-        el.style.filter = `blur(${v.blurPx || 0}px)`;
+        el.style.filter = v.blurPx > 0 ? `blur(${v.blurPx}px)` : "none";
         if (
           this.target.target === "app.background" &&
           this.players.get(name)?.media

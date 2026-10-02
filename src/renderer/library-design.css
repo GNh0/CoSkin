@@ -1,0 +1,912 @@
+/* A quiet file browser: navigation and content stay visible; options open on demand. */
+:host([data-mode="gallery"]) section[data-library-page] {
+  padding: 22px 28px;
+}
+.library-header {
+  margin: 0 0 22px;
+  gap: 16px;
+}
+.library-header > div:first-child {
+  display: flex;
+  align-items: baseline;
+  gap: 16px;
+}
+.library-header .brand {
+  font-size: 14px;
+  color: var(--muted);
+}
+.library-header h1 {
+  margin: 0;
+  font-size: 22px;
+  letter-spacing: -0.5px;
+}
+.library-header button {
+  padding: 8px 13px;
+}
+.library-explorer-shell {
+  grid-template-columns: 212px minmax(0, 1fr);
+  gap: 24px;
+  align-items: start;
+}
+.library-explorer-shell[data-sidebar="false"] {
+  grid-template-columns: minmax(0, 1fr);
+}
+.explorer-sidebar {
+  border: 0;
+  padding: 0;
+  min-width: 0;
+  position: sticky;
+  top: 0;
+}
+.folder-browser-heading {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--muted);
+  margin: 8px 10px 12px;
+  letter-spacing: 0.02em;
+}
+.folder-tree-tools {
+  display: block;
+  padding: 0 4px;
+}
+.folder-tree-tools input {
+  padding: 7px 10px;
+  background: transparent;
+  font-size: 12px;
+}
+.folder-tree-tools button {
+  display: none;
+}
+.folder-quicklinks {
+  display: grid;
+  gap: 3px;
+  padding: 14px 0;
+  margin-bottom: 8px;
+  border-bottom: 1px solid var(--line);
+}
+.folder-tree {
+  display: block;
+  height: clamp(260px, 62vh, 640px);
+  max-height: none;
+  overflow: auto;
+  scrollbar-width: thin;
+  padding: 0;
+  overscroll-behavior: contain;
+}
+.explorer-sidebar .folder-tree {
+  max-height: none;
+}
+.folder-tree-viewport {
+  position: relative;
+  min-height: 32px;
+}
+.folder-tree-row {
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  gap: 0;
+}
+.folder-button {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  min-width: 0;
+  height: 32px;
+  padding: 0 8px;
+  gap: 8px;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 450;
+  margin: 0;
+}
+.explorer-sidebar .folder-button {
+  padding: 0 8px;
+}
+.folder-button svg {
+  flex: none;
+  width: 16px;
+  height: 16px;
+}
+.folder-button:hover {
+  background: var(--accent-bg);
+  color: var(--ink);
+}
+.folder-button[aria-current="true"] {
+  background: var(--accent-bg);
+  color: var(--accent);
+  font-weight: 600;
+}
+.folder-name {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.folder-count {
+  background: none;
+  border-radius: 0;
+  padding: 0;
+  min-width: 0;
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+  opacity: 0.65;
+}
+.folder-expand,
+.folder-expand-spacer {
+  flex: 0 0 20px;
+  width: 20px;
+  min-width: 20px;
+  height: 28px;
+  padding: 0;
+  border: 0;
+  background: none;
+  display: grid;
+  place-items: center;
+  color: var(--muted);
+}
+.folder-expand svg {
+  width: 11px;
+  height: 11px;
+}
+.folder-expand[aria-expanded="true"] svg {
+  transform: rotate(90deg);
+}
+.explorer-content {
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 0 18px 18px;
+  min-width: 0;
+}
+.explorer-toolbar {
+  display: flex;
+  align-items: center;
+  flex-wrap: nowrap;
+  border: 0;
+  border-bottom: 1px solid var(--line);
+  border-radius: 0;
+  margin: 0 -18px 16px;
+  padding: 11px 14px;
+  gap: 10px;
+}
+.explorer-navigation {
+  gap: 0;
+}
+.explorer-breadcrumbs {
+  flex: 1;
+  min-width: 0;
+  overflow-x: auto;
+  flex-wrap: nowrap;
+  scrollbar-width: none;
+  gap: 2px;
+}
+.explorer-breadcrumbs button {
+  flex-shrink: 0;
+  padding: 4px 8px;
+  font-size: 12px;
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+}
+.explorer-breadcrumbs button[aria-current] {
+  color: var(--ink);
+}
+.explorer-breadcrumbs button + button::before {
+  content: "/";
+  margin-right: 12px;
+  opacity: 0.4;
+}
+.explorer-view-controls {
+  display: flex;
+  gap: 6px;
+  flex-wrap: nowrap;
+  grid-column: auto;
+  align-items: center;
+}
+.explorer-toolbar .icon-button,
+.library-options-menu > summary,
+.explorer-view-menu > summary {
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  padding: 6px;
+  border: 0;
+  background: transparent;
+  border-radius: 7px;
+  color: var(--muted);
+  cursor: pointer;
+}
+.explorer-view-controls > button:not(.icon-button) {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 9px;
+  font-size: 12px;
+  border: 0;
+  background: transparent;
+}
+.library-toolbar {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  margin: 0 0 14px;
+}
+.library-search {
+  flex: 1;
+  position: relative;
+  min-width: 0;
+}
+.library-search svg {
+  position: absolute;
+  left: 12px;
+  top: 11px;
+  width: 16px;
+  height: 16px;
+  color: var(--muted);
+  pointer-events: none;
+}
+.library-search .search {
+  display: block;
+  width: 100%;
+  min-width: 0;
+  background: transparent;
+  padding: 8px 12px 8px 36px;
+  height: 38px;
+}
+.library-filter-menu,
+.library-options-menu,
+.explorer-view-menu {
+  position: relative;
+}
+.library-filter-menu > summary {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  height: 38px;
+  padding: 7px 12px;
+  color: var(--muted);
+  cursor: pointer;
+}
+.library-filter-menu > summary::marker,
+.library-options-menu > summary::marker,
+.explorer-view-menu > summary::marker {
+  content: "";
+}
+.library-filter-menu > summary::-webkit-details-marker,
+.library-options-menu > summary::-webkit-details-marker,
+.explorer-view-menu > summary::-webkit-details-marker {
+  display: none;
+}
+.library-filter-menu[open] > summary,
+.library-options-menu[open] > summary,
+.explorer-view-menu[open] > summary {
+  background: var(--accent-bg);
+  color: var(--accent);
+}
+.library-filter-panel,
+.library-options-panel,
+.explorer-view-panel {
+  position: absolute;
+  z-index: 20;
+  right: 0;
+  top: calc(100% + 8px);
+  padding: 16px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--surface);
+  box-shadow: 0 12px 36px #0004;
+  width: min(340px, calc(100vw - 40px));
+}
+.filter-panel-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+.filter-panel-heading button {
+  padding: 4px 0;
+  border: 0;
+  color: var(--muted);
+  font-size: 11px;
+}
+.library-filters {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  width: 100%;
+}
+.library-filters .library-picker > summary {
+  width: 100%;
+}
+.library-filters .picker-content {
+  position: static;
+  width: 100%;
+  max-width: none;
+  box-shadow: none;
+  margin-top: 8px;
+}
+.library-filter-panel {
+  max-height: min(560px, 72vh);
+  overflow: auto;
+  overscroll-behavior: contain;
+}
+.filter-count {
+  font-size: 10px;
+  min-width: 18px;
+  text-align: center;
+  border-radius: 5px;
+  background: var(--accent-bg);
+  color: var(--accent);
+}
+.library-active-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: -4px 0 12px;
+}
+.filter-chip {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 8px;
+  font-size: 11px;
+  background: var(--accent-bg);
+  color: var(--accent);
+  border: 0;
+}
+.filter-chip svg {
+  width: 12px;
+  height: 12px;
+}
+.library-options-panel {
+  display: grid;
+  gap: 6px;
+  width: 256px;
+}
+.library-options-panel > button {
+  text-align: left;
+  border: 0;
+  font-weight: 450;
+  padding: 7px 9px;
+}
+.library-options-panel > button svg {
+  vertical-align: middle;
+  margin-right: 6px;
+}
+.library-view-options {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  align-items: center;
+  gap: 8px;
+  padding-bottom: 12px;
+  margin-bottom: 4px;
+  border-bottom: 1px solid var(--line);
+}
+.library-view-options label {
+  margin: 0;
+  font-size: 12px;
+}
+.library-view-options select,
+.library-scope select {
+  padding: 6px 8px;
+  font-size: 12px;
+  min-width: 0;
+}
+.library-scope {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px;
+  gap: 12px;
+  border-top: 1px solid var(--line);
+  font-size: 12px;
+}
+.explorer-view-panel {
+  width: 240px;
+  display: grid;
+  gap: 10px;
+}
+.explorer-view-panel .explorer-views {
+  background: transparent;
+  border: 0;
+  gap: 8px;
+}
+.explorer-view-panel .icon-button {
+  border: 1px solid var(--line);
+  width: 44px;
+}
+.explorer-view-panel .folder-include {
+  margin: 0;
+  font-size: 12px;
+}
+.explorer-result {
+  margin: 0;
+  font-size: 11px;
+}
+.explorer-items {
+  gap: 12px;
+  margin-top: 14px;
+  grid-template-columns: repeat(auto-fill, minmax(min(190px, 100%), 1fr));
+}
+.folder-card {
+  position: relative;
+  border-radius: 10px;
+  background: transparent;
+}
+.folder-card:not(.explorer-row) {
+  align-self: start;
+}
+.explorer-items .card-actions {
+  padding: 10px 12px 12px;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.explorer-items .card-actions button {
+  white-space: nowrap;
+  padding: 7px 10px;
+  flex-shrink: 0;
+}
+.explorer-items .card-actions .icon-button {
+  padding: 7px;
+}
+.folder-card-actions {
+  opacity: 0;
+  color: var(--muted);
+  background: transparent;
+  border: 0;
+  width: 30px;
+  height: 30px;
+  padding: 6px;
+  flex: none;
+}
+.folder-card:not(.explorer-row) .folder-card-actions {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+}
+.explorer-row .folder-card-actions {
+  margin-right: 8px;
+}
+.folder-card:hover .folder-card-actions,
+.folder-card:focus-within .folder-card-actions,
+.folder-card[aria-selected="true"] .folder-card-actions {
+  opacity: 1;
+}
+.folder-card-actions:hover {
+  background: var(--accent-bg);
+  color: var(--accent);
+}
+.folder-card .card-body {
+  padding: 18px;
+}
+.folder-card .explorer-folder-icon {
+  height: 30px;
+  width: 38px;
+  margin-bottom: 14px;
+  color: var(--accent);
+  opacity: 0.8;
+}
+.folder-card h3,
+.skin-card h3 {
+  font-size: 13px;
+  font-weight: 550;
+  margin-bottom: 3px;
+}
+.folder-card .muted {
+  font-size: 11px;
+}
+.explorer-list {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+.explorer-list .folder-card,
+.explorer-list .skin-card {
+  border-color: transparent;
+  border-radius: 7px;
+}
+.explorer-list .card-body {
+  padding: 8px 12px;
+}
+.explorer-list .explorer-folder-icon {
+  width: 24px;
+  height: 20px;
+  margin: 0;
+}
+.explorer-list .skin-card:hover,
+.explorer-list .folder-card:hover {
+  background: var(--accent-bg);
+}
+[data-library-page] .pagination {
+  font-size: 11px;
+  margin: 12px 0;
+}
+[data-library-page] .pagination button {
+  padding: 5px 8px;
+}
+[data-library-page] .pagination input {
+  padding: 5px 8px;
+}
+.batch-selection-bar {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 8px 10px;
+  margin: 0 0 12px;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: var(--accent-bg);
+  font-size: 12px;
+}
+.batch-selection-bar > [role="status"] {
+  margin-right: auto;
+  padding: 0 6px;
+  font-weight: 600;
+}
+.batch-selection-bar button {
+  padding: 6px 9px;
+  font-size: 12px;
+}
+.batch-selection-bar .icon-button {
+  border: 0;
+  background: transparent;
+  padding: 5px;
+  width: 28px;
+  height: 28px;
+}
+.selection-outside {
+  width: 100%;
+  padding: 2px 6px;
+  font-size: 11px;
+}
+.library-selection-menu {
+  position: relative;
+}
+.library-selection-menu > summary {
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+  border-radius: 6px;
+  padding: 5px;
+}
+.library-selection-menu > summary svg {
+  transform: rotate(90deg);
+  width: 14px;
+  height: 14px;
+}
+.library-selection-menu > summary::marker {
+  content: "";
+}
+.library-selection-menu > summary::-webkit-details-marker {
+  display: none;
+}
+.library-selection-panel {
+  position: absolute;
+  z-index: 20;
+  top: calc(100% + 8px);
+  right: 0;
+  display: grid;
+  gap: 4px;
+  width: max-content;
+  max-width: calc(100vw - 40px);
+  padding: 8px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  box-shadow: 0 12px 28px #0004;
+}
+.library-selection-panel button {
+  border: 0;
+  background: transparent;
+  text-align: left;
+}
+.library-dialog {
+  width: min(780px, calc(100vw - 40px));
+  max-height: min(760px, calc(100vh - 64px));
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  padding: 0;
+  background: var(--surface);
+  color: var(--ink);
+  box-shadow: 0 24px 80px #0006;
+  overflow: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+}
+.library-dialog::backdrop {
+  background: #080b1180;
+  backdrop-filter: blur(3px);
+}
+.library-dialog-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+  padding: 18px 24px;
+  border-bottom: 1px solid var(--line);
+}
+.library-dialog-header h2 {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 600;
+}
+.library-dialog-close {
+  width: 30px;
+  height: 30px;
+  padding: 6px;
+  background: transparent;
+  border: 0;
+  color: var(--muted);
+}
+.library-dialog-status {
+  margin: 0 24px 20px;
+}
+.library-dialog .group-manager,
+.library-dialog .batch-organization {
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  margin: 0;
+  padding: 20px 24px 24px;
+}
+.library-dialog:has(.group-create),
+.library-dialog[data-library-dialog="organization"] {
+  width: min(520px, calc(100vw - 40px));
+}
+.group-manager-tools {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  margin-bottom: 16px;
+}
+.group-manager-tools input {
+  min-width: 0;
+  flex: 1;
+}
+.group-manager-tools button {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 10px;
+  font-size: 12px;
+}
+.group-manager-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 22px;
+  align-items: start;
+}
+.group-manager-layout:has(.group-editor:empty) {
+  grid-template-columns: minmax(0, 1fr);
+}
+.group-editor:empty {
+  display: none;
+}
+.group-list {
+  display: grid;
+  gap: 3px;
+  max-height: 440px;
+  overflow: auto;
+  scrollbar-width: thin;
+}
+.group-list-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px;
+  border: 0;
+  border-radius: 8px;
+  text-align: left;
+  background: transparent;
+  min-width: 0;
+  color: var(--muted);
+  font-weight: 400;
+}
+.group-list-row > svg {
+  flex: none;
+  width: 17px;
+  height: 17px;
+}
+.group-list-row > svg:last-child {
+  width: 13px;
+  height: 13px;
+}
+.group-list-row:hover,
+.group-list-row[aria-selected="true"] {
+  background: var(--accent-bg);
+  color: var(--accent);
+}
+.group-list-label {
+  display: grid;
+  gap: 2px;
+  flex: 1;
+  min-width: 0;
+}
+.group-list-label strong,
+.group-list-label .muted {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.group-list-label strong {
+  font-size: 12px;
+  font-weight: 550;
+}
+.group-list-label .muted {
+  font-size: 10px;
+}
+.library-dialog .group-row,
+.library-dialog .group-create {
+  display: grid;
+  gap: 12px;
+  margin: 0;
+  padding: 0;
+}
+.group-editor-heading {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.group-editor-heading svg {
+  color: var(--accent);
+}
+.library-dialog label {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  font-size: 12px;
+  color: var(--muted);
+}
+.library-dialog .group-row input,
+.library-dialog .group-create input,
+.library-dialog .library-picker {
+  width: 100%;
+  min-width: 0;
+}
+.library-dialog .picker-content {
+  position: static;
+  width: 100%;
+  max-width: none;
+  margin-top: 8px;
+  box-shadow: none;
+}
+.group-editor-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+  padding-top: 8px;
+}
+.group-editor-actions .folder-delete-action {
+  margin-right: auto;
+  background: transparent;
+  border-color: transparent;
+  color: var(--muted);
+}
+.library-dialog .group-delete-confirm {
+  display: grid;
+  padding: 12px;
+  background: var(--field);
+  font-size: 12px;
+  border: 1px solid var(--line);
+}
+.group-delete-confirm p {
+  margin: 0;
+}
+.group-delete-confirm .row {
+  justify-content: flex-end;
+  margin: 0;
+}
+.library-dialog .batch-group {
+  display: grid;
+  gap: 12px;
+  padding: 18px 0;
+}
+.library-dialog .batch-group > button {
+  justify-self: end;
+}
+.batch-more-actions {
+  border-top: 1px solid var(--line);
+  padding-top: 12px;
+}
+.batch-more-actions > summary {
+  color: var(--muted);
+  cursor: pointer;
+  font-size: 12px;
+}
+.library-dialog .batch-tags {
+  display: grid;
+}
+.library-dialog .batch-tags textarea {
+  min-width: 0;
+  max-width: none;
+}
+.library-dialog .batch-organization > .muted {
+  font-size: 11px;
+  margin-bottom: 0;
+}
+@media (max-width: 800px) {
+  :host([data-mode="gallery"]) section[data-library-page] {
+    padding: 18px;
+  }
+  .library-explorer-shell {
+    grid-template-columns: 170px minmax(0, 1fr);
+    gap: 16px;
+  }
+  .library-header .brand {
+    display: none;
+  }
+  .library-header h1 {
+    font-size: 18px;
+  }
+  .explorer-view-controls > button:not(.icon-button) {
+    font-size: 0;
+    padding: 6px;
+  }
+}
+@media (max-width: 600px) {
+  :host([data-mode="gallery"]) section[data-library-page] {
+    padding: 12px;
+  }
+  .library-explorer-shell {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .explorer-sidebar {
+    position: static;
+  }
+  .folder-tree {
+    height: 240px;
+  }
+  .library-header {
+    gap: 8px;
+    margin-bottom: 14px;
+    flex-wrap: wrap;
+  }
+  .library-header button {
+    padding: 6px 9px;
+  }
+  .library-header .row {
+    gap: 4px;
+  }
+  .explorer-items {
+    grid-template-columns: repeat(auto-fill, minmax(145px, 1fr));
+  }
+  .explorer-navigation button {
+    width: 26px;
+  }
+  .explorer-toolbar {
+    gap: 4px;
+    padding: 8px;
+  }
+  .library-dialog {
+    max-height: calc(100vh - 24px);
+    width: calc(100vw - 24px);
+  }
+  .library-dialog-header {
+    padding: 14px 16px;
+  }
+  .library-dialog .group-manager,
+  .library-dialog .batch-organization {
+    padding: 16px;
+  }
+  .group-manager-layout {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 16px;
+  }
+  .group-list {
+    max-height: 220px;
+  }
+  .folder-card-actions {
+    opacity: 1;
+  }
+}

@@ -12,6 +12,12 @@ Task Validate(JsonObject _) => Task.CompletedTask; // Contract/decoder behavior 
 Task Decode(byte[] _, string __) => Task.CompletedTask;
 try
 {
+    if (args.Contains("--library-media-only", StringComparer.Ordinal))
+    {
+        await LibraryMediaTests.Run(Check, scratch);
+        Console.WriteLine($"{passed} tests passed");
+        return;
+    }
     var discovered = new JsonObject
     {
         ["family"] = "OpenAI.Codex_2p2nqsd0c76g0",
@@ -51,6 +57,92 @@ try
     Reject(() => ImageProbe.Validate("assets/video.png", mp4), "MP4 위장 이미지 확장자 거절");
     Reject(() => ImageProbe.Validate("assets/video.mp4", mp4[..^1]), "잘린 MP4 컨테이너 거절");
     Reject(() => ImageProbe.Validate("assets/video.mp4", Box("ftyp", Encoding.ASCII.GetBytes("isom\0\0\0\0"))), "영상 데이터 없는 MP4 거절");
+    var gifFormatFixture = Convert.FromBase64String("R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7");
+    ImageProbe.Validate("assets/image.gif", gifFormatFixture);
+    ImageProbe.Validate("assets/image.jpeg", [0xff, 0xd8, 0xff]);
+    Check(ImageProbe.Mime(gifFormatFixture) == "image/gif" && ImageProbe.Mime([0xff, 0xd8, 0xff]) == "image/jpeg" &&
+        ImageProbe.Extension("image/jpeg") == ".jpg", "기존 GIF·JPEG 바이트 admission 계약 보존");
+    byte[] EbmlSize(ulong value, int width = 1)
+    {
+        while (width < 8 && value >= (1UL << (7 * width)) - 1) width++;
+        var result = new byte[width];
+        for (var i = width - 1; i >= 0; i--) { result[i] = (byte)value; value >>= 8; }
+        result[0] |= (byte)(1 << (8 - width));
+        return result;
+    }
+    byte[] EbmlElement(uint id, byte[] value, bool unknown = false, int width = 1)
+    {
+        var size = EbmlSize((ulong)value.Length, width);
+        if (unknown) { Array.Fill(size, (byte)255); size[0] = (byte)((1 << (9 - size.Length)) - 1); }
+        return Convert.FromHexString(id.ToString("x")).Concat(size).Concat(value).ToArray();
+    }
+    byte[] EbmlJoin(params byte[][] elements) => elements.SelectMany(element => element).ToArray();
+    byte[] WebmHeader(string docType = "webm", byte readVersion = 2, byte maxSize = 8) => EbmlElement(0x1a45dfa3, EbmlJoin(
+        EbmlElement(0x4286, [1]), EbmlElement(0x42f7, [1]), EbmlElement(0x42f2, [4]), EbmlElement(0x42f3, [maxSize]),
+        EbmlElement(0x4282, Encoding.ASCII.GetBytes(docType)), EbmlElement(0x4287, [4]), EbmlElement(0x4285, [readVersion])));
+    byte[] WebmInfo() => EbmlElement(0x1549a966, EbmlJoin(EbmlElement(0x2ad7b1, [0x0f, 0x42, 0x40]),
+        EbmlElement(0x4d80, "fixture"u8.ToArray()), EbmlElement(0x5741, "fixture"u8.ToArray())));
+    byte[] WebmTracks(string codec = "V_VP9", byte alpha = 0, byte[]? width = null) => EbmlElement(0x1654ae6b, EbmlElement(0xae, EbmlJoin(
+        EbmlElement(0xd7, [1]), EbmlElement(0x73c5, [1]), EbmlElement(0x83, [1]), EbmlElement(0x86, Encoding.ASCII.GetBytes(codec)),
+        EbmlElement(0x63a2, [0x81, 0]), EbmlElement(0xe0, EbmlJoin(EbmlElement(0xb0, width ?? [16]), EbmlElement(0xba, [16]), EbmlElement(0x53c0, [alpha]))))));
+    byte[] WebmBlock(byte flags = 0x80, params byte[] payload) => EbmlElement(0xa3, EbmlJoin([0x81, 0, 0, flags], payload.Length == 0 ? [0] : payload));
+    byte[] WebmCluster(bool unknown = false, byte[]? block = null, int width = 1) => EbmlElement(0x1f43b675,
+        EbmlJoin(EbmlElement(0xe7, [0]), block ?? WebmBlock()), unknown, width);
+    byte[] WebmDocument(byte[] contents, bool unknown = false, byte[]? header = null) => EbmlJoin(header ?? WebmHeader(), EbmlElement(0x18538067, contents, unknown));
+    var webm = WebmDocument(EbmlJoin(WebmInfo(), WebmTracks(), WebmCluster()));
+    // These tiny fixtures isolate container admission; real codec decoding remains a separate renderer contract.
+    foreach (var codec in new[] { "V_VP8", "V_VP9", "V_AV1" })
+    {
+        ImageProbe.Validate("assets/video.webm", WebmDocument(EbmlJoin(WebmInfo(), WebmTracks(codec), WebmCluster())));
+        Check(true, "WebM 지원 영상 코덱 선언 " + codec);
+    }
+    Check(ImageProbe.Mime(webm) == "video/webm" && ImageProbe.Extension("video/webm") == ".webm", "WebM DocType·MIME·확장자 확인");
+    ImageProbe.Validate("assets/video.webm", WebmDocument(EbmlJoin(WebmInfo(), WebmTracks("V_VP9\0padding"), WebmCluster()), header: WebmHeader("webm\0padding")));
+    Check(true, "EBML string의 null padding은 DocType·CodecID 판별을 바꾸지 않음");
+    ImageProbe.Validate("assets/video.webm", WebmDocument(EbmlJoin(WebmInfo(), WebmTracks(), WebmCluster(true)), true));
+    Check(true, "미정 크기 WebM Segment·Cluster는 부모 끝까지 허용");
+    ImageProbe.Validate("assets/video.webm", WebmDocument(EbmlJoin(WebmInfo(), WebmTracks(), WebmCluster(true, width: 8),
+        EbmlElement(0xec, [0]), WebmCluster(), EbmlElement(0x1c53bb6b, []))));
+    Check(true, "미정 크기 Cluster는 Void를 포함하고 다음 Cluster·Cues 전에 종료");
+    var alphaBlock = EbmlElement(0xa0, EbmlJoin(EbmlElement(0xa1, [0x81, 0, 0, 0, 0]),
+        EbmlElement(0x75a1, EbmlElement(0xa6, EbmlJoin(EbmlElement(0xee, [1]), EbmlElement(0xa5, [0x10, 0x20]))))));
+    ImageProbe.Validate("assets/video.webm", WebmDocument(EbmlJoin(WebmInfo(), WebmTracks(alpha: 1), WebmCluster(block: alphaBlock))));
+    Check(true, "WebM AlphaMode와 BlockAdditional 알파 데이터 구조 허용");
+    foreach (var lace in new[] { WebmBlock(0x84, 1, 0x10, 0x20), WebmBlock(0x82, 1, 1, 0x10, 0x20), WebmBlock(0x86, 2, 0x81, 0xbf, 0x10, 0x20, 0x30) })
+        ImageProbe.Validate("assets/video.webm", WebmDocument(EbmlJoin(WebmInfo(), WebmTracks(), WebmCluster(block: lace))));
+    Check(true, "WebM 고정·Xiph·EBML lacing 프레임 경계 허용");
+    Reject(() => ImageProbe.Validate("assets/video.png", webm), "WebM 위장 이미지 확장자 거절");
+    Reject(() => ImageProbe.Validate("assets/video.mp4", webm), "WebM 위장 MP4 확장자 거절");
+    Reject(() => ImageProbe.Validate("assets/video.webm", mp4), "MP4 위장 WebM 확장자 거절");
+    Reject(() => ImageProbe.Validate("assets/video.webm", webm[..^1]), "잘린 WebM 부모 범위 거절");
+    Reject(() => ImageProbe.Mime(WebmHeader("matroska")), "Matroska DocType을 WebM MIME으로 판별하지 않음");
+    Reject(() => ImageProbe.Validate("assets/video.webm", WebmDocument(EbmlJoin(WebmInfo(), WebmTracks("V_MPEG4/ISO/AVC"), WebmCluster()))), "WebM 미지원 영상 코덱 거절");
+    Reject(() => ImageProbe.Validate("assets/video.webm", WebmDocument(EbmlJoin(WebmInfo(), WebmTracks(alpha: 2), WebmCluster()))), "정의되지 않은 WebM AlphaMode 거절");
+    Reject(() => ImageProbe.Validate("assets/video.webm", WebmDocument(EbmlJoin(WebmTracks(), WebmCluster()))), "WebM Info 누락 거절");
+    Reject(() => ImageProbe.Validate("assets/video.webm", WebmDocument(EbmlJoin(WebmInfo(), WebmCluster()))), "WebM Tracks 누락 거절");
+    Reject(() => ImageProbe.Validate("assets/video.webm", WebmDocument(EbmlJoin(WebmInfo(), WebmTracks()))), "WebM Cluster 영상 데이터 누락 거절");
+    Reject(() => ImageProbe.Validate("assets/video.webm", WebmDocument(EbmlJoin(WebmInfo(), WebmTracks(), EbmlElement(0x1f43b675, WebmBlock())))), "WebM Cluster timestamp 누락 거절");
+    Reject(() => ImageProbe.Validate("assets/video.webm", WebmDocument(EbmlJoin(WebmInfo(), WebmTracks(width: [0]), WebmCluster()))), "WebM 폭 0 거절");
+    Reject(() => ImageProbe.Validate("assets/video.webm", WebmDocument(EbmlJoin(WebmInfo(), WebmTracks(width: new byte[9]), WebmCluster()))), "WebM unsigned integer 8바이트 범위 초과 거절");
+    Reject(() => ImageProbe.Validate("assets/video.webm", WebmDocument(EbmlJoin(EbmlElement(0x1549a966, [0xec, 0x81, 0], true), WebmTracks(), WebmCluster()))), "미정 크기 Info는 허용하지 않음");
+    Reject(() => ImageProbe.Validate("assets/video.webm", EbmlJoin(WebmHeader(), Convert.FromHexString("1853806701fffffffffffffe"))), "56비트 WebM 길이가 실제 파일 밖이면 overflow 없이 거절");
+    Reject(() => ImageProbe.Validate("assets/video.webm", EbmlJoin(WebmHeader(), Convert.FromHexString("1853806701ffffff"))), "잘린 8바이트 WebM 크기 VINT 거절");
+    Reject(() => ImageProbe.Validate("assets/video.webm", EbmlJoin(WebmHeader(), Convert.FromHexString("1853806700"))), "0으로 시작하는 잘못된 WebM VINT 거절");
+    Reject(() => ImageProbe.Validate("assets/video.webm", WebmDocument(EbmlJoin(WebmInfo(), WebmTracks(), WebmCluster(), [0x40, 1, 0x80]))), "최단 길이로 인코딩되지 않은 EBML element ID 거절");
+    Reject(() => ImageProbe.Mime(EbmlElement(0x1a45dfa3, EbmlElement(0x4282, "webm"u8.ToArray()), true)), "미정 크기 EBML 헤더 거절");
+    Reject(() => ImageProbe.Mime(WebmHeader(readVersion: 5)), "미지원 WebM DocTypeReadVersion 거절");
+    Reject(() => ImageProbe.Validate("assets/video.webm", WebmDocument(EbmlJoin(WebmInfo(), WebmTracks(), WebmCluster(width: 2)), header: WebmHeader(maxSize: 1))), "EBML 헤더가 선언한 크기 VINT 길이 초과 거절");
+    foreach (var badBlock in new[] { EbmlElement(0xa3, [0x81, 0, 0]), WebmBlock(0x84, 1, 0x10), WebmBlock(0x82, 1, 255), WebmBlock(0x86, 2, 0x81, 0x80, 0x10, 0x20) })
+        Reject(() => ImageProbe.Validate("assets/video.webm", WebmDocument(EbmlJoin(WebmInfo(), WebmTracks(), WebmCluster(block: badBlock)))), "잘린 WebM block 또는 잘못된 lacing 경계 거절");
+    Reject(() => ImageProbe.Validate("assets/video.webm", WebmDocument(EbmlJoin(WebmInfo(), WebmTracks(), WebmCluster(block: EbmlElement(0xa0, EbmlElement(0x75a1, [])))))), "WebM BlockGroup의 주 영상 Block 누락 거절");
+    var exactWebmFixtures = Environment.GetEnvironmentVariable("COSKIN_TEST_WEBM_FILES");
+    if (!string.IsNullOrEmpty(exactWebmFixtures))
+        foreach (var fixturePath in exactWebmFixtures.Split(Path.PathSeparator, StringSplitOptions.RemoveEmptyEntries))
+        {
+            var sourceBytes = File.ReadAllBytes(fixturePath);
+            ImageProbe.Validate("assets/source.webm", sourceBytes);
+            Check(ImageProbe.Mime(sourceBytes) == "video/webm", "실제 WebM 원본 admission " + Path.GetFileName(fixturePath) + " SHA256=" + Package.Hash(sourceBytes));
+        }
     byte[] AbiFixture(string? omitted = null, bool forwarded = false, bool wrongMachine = false, bool badOrdinal = false)
     {
         var exports = NativeAbi.RequiredExports.Where(name => name != omitted).ToArray();
@@ -481,6 +573,12 @@ try
     var assets = new Dictionary<string, byte[]> { ["assets/search.png"] = File.ReadAllBytes(Path.Combine(root, "docs/examples/assets/search.png")) };
     var exported = Package.Export(manifest, theme, assets);
     Check(exported.SequenceEqual(Package.Export(manifest, theme, assets)), "재현 가능한 ZIP 출력");
+    var webmAssets = new Dictionary<string, byte[]>(assets) { ["assets/video.webm"] = webm };
+    var webmExported = Package.Export(manifest, theme, webmAssets);
+    Check(Package.Read(webmExported).Files["assets/video.webm"].SequenceEqual(webm) &&
+        Package.Read(webmExported).Files["assets/search.png"].SequenceEqual(assets["assets/search.png"]), "PNG·WebM 패키지 바이트와 해시 왕복 보존");
+    Reject(() => Package.Export(manifest, theme, new Dictionary<string, byte[]> { ["assets/video.png"] = webm }), "패키지 안의 WebM 위장 PNG 거절");
+    Reject(() => Package.Export(manifest, theme, new Dictionary<string, byte[]> { ["assets/video.webm"] = webm[..^1] }), "해시가 맞아도 손상 WebM 패키지는 거절");
     var external = Path.Combine(scratch, "source.coskin");
     File.WriteAllBytes(external, exported);
     Check((await ImportFile.Read(external, CancellationToken.None)).SequenceEqual(exported), "실행 파일 가져오기 바이트 보존");
@@ -735,6 +833,12 @@ try
         token = transfers.Begin(1);
         transfers.Cancel(token);
         Reject(() => transfers.Append(token, 0, new byte[] { 1 }), "취소한 전송 거절");
+        var sourceBytes = new byte[1024 * 1024 + 7]; Random.Shared.NextBytes(sourceBytes);
+        using var assetStream = new MemoryStream(sourceBytes);
+        token = transfers.StageAsset(assetStream, Package.Hash(sourceBytes), TransferStore.LargeChunkBytes);
+        Check(transfers.Consume(token).SequenceEqual(sourceBytes), "파일 스트리밍 전송은 전체 바이트와 SHA를 보존");
+        assetStream.Position = 0;
+        Reject(() => transfers.StageAsset(assetStream, new string('0',64)), "스트리밍 중 SHA 불일치면 파생 전송을 취소");
     }
     var effectFile = File.ReadAllBytes(Path.Combine(root, "docs/examples/soft-rise.coskin-effect.json"));
     var effectDefinition = EffectLibrary.Parse(effectFile);
@@ -760,10 +864,19 @@ try
     effectTheme["customEffects"] = new JsonArray(effectDefinition.DeepClone());
     var effectPackage = Package.Read(Package.Export(manifest, effectTheme, assets));
     Check(JsonNode.DeepEquals(effectPackage.Theme["customEffects"]?[0], effectDefinition), "패키지 내장 효과 정의 왕복 보존");
+    await PipeTransportTests.Run(Check, scratch);
+    await TransferOwnerTests.Run(Check, scratch);
+    await LibraryMediaTests.Run(Check, scratch);
+    TrayIconRecoveryTests.Run(Check);
     Console.WriteLine($"{passed} tests passed");
 }
-
-
+catch (Exception error)
+{
+    // Keep a failed assertion in the test console instead of opening a Windows
+    // unhandled-exception dialog that looks like a resident application crash.
+    Console.Error.WriteLine(error);
+    Environment.ExitCode = 1;
+}
 finally
 {
     var resolved = Path.GetFullPath(scratch);

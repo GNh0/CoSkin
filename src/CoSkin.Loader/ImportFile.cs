@@ -13,7 +13,7 @@ internal static class ImportFile
         await using var input = new FileStream(absolute, FileMode.Open, FileAccess.Read, FileShare.Read,
             64 * 1024, FileOptions.Asynchronous | FileOptions.SequentialScan);
         if (input.Length is <= 0 or > Package.MaxPackage)
-            throw new InvalidDataException("테마 파일의 크기 제한은 100MiB입니다.");
+            throw new InvalidDataException($"테마 파일의 크기 제한은 {Package.MaxPackage / (1024 * 1024)}MiB입니다.");
         var bytes = new byte[checked((int)input.Length)];
         await input.ReadExactlyAsync(bytes, cancellationToken);
         return bytes;

@@ -5,6 +5,10 @@ namespace CoSkin;
 
 internal static class Program
 {
+#if COSKIN_INTEGRATION
+    internal static Func<Cdp[]> IntegrationWindows { get; private set; } = () => [];
+    internal static Func<Cdp?> IntegrationMain { get; private set; } = () => null;
+#endif
     private static readonly HttpClient Http = new() { Timeout = TimeSpan.FromSeconds(5) };
     internal static async Task<int> Main(string[] args)
     {
@@ -60,9 +64,15 @@ internal static class Program
                 throw new InvalidDataException("포트 범위 오류");
             var bundle = File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "renderer.js"));
             using var library = new Library(store);
+            library.PickAssetStoragePath = initial => NativeFolderPicker.Pick(initial, UiLocale.Normalize(System.Globalization.CultureInfo.CurrentUICulture.Name) == "ko" ? "테마 전체 보관 폴더" : "Theme storage folder");
             var installed = WindowsInstaller.IsInstalledStore(library);
             if (installed) library.SetStartup = enabled => new InstallationService(store, new WindowsInstallationPlatform()).SetStartup(enabled);
             var sessions = new ConcurrentDictionary<string, Cdp>();
+            var requests = new ConcurrentDictionary<long, Task>();
+            long nextRequest = 0;
+#if COSKIN_INTEGRATION
+            IntegrationWindows = () => sessions.Values.ToArray();
+#endif
             const int exitCode = 0;
             int? verifiedProcess = null;
             string? verifiedAppVersion = null;
@@ -72,6 +82,9 @@ internal static class Program
             var sessionId = Guid.NewGuid().ToString("N");
             using var stop = new CancellationTokenSource();
             NativeRendererSession? nativeSession = null;
+#if COSKIN_INTEGRATION
+            IntegrationMain = () => nativeSession?.Main;
+#endif
             var nativeDiscovery = new NativeConnectionDiscovery(store, options.CodexProcess);
             using var connectionSignal = new ResidentConnectionSignal(store, options.Port, async token =>
             {
@@ -135,18 +148,22 @@ internal static class Program
                         var installation = nativeDiscovery.VerifiedInstallation(owner, number) ?? await WindowsLauncher.VerifyRunning(executable);
                         verifiedAppVersion = installation.AppVersion;
                         verifiedProcess = owner;
-                        DiagnosticLog.Record("connected");
+                        DiagnosticLog.Record("connected", targetPid: owner, reason: nativeDiscovery.VerifiedConnection(owner, number) is null ? "renderer-cdp" : "authenticated-pipe");
                         tray.WatchVerifiedProcess(owner);
                         nativeWindows.Clear();
                         lastVisibility.Clear();
                     }
                     var list = JsonNode.Parse(await Http.GetStringAsync($"http://127.0.0.1:{number}/json/list", stop.Token))!.AsArray();
                     if (list.Any(target => target?["type"]?.GetValue<string>() == "node"))
+                        throw new InvalidDataException("Node 디버거 연결은 사용할 수 없습니다. CoSkin 직접 연결로 다시 시도하세요.");
+                    if (list.Any(target => target?["type"]?.GetValue<string>() == "coskin-native"))
                     {
                         if (nativeSession is null)
                         {
                             nativeSession = new NativeRendererSession();
-                            await nativeSession.Initialize(list, number);
+                            await nativeSession.Initialize(nativeDiscovery.VerifiedConnection(owner, number) ?? throw new InvalidDataException("검증된 CoSkin 연결이 아닙니다."));
+                            library.OpenAssetMedia = nativeSession.OpenMedia;
+                            library.ReleaseAssetMedia = nativeSession.ReleaseMedia;
                         }
                         list = await nativeSession.List();
                     }
@@ -180,7 +197,13 @@ internal static class Program
                                 }
                                 pendingSession = cdp;
                                 var current = cdp;
-                                cdp.Event += message => { if (message["method"]?.GetValue<string>() == "Runtime.bindingCalled" && message["params"]?["name"]?.GetValue<string>() == "__coskinRequest") _ = Handle(current, library, message["params"]!["payload"]!.GetValue<string>(), sessionId, () => sessions.Values.ToArray()); };
+                                cdp.Event += message => {
+                                    if (message["method"]?.GetValue<string>() != "Runtime.bindingCalled" || message["params"]?["name"]?.GetValue<string>() != "__coskinRequest") return;
+                                    var requestNumber = Interlocked.Increment(ref nextRequest);
+                                    var pending = Handle(current, library, message["params"]!["payload"]!.GetValue<string>(), sessionId, () => sessions.Values.ToArray(), stop.Token);
+                                    requests[requestNumber] = pending;
+                                    _ = pending.ContinueWith(completed => { requests.TryRemove(requestNumber, out _); }, TaskScheduler.Default);
+                                };
                                 await cdp.Send("Runtime.enable");
                                 await cdp.Send("Runtime.addBinding", new JsonObject { ["name"] = "__coskinRequest" });
                                 sessions[id] = cdp;
@@ -188,7 +211,7 @@ internal static class Program
                             }
                             if (newlyConnected)
                             {
-                                await cdp.Evaluate("window.__coskinHostVersion=" + System.Text.Json.JsonSerializer.Serialize(verifiedAppVersion));
+                                await cdp.Evaluate("window.__coskinHostVersion=" + System.Text.Json.JsonSerializer.Serialize(verifiedAppVersion) + ";window.__coskinEngineVersion=" + System.Text.Json.JsonSerializer.Serialize(ProductVersion.Display.Split('+')[0]));
                                 await cdp.Evaluate("window.__coskinSessionId=" + System.Text.Json.JsonSerializer.Serialize(sessionId) + ";if(window.__coskin)window.__coskin.sessionId=window.__coskinSessionId");
                                 var appLanguage = (await cdp.Evaluate("document.documentElement.lang || navigator.language"))?.GetValue<string>();
                                 await library.Handle(new JsonObject { ["op"] = "runtime-locale", ["locale"] = UiLocale.Normalize(appLanguage) }, _ => Task.CompletedTask, (_, _) => Task.CompletedTask);
@@ -272,10 +295,12 @@ internal static class Program
                 {
                     DiagnosticLog.Record("connection-blocked", ex);
                     connectionSignal.Block();
+                    nativeDiscovery.Invalidate();
                     Console.Error.WriteLine("연결을 중지했습니다. 테마스킨 목록은 보존합니다. " + ex.Message);
                     foreach (var session in sessions.Values)
                         await session.DisposeAsync();
                     sessions.Clear();
+                    library.OpenAssetMedia = null; library.ReleaseAssetMedia = null;
                     if (nativeSession is not null) { await nativeSession.DisposeAsync(); nativeSession = null; }
                     verifiedProcess = null;
                     number = 0;
@@ -290,10 +315,12 @@ internal static class Program
                 {
                     DiagnosticLog.Record("connection-recovery", ex);
                     connectionSignal.BeginRecovery(number);
+                    nativeDiscovery.Invalidate();
                     Console.Error.WriteLine("연결 대기: " + ex.Message);
                     foreach (var session in sessions.Values)
                         await session.DisposeAsync();
                     sessions.Clear();
+                    library.OpenAssetMedia = null; library.ReleaseAssetMedia = null;
                     if (nativeSession is not null) { await nativeSession.DisposeAsync(); nativeSession = null; }
                     verifiedProcess = null;
                     number = 0;
@@ -318,8 +345,10 @@ internal static class Program
                     await cdp.Evaluate("window.__coskin?.dispose()");
                 }
                 catch (Exception ex) { Console.Error.WriteLine("복원 확인 실패: " + ex.Message); }
-                await cdp.DisposeAsync();
             }
+            try { await Task.WhenAll(requests.Values).WaitAsync(TimeSpan.FromSeconds(2)); }
+            catch (TimeoutException) { DiagnosticLog.Record("request-cleanup-pending"); }
+            foreach (var cdp in sessions.Values) await cdp.DisposeAsync();
             if (nativeSession is not null) await nativeSession.DisposeAsync();
             DiagnosticLog.Record("exit");
             return exitCode;
@@ -409,11 +438,39 @@ internal static class Program
                 async doc => { await cdp.Evaluate("window.__coskinValidate(" + doc.ToJsonString() + ")"); },
                 async (bytes, mime) =>
                 {
-                    var token = library.StageTransfer(bytes);
+                    var openMedia = library.OpenAssetMedia;
+                    var releaseMedia = library.ReleaseAssetMedia;
+                    // Validation must obey the same CSP admission as playback.
+                    // A connected pipe can offer HTTP media even when this renderer forbids it.
+                    var directMedia = openMedia is not null && releaseMedia is not null &&
+                        (await cdp.Evaluate("window.__coskinDirectMediaAvailable === true"))?.GetValue<bool>() == true;
+                    if (directMedia)
+                    {
+                        var temporaryDirectory = Path.Combine(Path.GetTempPath(), "coskin-media-validation-" + Guid.NewGuid().ToString("N"));
+                        var temporaryFile = Path.Combine(temporaryDirectory, "media.bin");
+                        JsonObject? source = null;
+                        Directory.CreateDirectory(temporaryDirectory);
+                        try
+                        {
+                            await File.WriteAllBytesAsync(temporaryFile, bytes);
+                            var hash = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(bytes)).ToLowerInvariant();
+                            source = await openMedia!(temporaryFile, mime, bytes.LongLength, hash);
+                            await cdp.Evaluate("window.__coskinDecodeURL(" + source.ToJsonString() + ")", TimeSpan.FromMinutes(5));
+                        }
+                        finally
+                        {
+                            if (source?["token"]?.GetValue<string>() is string mediaToken)
+                                try { await releaseMedia!(mediaToken); } catch { }
+                            if (File.Exists(temporaryFile)) File.Delete(temporaryFile);
+                            Directory.Delete(temporaryDirectory);
+                        }
+                        return;
+                    }
+                    var token = library.StageTransfer(bytes, TransferStore.LargeChunkBytes);
                     try
                     {
-                        var transfer = new JsonObject { ["token"] = token, ["length"] = bytes.Length };
-                        await cdp.Evaluate("window.__coskinDecode(" + transfer.ToJsonString() + "," + System.Text.Json.JsonSerializer.Serialize(mime) + ")");
+                        var transfer = new JsonObject { ["token"] = token, ["length"] = bytes.Length, ["chunkBytes"] = TransferStore.LargeChunkBytes };
+                        await cdp.Evaluate("window.__coskinDecode(" + transfer.ToJsonString() + "," + System.Text.Json.JsonSerializer.Serialize(mime) + ")", TimeSpan.FromMinutes(5));
                     }
                     finally { library.CancelTransfer(token); }
                 },
@@ -423,7 +480,7 @@ internal static class Program
                     try
                     {
                         foreach (var window in participants)
-                            await window.Evaluate("window.__coskin.prepare(" + next.ToJsonString() + ")");
+                            await window.Evaluate("window.__coskin.prepare(" + next.ToJsonString() + ")", TimeSpan.FromMinutes(5));
                         foreach (var window in participants)
                             await window.Evaluate("window.__coskin.receiveSummary(" + next.ToJsonString() + ")");
                     }
@@ -439,7 +496,7 @@ internal static class Program
                     }
                 });
     }
-    private static async Task Handle(Cdp cdp, Library library, string payload, string sessionId, Func<Cdp[]> windows)
+    private static async Task Handle(Cdp cdp, Library library, string payload, string sessionId, Func<Cdp[]> windows, CancellationToken shuttingDown)
     {
         string? requestId = null;
         try
@@ -455,16 +512,18 @@ internal static class Program
                 foreach (var window in windows())
                     await window.Evaluate("window.__coskin?.receiveSummary(" + summary.ToJsonString() + ")");
             }
-            await cdp.Evaluate("window.__coskin?.response(" + System.Text.Json.JsonSerializer.Serialize(requestId) + "," + result.ToJsonString() + ",null)");
+            if (!cdp.IsClosed && !shuttingDown.IsCancellationRequested)
+                await cdp.Invoke("function(id,value,error){this.__coskin?.response(id,value,error)}", new JsonArray(JsonValue.Create(requestId), result.DeepClone(), null));
         }
         catch (Exception ex)
         {
+            if (cdp.IsClosed || shuttingDown.IsCancellationRequested) return;
             var failure = Failure.Describe(ex);
             Console.Error.WriteLine($"{failure.Code}: {ex}");
             if (requestId is not null)
                 try
                 {
-                    await cdp.Evaluate("window.__coskin?.response(" + System.Text.Json.JsonSerializer.Serialize(requestId) + ",null," + new JsonObject { ["code"] = failure.Code, ["message"] = failure.Message, ["line"] = failure.Line, ["column"] = failure.Column }.ToJsonString() + ")");
+                    await cdp.Invoke("function(id,value,error){this.__coskin?.response(id,value,error)}", new JsonArray(JsonValue.Create(requestId), null, new JsonObject { ["code"] = failure.Code, ["message"] = failure.Message, ["line"] = failure.Line, ["column"] = failure.Column }));
                 }
                 catch (Exception reply) { Console.Error.WriteLine("요청 응답 실패: " + reply.Message); }
         }

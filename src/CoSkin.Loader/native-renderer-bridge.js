@@ -4,7 +4,7 @@
   const load = process.getBuiltinModule("module").createRequire(
     process.resourcesPath + "/app.asar/package.json",
   );
-  const { webContents, BrowserWindow } = load("electron");
+  const { webContents, BrowserWindow, app } = load("electron");
   const sessions = new Map();
   const page = (id) => {
     const contents = webContents.fromId(id);
@@ -17,7 +17,7 @@
     return contents;
   };
   const commands = new Set([
-    "Runtime.enable", "Runtime.addBinding", "Runtime.evaluate",
+    "Runtime.enable", "Runtime.addBinding", "Runtime.evaluate", "Runtime.callFunctionOn",
     "Runtime.removeBinding", "Page.bringToFront",
   ]);
   let heartbeat = Date.now();
@@ -27,6 +27,12 @@
   lease.unref();
   globalThis.__coskinRendererBridge = {
     contractVersion: 1,
+    metrics() {
+      return (app?.getAppMetrics() ?? []).map(({pid, type, cpu, memory}) => ({pid, type, cpu, memory}));
+    },
+    async capture(id) {
+      return (await page(id).capturePage()).toPNG().toString("base64");
+    },
     list() {
       heartbeat = Date.now();
       return webContents.getAllWebContents().filter(contents => {
@@ -70,7 +76,9 @@
     },
     dispose() {
       clearInterval(lease);
-      for (const id of Array.from(sessions.keys())) this.detach(id);
+      for (const id of Array.from(sessions.keys())) {
+        try { this.detach(id); } catch {}
+      }
       delete globalThis.__coskinRendererBridge;
     },
   };

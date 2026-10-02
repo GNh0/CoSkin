@@ -98,6 +98,8 @@ test("muted video remains on the native playback path during scroll and obeys po
     { append() {}, getBoundingClientRect: () => ({ width: 800, height: 500 }) },
     "cover",
   );
+  assert.equal(video.url, undefined, "poster-only rendering does not open a decoder");
+  assert.equal(video.preload, "none");
   player.setPlaying(true);
   await Promise.resolve();
   assert.equal(video.muted, true);
@@ -168,4 +170,23 @@ test("video admission captures one poster and releases URLs on invalid duration 
     /길이/,
   );
   assert.equal(api.revoked.length, 2);
+});
+
+test("a delayed native play completion cannot resume a hidden or disposed video", async () => {
+  for (const ending of ["hidden", "disposed"]) {
+    const video = videoStub();
+    let finish;
+    video.play = () => new Promise(resolve => {finish = () => {video.paused = false; resolve();};});
+    const api = runtime(video);
+    const player = new api.MediaPlayer({videoUrl: "blob:test", width: 1920, height: 1080, frames: [{image: {}, delay: 0}]},
+      {append() {}, getBoundingClientRect: () => ({width: 800, height: 500})});
+    player.setPlaying(true);
+    if (ending === "hidden") player.setVisible(false);
+    else player.dispose();
+    finish();
+    await Promise.resolve();
+    assert.equal(video.paused, true, ending);
+    assert.notEqual(video.style.display, "block", ending);
+    if (ending === "disposed") assert.equal(api.canvas.width * api.canvas.height, 0);
+  }
 });

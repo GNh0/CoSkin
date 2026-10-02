@@ -6,6 +6,8 @@ import { t } from "./messages.js";
 import { h, icon } from "./components.js";
 import { text, layerLabels } from "./strings.js";
 import { STATES } from "../core/engine.ts";
+import { requireEngineVersion } from "../core/engine-version.ts";
+import { MEDIA_LIMITS, isVideoMime } from "../core/media-limits.js";
 import { effectEditor } from "./effects-editor.js";
 import { effectPresets } from "./effect-presets.js";
 import { editorState } from "./editor-model.js";
@@ -19,6 +21,11 @@ export function editorContext(panel, inspectorRoot) {
     class: "inspector-body",
     role: "tabpanel",
     id: "coskin-inspector-body",
+    "aria-labelledby":
+      "coskin-inspector-tab-" +
+      (panel.activeSection === "icon"
+        ? "image"
+        : panel.activeSection || "image"),
   });
   inspectorRoot.append(body);
   const targetScope = targetScopeUi(panel);
@@ -120,7 +127,7 @@ export function editorContext(panel, inspectorRoot) {
           s.style.text ??= {};
           if (mode.value === "theme") delete s.style.text.autoColor;
           else s.style.text.autoColor = mode.value === "auto";
-          panel.doc.manifest.engine.minVersion = "0.1.2";
+          requireEngineVersion(panel.doc.manifest, "0.1.2");
         });
         panel.render();
       };
@@ -139,7 +146,7 @@ export function editorContext(panel, inspectorRoot) {
           s.style.text ??= {};
           s.style.text.color = color.value;
           s.style.text.autoColor = false;
-          panel.doc.manifest.engine.minVersion = "0.1.2";
+          requireEngineVersion(panel.doc.manifest, "0.1.2");
         });
         panel.render();
       };
@@ -166,7 +173,7 @@ export function editorContext(panel, inspectorRoot) {
           s.style.text ??= {};
           if (family.value.trim()) s.style.text.family = family.value.trim();
           else delete s.style.text.family;
-          panel.doc.manifest.engine.minVersion = "0.1.2";
+          requireEngineVersion(panel.doc.manifest, "0.1.2");
         });
         panel.render();
       };
@@ -248,7 +255,7 @@ export function editorContext(panel, inspectorRoot) {
       const file = h("input", {
         type: "file",
         class: "visually-hidden",
-        accept: "image/png,image/jpeg,image/gif,video/mp4",
+        accept: "image/png,image/jpeg,image/gif,video/mp4,video/webm",
         "aria-label": label + t("control.imageSuffix"),
       });
       file.onchange = panel.action(async () => {
@@ -266,6 +273,13 @@ export function editorContext(panel, inspectorRoot) {
         const path = "assets/" + stored.hash + stored.extension;
         panel.change(() => {
           panel.doc.assets[path] = stored.hash;
+          if (isVideoMime(stored.mime))
+            requireEngineVersion(
+              panel.doc.manifest,
+              stored.mime === "video/webm" || image.size > MEDIA_LIMITS.bytes
+                ? "0.1.9"
+                : "0.1.2",
+            );
           const s = editableState(
             panel.doc,
             destination.profile,
@@ -280,7 +294,12 @@ export function editorContext(panel, inspectorRoot) {
         }, destination);
       });
       if (current.image && panel.doc.assets[current.image])
-        body.append(inspectorPreview(panel, panel.doc.assets[current.image]));
+        body.append(
+          inspectorPreview(panel, panel.doc.assets[current.image], {
+            fit: current.fit || "contain",
+            opacity: current.opacity ?? 1,
+          }),
+        );
       const choose = panel.button(t("panel.setImage"), () => file.click());
       choose.className = "image-picker";
       choose.prepend(icon("image"));
@@ -346,7 +365,7 @@ export function editorContext(panel, inspectorRoot) {
         }
     }
     body.append(
-      h("div", { class: "row" }, [
+      h("div", { class: "row inspector-reset-actions" }, [
         panel.button(t("control.inherit"), () => {
           panel.change(() => delete panel.rule().style?.[layer]);
         }),
@@ -374,40 +393,52 @@ export function editorContext(panel, inspectorRoot) {
     panel.scope(),
     typographyControls(panel),
     motionPolicyUi(panel),
-    panel.button(text.cancel, () => panel.cancel()),
   ]);
   body.append(settings);
+  const undo = panel.button(
+    t("control.undo"),
+    () => {
+      panel.redo.push(panel.doc);
+      panel.doc = panel.history.pop();
+      const scope = panel.scopeUndo.get(panel.doc);
+      if (scope) Object.assign(panel, scope);
+      panel.dirty = true;
+      panel.preview();
+    },
+    !panel.history.length,
+  );
+  const redo = panel.button(
+    t("control.redo"),
+    () => {
+      panel.history.push(panel.doc);
+      panel.doc = panel.redo.pop();
+      const scope = panel.scopeUndo.get(panel.doc);
+      if (scope) Object.assign(panel, scope);
+      panel.dirty = true;
+      panel.preview();
+    },
+    !panel.redo.length,
+  );
+  const save = panel.button(text.save, () => panel.save(), !panel.dirty);
+  save.className = "secondary";
+  const apply = panel.button(text.apply, () => panel.apply());
+  apply.className = "primary";
   inspectorRoot.append(
     h("div", { class: "inspector-footer" }, [
-      panel.button(
-        t("control.undo"),
-        () => {
-          panel.redo.push(panel.doc);
-          panel.doc = panel.history.pop();
-          const scope = panel.scopeUndo.get(panel.doc);
-          if (scope) Object.assign(panel, scope);
-          panel.dirty = true;
-          panel.preview();
+      h(
+        "div",
+        {
+          class: "inspector-history",
+          role: "group",
+          "aria-label": t("control.undo") + " / " + t("control.redo"),
         },
-        !panel.history.length,
+        [undo, redo],
       ),
-      panel.button(
-        t("control.redo"),
-        () => {
-          panel.history.push(panel.doc);
-          panel.doc = panel.redo.pop();
-          const scope = panel.scopeUndo.get(panel.doc);
-          if (scope) Object.assign(panel, scope);
-          panel.dirty = true;
-          panel.preview();
-        },
-        !panel.redo.length,
-      ),
-      panel.button(text.save, () => panel.save()),
-      Object.assign(
-        panel.button(text.apply, () => panel.apply()),
-        { className: "primary" },
-      ),
+      h("div", { class: "inspector-commit" }, [
+        panel.button(t("panel.cancelPreview"), () => panel.cancel()),
+        save,
+        apply,
+      ]),
     ]),
   );
 }

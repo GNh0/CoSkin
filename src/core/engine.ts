@@ -17,6 +17,7 @@ import {
   CUSTOM_EFFECT_LIMITS,
 } from "./custom-effects.ts";
 import type { RuntimeEffect } from "./custom-effects.ts";
+import { MEDIA_LIMITS } from "./media-limits.js";
 // Pure contract shared by the renderer and executable tests. No CSS or code comes from themes.
 export const STATES: StateName[] = [
   "base",
@@ -259,7 +260,12 @@ export function validateManifest(manifest: Manifest) {
     )
       fail("파일 경로 오류");
     paths.add(file.path);
-    num(file.bytes, 0, 25 * 1024 * 1024);
+    const limit = file.path.endsWith(".json")
+      ? 2 * 1024 * 1024
+      : /\.(mp4|webm)$/.test(file.path)
+        ? MEDIA_LIMITS.videoBytes
+        : MEDIA_LIMITS.bytes;
+    num(file.bytes, 0, limit);
     if (
       !Number.isInteger(file.bytes) ||
       typeof file.sha256 !== "string" ||

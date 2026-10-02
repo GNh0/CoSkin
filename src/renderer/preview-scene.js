@@ -1,8 +1,11 @@
 import { decodeMedia, disposeMedia } from "./media.js";
-import { downloadBytes, throwIfAborted } from "./file-transfer.js";
+import { isVideoMime } from "../core/media-limits.js";
+import { downloadBytes, downloadBlob, throwIfAborted } from "./file-transfer.js";
 import { resolve } from "../core/engine.ts";
 import { applyThemeTypography } from "./theme-typography.js";
 import { t } from "./messages.js";
+import { readPoster, storePoster } from "./poster-cache.js";
+import { openAssetSource, decodeAssetSource } from "./media-source.js";
 /** Draws a code-owned sample workspace. No current Codex content is read. */
 export async function drawPreviewScene(context, controller, document, signal) {
   throwIfAborted(signal);
@@ -54,15 +57,42 @@ export async function drawPreviewScene(context, controller, document, signal) {
           throwIfAborted(signal);
           const hash = document.assets[layer.image];
           if (images.has(hash)) continue;
-          const transfer = await controller.request("asset-read", { hash });
+          const videoAsset = /\.(mp4|webm)$/i.test(layer.image);
+          const poster = videoAsset ? await readPoster(controller, hash, signal) : null;
+          if (poster) {
+            images.set(hash, poster);
+            animatedAssets.add(hash);
+            continue;
+          }
+          const source = await openAssetSource(controller, hash, signal);
+          if (source) {
+            const media = await decodeAssetSource(controller, source, signal);
+            if (isVideoMime(source.mime)) {
+              videos.push(media);
+              images.set(hash, media.frames[0].image);
+              await storePoster(controller, hash, media.frames[0].image, signal);
+            } else {
+              // Only the first image is used by the static gallery card.
+              images.set(hash, media.frames[0].image);
+              for (const frame of media.frames.slice(1)) frame.image.close();
+              if (source.mime === "image/gif") animatedAssets.add(hash);
+            }
+            throwIfAborted(signal);
+            continue;
+          }
+          const transfer = await controller.request("asset-read", {
+            hash,
+            largeChunks: true,
+          });
           const mime = transfer.mime;
           if (mime === "image/gif") animatedAssets.add(hash);
-          const bytes = await downloadBytes(controller, transfer, signal);
+          const bytes = await (isVideoMime(mime) ? downloadBlob : downloadBytes)(controller, transfer, signal);
           throwIfAborted(signal);
-          if (mime === "video/mp4") {
+          if (isVideoMime(mime)) {
             const media = await decodeMedia(bytes, mime);
             videos.push(media);
             images.set(hash, media.frames[0].image);
+            await storePoster(controller, hash, media.frames[0].image, signal);
           } else
             images.set(
               hash,

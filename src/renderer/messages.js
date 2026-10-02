@@ -17,7 +17,7 @@ export const messages = {
     assetRecommended: "권장 {size}px · 비율 {ratio}",
     assetCurrent: "현재 영역 {width} × {height}px",
     assetAnimated:
-      "GIF 권장 {size}px 이하, 짧은 반복 구간 · 긴 고화질 배경은 MP4 추천",
+      "GIF 권장 {size}px 이하, 짧은 반복 구간 · 긴 고화질 배경은 MP4·WebM 추천",
     assetFitHint:
       "영역 채우기는 가장자리가 잘릴 수 있습니다. 전체 이미지를 보려면 비율 유지를 선택하세요.",
     favorites: "즐겨찾기",
@@ -52,6 +52,9 @@ export const messages = {
     optionPages: "{label} 선택 목록 페이지",
     noOptions: "일치하는 항목이 없습니다",
     librarySearch: "이름·캐릭터·스킨·유형 검색",
+    libraryFilters: "필터",
+    libraryOptions: "보기·관리",
+    removeLibraryFilter: "{value} 조건 해제",
     sortThemes: "테마 정렬",
     sortLibrary: "목록 순서",
     sortNameAsc: "이름 오름차순",
@@ -166,7 +169,7 @@ export const messages = {
 테마 이름: [이름]
 콘셉트·분위기: [예: 차분한 밤바다]
 참고 이미지·영상: [첨부 파일·경로·링크 또는 없음]
-배경 종류: [정지 이미지 / GIF / 무음 반복 MP4 / 없음]
+배경 종류: [정지 이미지 / GIF / 무음 반복 MP4·WebM / 없음]
 배경 구도: [전체 보이기 / 영역 채우기], 중요 피사체 위치 [위치]
 색감·밝기: [원하는 색과 밝기]
 움직임·반복 방식: [원하는 동작과 속도]
@@ -198,6 +201,7 @@ export const messages = {
     duplicate: "복제",
     close: "Codex 화면으로",
     loadingPreview: "미리보기 준비 중",
+    previewUnavailable: "미리보기를 불러올 수 없습니다",
     previewAlt: "예시 프로젝트와 채팅으로 만든 테마 미리보기",
     previewFailed: "테마 미리보기를 준비하지 못했습니다. 다시 열어 주세요.",
     sampleProject: "예시 프로젝트",
@@ -220,7 +224,7 @@ export const messages = {
     assetRecommended: "Recommended {size}px · {ratio}",
     assetCurrent: "Current region {width} × {height}px",
     assetAnimated:
-      "GIF: {size}px or smaller, short loops · MP4 for long high-quality backgrounds",
+      "GIF: {size}px or smaller, short loops · MP4/WebM for long high-quality backgrounds",
     assetFitHint:
       "Cover may crop the edges. Choose Contain to show the entire image.",
     favorites: "Favorites",
@@ -255,6 +259,9 @@ export const messages = {
     optionPages: "{label} picker pages",
     noOptions: "No matching options",
     librarySearch: "Search name, character, skin, or type",
+    libraryFilters: "Filters",
+    libraryOptions: "View and organize",
+    removeLibraryFilter: "Remove filter: {value}",
     sortThemes: "Sort themes",
     sortLibrary: "Library order",
     sortNameAsc: "Name ascending",
@@ -373,7 +380,7 @@ Create a new theme with the requirements below. If the environment allows it, im
 Theme name: [name]
 Concept and mood: [for example, a quiet seaside evening]
 Reference images or video: [attached files, paths, links, or none]
-Background media: [still image / GIF / muted looping MP4 / none]
+Background media: [still image / GIF / muted looping MP4/WebM / none]
 Background framing: [show entire image / fill region], important subject position [position]
 Colors and brightness: [preferences]
 Motion and loop: [movement and speed]
@@ -405,6 +412,7 @@ Keep native controls, text, and buttons readable. Make project and chat rows dis
     duplicate: "Duplicate",
     close: "Return to Codex",
     loadingPreview: "Preparing preview",
+    previewUnavailable: "Preview unavailable",
     previewAlt: "Theme preview with sample projects and chats",
     previewFailed:
       "The theme preview could not be prepared. Reopen it to try again.",
@@ -428,7 +436,7 @@ Keep native controls, text, and buttons readable. Make project and chat rows dis
     assetRecommended: "推奨 {size}px · 比率 {ratio}",
     assetCurrent: "現在の領域 {width} × {height}px",
     assetAnimated:
-      "GIFは {size}px 以下の短いループを推奨。長い高画質背景にはMP4がおすすめです。",
+      "GIFは {size}px 以下の短いループを推奨。長い高画質背景にはMP4・WebMがおすすめです。",
     assetFitHint:
       "領域を埋めると端が切れる場合があります。全体を表示するには比率を維持を選びます。",
     favorites: "お気に入り",
@@ -463,6 +471,9 @@ Keep native controls, text, and buttons readable. Make project and chat rows dis
     optionPages: "{label}の選択ページ",
     noOptions: "一致する項目がありません",
     librarySearch: "名前・キャラクター・スキン・種類を検索",
+    libraryFilters: "絞り込み",
+    libraryOptions: "表示・整理",
+    removeLibraryFilter: "{value} の絞り込みを解除",
     sortThemes: "テーマの並び順",
     sortLibrary: "一覧の順序",
     sortNameAsc: "名前の昇順",
@@ -579,7 +590,7 @@ Keep native controls, text, and buttons readable. Make project and chat rows dis
 テーマ名: [名前]
 コンセプト・雰囲気: [例: 静かな夕暮れの海]
 参考画像・動画: [添付ファイル、パス、リンク、またはなし]
-背景メディア: [静止画 / GIF / 無音ループMP4 / なし]
+背景メディア: [静止画 / GIF / 無音ループMP4・WebM / なし]
 背景の表示: [全体を表示 / 領域を埋める]、重要な被写体の位置 [位置]
 色と明るさ: [希望]
 動きとループ: [動作と速度]
@@ -612,6 +623,7 @@ Keep native controls, text, and buttons readable. Make project and chat rows dis
     duplicate: "複製",
     close: "Codex に戻る",
     loadingPreview: "プレビューを準備中",
+    previewUnavailable: "プレビューを読み込めません",
     previewAlt: "サンプルのプロジェクトとチャットを使ったテーマプレビュー",
     previewFailed:
       "テーマのプレビューを準備できませんでした。開き直してください。",
@@ -633,7 +645,8 @@ Keep native controls, text, and buttons readable. Make project and chat rows dis
     textColorManual: "手动指定",
     assetRecommended: "建议 {size}px · 比例 {ratio}",
     assetCurrent: "当前区域 {width} × {height}px",
-    assetAnimated: "GIF建议 {size}px 以下的短循环；长时间高清背景建议使用MP4",
+    assetAnimated:
+      "GIF建议 {size}px 以下的短循环；长时间高清背景建议使用MP4或WebM",
     assetFitHint: "填满区域可能裁剪边缘。选择保持比例可显示完整图片。",
     favorites: "收藏",
     favoriteTheme: "收藏 {name}",
@@ -666,6 +679,9 @@ Keep native controls, text, and buttons readable. Make project and chat rows dis
     optionPages: "{label}选择列表分页",
     noOptions: "没有匹配的选项",
     librarySearch: "搜索名称、角色、皮肤或类型",
+    libraryFilters: "筛选",
+    libraryOptions: "视图与整理",
+    removeLibraryFilter: "移除筛选：{value}",
     sortThemes: "主题排序",
     sortLibrary: "列表顺序",
     sortNameAsc: "名称升序",
@@ -769,7 +785,7 @@ Keep native controls, text, and buttons readable. Make project and chat rows dis
 主题名称：[名称]
 概念与氛围：[例如安静的傍晚海边]
 参考图片或视频：[附件、路径、链接或无]
-背景媒体：[静态图片 / GIF / 静音循环 MP4 / 无]
+背景媒体：[静态图片 / GIF / 静音循环 MP4或WebM / 无]
 背景构图：[完整显示 / 填满区域]，重要主体的位置 [位置]
 颜色与亮度：[偏好]
 动态与循环：[动作和速度]
@@ -801,6 +817,7 @@ Keep native controls, text, and buttons readable. Make project and chat rows dis
     duplicate: "复制",
     close: "返回 Codex",
     loadingPreview: "正在准备预览",
+    previewUnavailable: "无法加载预览",
     previewAlt: "使用示例项目和聊天的主题预览",
     previewFailed: "无法准备主题预览。请重新打开以重试。",
     sampleProject: "示例项目",

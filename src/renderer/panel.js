@@ -465,6 +465,7 @@ export class Panel {
   async export() {
     const result = await this.c.request("export", {
       chunked: true,
+      largeChunks: true,
       id: this.selected,
       revision: this.baseRevision,
     });

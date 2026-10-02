@@ -1,5 +1,7 @@
 export const MEDIA_LIMITS = {
   bytes: 25 * 1024 * 1024,
+  videoBytes: 512 * 1024 * 1024,
+  transferBytes: 768 * 1024 * 1024,
   dimension: 16384,
   pixels: 32000000,
   frames: 240,
@@ -8,6 +10,8 @@ export const MEDIA_LIMITS = {
   maxDurationMs: 600000,
   maxLoops: 100,
 };
+export const isVideoMime = (mime) =>
+  mime === "video/mp4" || mime === "video/webm";
 export function inspectGif(bytes) {
   const fail = () => {
     throw Error("GIF 구조 또는 디코딩 한도 오류");

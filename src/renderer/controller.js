@@ -10,7 +10,8 @@ import {
   mediaCacheLimits,
 } from "../core/media-budget.js";
 import { t } from "./messages.js";
-import { downloadBytes } from "./file-transfer.js";
+import { downloadBytes, downloadBlob } from "./file-transfer.js";
+import { isVideoMime } from "../core/media-limits.js";
 import { isMotionPaused } from "../core/motion-policy.ts";
 import { validateCustomEffects } from "../core/custom-effects.ts";
 import { playbackBudget } from "../core/motion-playback.ts";
@@ -31,6 +32,9 @@ import { Decoration } from "./layers.js";
 import { mutationNeedsDiscovery } from "./mutation-impact.js";
 import { Panel } from "./panel.js";
 import { decodeMedia, disposeMedia } from "./media.js";
+import { ResourceQueue } from "./resource-queue.js";
+import { openAssetSource, decodeAssetSource, releaseAssetSource } from "./media-source.js";
+import { readPoster, storePoster } from "./poster-cache.js";
 export async function decodeImage(data, mime) {
   const media = await decodeMedia(data, mime);
   disposeMedia(media);
@@ -66,7 +70,11 @@ export async function validateDocument(doc) {
   )
     throw Error("테마 형식 또는 기본 프로필 오류");
   const minimum = m.engine.minVersion.split(".").map(Number);
-  const current = [0, 1, 2];
+  const current =
+    typeof window !== "undefined" &&
+    /^\d+\.\d+\.\d+$/.test(window.__coskinEngineVersion)
+      ? window.__coskinEngineVersion.split(".").map(Number)
+      : [0, 1, 9];
   const difference = minimum.findIndex(
     (part, index) => part !== current[index],
   );
@@ -97,8 +105,8 @@ export async function validateDocument(doc) {
   if (m.requirements.required.some((c) => !supported.includes(c)))
     throw Error("필수 지원 기능을 사용할 수 없습니다.");
   for (const [path, hash] of Object.entries(doc.assets)) {
-    if (!/\.(png|jpe?g|gif|mp4)$/.test(path))
-      throw Error("PNG·JPEG·GIF 이미지와 MP4 영상을 지원합니다.");
+    if (!/\.(png|jpe?g|gif|mp4|webm)$/.test(path))
+      throw Error("PNG·JPEG·GIF 이미지와 MP4·WebM 영상을 지원합니다.");
     if (!/^[a-f0-9]{64}$/.test(hash)) throw Error("자산 해시 오류");
   }
   return true;
@@ -116,30 +124,56 @@ export class Controller {
     this.decorations = new Map();
     this.pending = new Map();
     this.next = 0;
+    this.requestEpoch = crypto.randomUUID().replaceAll("-", "");
     this.lastHeartbeat = Date.now();
     this.summary = { enabled: false, bindings: {}, documents: {}, themes: {} };
     this.preview = null;
     this.assetCache = new Map();
     this.assetPending = new Map();
+    this.assetQueue = new ResourceQueue(2);
+    this.assetAbort = new AbortController();
     this.reduced = matchMedia("(prefers-reduced-motion: reduce)");
   }
   request(op, data = {}) {
+    const cleanup = ["transfer-cancel", "transfer-cancel-owner", "asset-media-release"].includes(op);
+    if (this.disposed && !cleanup) return Promise.reject(Error("연결이 종료되었습니다."));
+    this.requestEpoch ??= crypto.randomUUID().replaceAll("-", "");
+    const id = this.requestEpoch + ":" + ++this.next;
+    const send = () => window.__coskinRequest(JSON.stringify({
+      ...data,
+      contractVersion: 1,
+      sessionId: this.sessionId,
+      requestId: id,
+      op,
+    }));
+    if (this.disposed) {
+      try { send(); return Promise.resolve({ ok: true }); }
+      catch (error) { return Promise.reject(error); }
+    }
     return new Promise((resolve, reject) => {
-      const id = String(++this.next);
-      const timer = setTimeout(() => {
-        this.pending.delete(id);
-        reject(Error("연결 요청 시간이 초과되었습니다."));
-      }, 30000);
-      this.pending.set(id, { resolve, reject, timer });
-      window.__coskinRequest(
-        JSON.stringify({
-          contractVersion: 1,
-          sessionId: this.sessionId,
-          requestId: id,
-          op,
-          ...data,
-        }),
+      const timer = setTimeout(
+        () => {
+          this.pending.delete(id);
+          reject(Error("연결 요청 시간이 초과되었습니다."));
+        },
+        ["runtime-settings-write", "asset-storage-pick"].includes(op)
+          ? 15 * 60 * 1000
+          : [
+                "asset-write",
+                "import",
+                "apply",
+                "enable",
+                "inherit",
+                "export",
+                "save",
+                "create",
+              ].includes(op)
+            ? 15 * 60 * 1000
+            : 30000,
       );
+      this.pending.set(id, { resolve, reject, timer });
+      try { send(); }
+      catch (error) { clearTimeout(timer); this.pending.delete(id); reject(error); }
     });
   }
   response(id, value, error) {
@@ -414,6 +448,8 @@ export class Controller {
     return media;
   }
   async loadMedia(hash) {
+    this.assetQueue ??= new ResourceQueue(2);
+    this.assetAbort ??= new AbortController();
     const cached = this.assetCache.get(hash);
     if (cached) {
       this.assetCache.delete(hash);
@@ -421,17 +457,33 @@ export class Controller {
       return cached;
     }
     if (this.assetPending.has(hash)) return this.assetPending.get(hash);
-    const pending = this.request("asset-read", { hash })
-      .then(async (transfer) => {
-        const media = await decodeMedia(
-          await downloadBytes(this, transfer),
-          transfer.mime,
-        );
-        if (this.disposed) {
-          disposeMedia(media);
-          throw Error("연결이 종료되었습니다.");
+    const pending = this.assetQueue.run(async () => {
+        let source, media, poster;
+        try {
+          source = await openAssetSource(this, hash, this.assetAbort.signal);
+          const transfer = source || await this.request("asset-read", { hash, largeChunks: true });
+          poster = isVideoMime(transfer.mime) ? await readPoster(this, hash, this.assetAbort.signal) : null;
+          const hadPoster = !!poster;
+          if (source) {
+            const ownedPoster = poster;
+            poster = null;
+            media = await decodeAssetSource(this, source, this.assetAbort.signal, ownedPoster);
+          } else {
+            const data = await (isVideoMime(transfer.mime) ? downloadBlob : downloadBytes)(this, transfer, this.assetAbort.signal);
+            const ownedPoster = poster;
+            poster = null;
+            media = await decodeMedia(data, transfer.mime, ownedPoster);
+          }
+          if (this.disposed) throw Error("연결이 종료되었습니다.");
+          if (isVideoMime(media.mime) && !hadPoster)
+            await storePoster(this, hash, media.frames[0].image, this.assetAbort.signal);
+          return this.storeMedia(hash, media);
+        } catch (error) {
+          poster?.close();
+          if (media) disposeMedia(media);
+          else await releaseAssetSource(this, source);
+          throw error;
         }
-        return this.storeMedia(hash, media);
       })
       .finally(() => this.assetPending.delete(hash));
     this.assetPending.set(hash, pending);
@@ -563,7 +615,7 @@ export class Controller {
     return t("control.runtimeTrayBusy");
   }
   receiveRuntimeSettings(settings) {
-    this.panel.runtimeSettings = settings;
+    this.panel.runtimeSettings = { ...this.panel.runtimeSettings, ...settings };
     if (this.panel.settingsOpen) this.panel.render();
   }
   openLibrary() {
@@ -614,7 +666,7 @@ export class Controller {
         const media = await this.loadMedia(hash);
         verifiedMedia.add(media);
         decodedBytes += this.mediaBytes(media);
-        if (decodedBytes > mediaCacheLimits.uhdVideo)
+        if (decodedBytes > mediaCacheLimits.largeVideo)
           throw Error(
             "테마 전체 이미지의 메모리 예산을 초과했습니다. 이미지 크기나 프레임 수를 줄여 주세요.",
           );
@@ -910,6 +962,9 @@ export class Controller {
     this.stopReplay(false);
     if (this.disposed) return;
     this.disposed = true;
+    this.request("transfer-cancel-owner").catch(() => {});
+    this.assetAbort?.abort();
+    this.assetQueue?.dispose(Error("연결이 종료되었습니다."));
     clearInterval(this.timer);
     clearTimeout(this.scrollTimer);
     this.viewportObserver?.disconnect();
