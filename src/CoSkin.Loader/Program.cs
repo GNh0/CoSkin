@@ -507,8 +507,7 @@ internal static class Program
     }
     private static async Task<JsonObject> ExternalRequest(JsonObject command, int port, Library library, Func<Cdp[]> windows, CancellationToken cancellationToken, Func<Task>? launch = null, Func<int, Task>? requestPort = null, Func<JsonObject>? connectionStatus = null, Action? quit = null)
     {
-        if (command.Any(pair => pair.Key is not ("op" or "path" or "port" or "codexPid")))
-            throw new InvalidDataException("지원하지 않는 실행 요청 필드입니다.");
+        var showLibrary = ExternalImportOptions.ShowLibrary(command);
         if (command["codexPid"] is not null && connectionStatus is not null)
         {
             var requestedPid = command["codexPid"]!.GetValue<int>();
@@ -572,6 +571,7 @@ internal static class Program
             var summary = await library.Handle(new JsonObject { ["op"] = "list" }, _ => Task.CompletedTask, (_, _) => Task.CompletedTask);
             await RendererNotifications.Broadcast(windows(), "window.__coskin?.receiveSummary(" + summary.ToJsonString() + ")",
                 (window, error) => DiagnosticLog.Record("summary-notification-failure", error, reason: "id=" + window.RendererId));
+            if (!showLibrary) return new JsonObject { ["ok"] = true, ["background"] = true };
         }
         try
         {

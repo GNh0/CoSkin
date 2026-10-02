@@ -12,6 +12,12 @@ Task Validate(JsonObject _) => Task.CompletedTask; // Contract/decoder behavior 
 Task Decode(byte[] _, string __) => Task.CompletedTask;
 try
 {
+    Check(ExternalImportOptions.ShowLibrary(new JsonObject { ["op"] = "import", ["path"] = "example.coskin" }), "기존 대화형 가져오기는 테마 목록 표시를 보존");
+    Check(!ExternalImportOptions.ShowLibrary(new JsonObject { ["op"] = "import", ["path"] = "example.coskin", ["showLibrary"] = false }), "자동 가져오기는 현재 화면을 유지하는 명시적 옵션 지원");
+    Reject(() => ExternalImportOptions.ShowLibrary(new JsonObject { ["op"] = "import", ["showLibrary"] = "false" }), "화면 표시 옵션의 문자열 위장 거절");
+    Reject(() => ExternalImportOptions.ShowLibrary(new JsonObject { ["op"] = "open", ["showLibrary"] = false }), "가져오기가 아닌 요청에 배경 등록 옵션 사용 거절");
+    Reject(() => ExternalImportOptions.ShowLibrary(new JsonObject { ["op"] = "import", ["showLibrary"] = null }), "null 표시 옵션 거절");
+    Reject(() => ExternalImportOptions.ShowLibrary(new JsonObject { ["op"] = "import", ["unexpected"] = true }), "외부 명령의 미지원 필드 거절 유지");
     WindowCapacityTests.Run(Check);
     MediaMetadataTests.Run(Check);
     await RendererRepliesTests.Run(Check);

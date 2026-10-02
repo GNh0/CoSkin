@@ -4,7 +4,10 @@ import {
   BackgroundView,
   GreetingVisibility,
 } from "../src/renderer/background-view.js";
-import { structuralShellPaintSources } from "../src/renderer/adapter-paint.js";
+import {
+  structuralShellPaintSources,
+  discoverPaintSources,
+} from "../src/renderer/adapter-paint.js";
 import { mutationNeedsDiscovery } from "../src/renderer/mutation-impact.js";
 
 const descendants = (element) => [
@@ -564,5 +567,92 @@ test("new page shell wrappers are detected by geometry while the computer panel 
     wrapper,
   ]);
   assert.equal(computer.style.getPropertyValue("background-color"), "navy");
+  f.view.dispose();
+});
+
+test("the observed Dot messaging shell behind deep full-area wrappers is cleared while bubbles and the right computer pane keep native paint", () => {
+  const f = fixture();
+  const bounds = {
+    left: 365,
+    top: 160,
+    width: 681,
+    height: 763,
+    right: 1046,
+    bottom: 923,
+  };
+  const focus = f.doc.createElement("div");
+  focus.setAttribute("data-app-shell-focus-area", "main");
+  focus.rect = bounds;
+  f.foreground.append(focus);
+  let parent = focus;
+  for (let depth = 0; depth < 12; depth++) {
+    const wrapper = f.doc.createElement("div");
+    wrapper.rect = bounds;
+    parent.append(wrapper);
+    parent = wrapper;
+  }
+  const messaging = parent;
+  messaging.setAttribute("class", "messaging-root messaging-embedded");
+  messaging.style.setProperty("background-color", "rgb(24, 24, 24)");
+  const thread = f.doc.createElement("main");
+  thread.rect = bounds;
+  thread.setAttribute("class", "thread-pane");
+  thread.style.setProperty("background-color", "rgb(24, 24, 24)");
+  messaging.append(thread);
+  const bubble = f.doc.createElement("article");
+  bubble.rect = bounds;
+  bubble.style.setProperty("background-color", "navy");
+  thread.append(bubble);
+  const right = f.doc.createElement("aside"),
+    computer = f.doc.createElement("div");
+  right.setAttribute("data-app-shell-focus-area", "right-panel");
+  right.rect = { ...bounds, left: 1046, right: 1518, width: 472 };
+  computer.setAttribute("data-app-shell-compact-page-gutter", "true");
+  computer.setAttribute("data-codex-cloud-computer", "true");
+  computer.rect = right.rect;
+  computer.style.setProperty("background-color", "navy");
+  right.append(computer);
+  f.foreground.append(right);
+  const sources = discoverPaintSources("app.background", f.doc.body).map(
+    (s) => s.element,
+  );
+  assert.ok(sources.includes(messaging));
+  assert.ok(sources.includes(thread));
+  assert.ok(!sources.includes(bubble));
+  assert.ok(!sources.includes(right));
+  assert.ok(!sources.includes(computer));
+  assert.equal(computer.style.getPropertyValue("background-color"), "navy");
+  f.view.dispose();
+});
+
+test("a late plain full-area page wrapper is discovered without rediscovering streamed message content", () => {
+  const f = fixture();
+  const bounds = {
+    left: 0,
+    top: 40,
+    width: 1000,
+    height: 800,
+    right: 1000,
+    bottom: 840,
+  };
+  const wrapper = f.doc.createElement("div"),
+    late = f.doc.createElement("section");
+  wrapper.rect = late.rect = bounds;
+  f.foreground.append(wrapper);
+  wrapper.append(late);
+  const mutation = {
+    type: "childList",
+    target: wrapper,
+    addedNodes: [late],
+    removedNodes: [],
+  };
+  assert.equal(mutationNeedsDiscovery([mutation]), true);
+  const message = f.doc.createElement("article");
+  wrapper.append(message);
+  message.append(late);
+  assert.equal(
+    mutationNeedsDiscovery([{ ...mutation, target: message }]),
+    false,
+  );
   f.view.dispose();
 });

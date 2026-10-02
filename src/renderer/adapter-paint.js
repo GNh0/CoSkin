@@ -15,7 +15,38 @@ const shellAnchorSelector =
   '[data-app-shell-focus-area="main"],[data-app-shell-main-surface],main,[role="main"]';
 const contentBoundarySelector =
   protectedFooterSelector +
-  ',[data-message-id],[data-message-author-role],article,pre,canvas,video,input,textarea,[contenteditable="true"],.monaco-editor,.cm-editor,[data-app-shell-focus-area="secondary"],[data-app-shell-right-panel],[data-summary-panel-variant]';
+  ',[data-message-id],[data-message-author-role],article,pre,canvas,video,input,textarea,[contenteditable="true"],.monaco-editor,.cm-editor,[data-app-shell-focus-area="secondary"],[data-app-shell-focus-area="right-panel"],[data-app-shell-focus-area="bottom-panel"],[data-app-shell-right-panel],[data-summary-panel-variant],[data-codex-cloud-computer],[data-dot-computer-preview]';
+
+function coversShell(element, bounds) {
+  const rect = element.getBoundingClientRect();
+  return (
+    rect.width >= bounds.width * 0.85 &&
+    rect.height >= bounds.height * 0.85 &&
+    Math.abs(rect.left - bounds.left) <= bounds.width * 0.08 &&
+    Math.abs(rect.top - bounds.top) <= bounds.height * 0.08
+  );
+}
+
+export function shellPaintMutationNeedsDiscovery(record) {
+  if (
+    record.type !== "childList" ||
+    record.target.nodeType !== 1 ||
+    record.target.closest(contentBoundarySelector)
+  )
+    return false;
+  const anchor = record.target.closest(shellAnchorSelector);
+  if (!anchor) return false;
+  const bounds = record.target.getBoundingClientRect();
+  if (bounds.width < 180 || bounds.height < 180) return false;
+  return [...record.addedNodes].some(
+    (element) =>
+      element.nodeType === 1 &&
+      element.isConnected &&
+      !element.closest(contentBoundarySelector) &&
+      element.matches('div,section,main,[role="main"]') &&
+      coversShell(element, bounds),
+  );
+}
 
 // New pages can add opaque structural wrappers without a page-specific route.
 // Peel only one full-area shell branch at each level. Smaller functional panels,
@@ -32,17 +63,11 @@ export function structuralShellPaintSources(root) {
     if (bounds.width < 180 || bounds.height < 180) continue;
     result.add(anchor);
     let branch = anchor;
-    for (let depth = 0; depth < 4; depth++) {
+    for (let depth = 0; depth < 16; depth++) {
       const candidates = [...branch.children].filter((element) => {
         if (!element.isConnected || element.closest(contentBoundarySelector))
           return false;
-        const rect = element.getBoundingClientRect();
-        return (
-          rect.width >= bounds.width * 0.85 &&
-          rect.height >= bounds.height * 0.85 &&
-          Math.abs(rect.left - bounds.left) <= bounds.width * 0.08 &&
-          Math.abs(rect.top - bounds.top) <= bounds.height * 0.08
-        );
+        return coversShell(element, bounds);
       });
       if (candidates.length !== 1) break;
       branch = candidates[0];
@@ -104,7 +129,8 @@ export function discoverPaintSources(target, root, retained = new Map()) {
       !element.isConnected ||
       element.closest(
         "[data-coskin-ui],[data-coskin-decoration],[data-coskin-transition]",
-      )
+      ) ||
+      (!composer && element.closest(contentBoundarySelector))
     )
       continue;
     const rect = element.getBoundingClientRect();

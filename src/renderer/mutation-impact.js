@@ -4,6 +4,7 @@ import {
   homeSuggestionSelector,
   nativeGreetingSelector,
 } from "./background-view.js";
+import { shellPaintMutationNeedsDiscovery } from "./adapter-paint.js";
 
 const ownedSelector =
   "[data-coskin-ui],[data-coskin-decoration],[data-coskin-transition]";
@@ -60,6 +61,7 @@ export function mutationNeedsDiscovery(records) {
         ? greetingMutationNeedsDiscovery(record)
         : record.type === "attributes" ||
           greetingMutationNeedsDiscovery(record) ||
+          shellPaintMutationNeedsDiscovery(record) ||
           (record.target.nodeType === 1 &&
             record.target.matches(
               '[data-thread-scroll-footer],[data-codex-composer-root],[data-composer-body],[data-app-shell-main-surface],[data-app-shell-focus-area="main"],main,[role="main"]',
