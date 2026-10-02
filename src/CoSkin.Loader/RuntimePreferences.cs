@@ -1,7 +1,15 @@
 using System.Text.Json.Nodes;
 namespace CoSkin;
 
-internal sealed record RuntimePreferences(bool LaunchWithCodex = true, bool ExitWithCodex = false, bool AutomaticUpdates = false, bool StartAtSignIn = false, string? AssetStoragePath = null);
+internal sealed record RuntimePreferences(bool LaunchWithCodex = true, bool ExitWithCodex = false, bool AutomaticUpdates = false, bool StartAtSignIn = false, string? AssetStoragePath = null,
+    int MaxConnectedWindows = WindowCapacity.DefaultConnected, int MaxPlayingWindows = WindowCapacity.DefaultPlaying, bool HideStartGreeting = true)
+{
+    internal void ValidateWindowLimits()
+    {
+        if (MaxConnectedWindows is < 1 or > WindowCapacity.Maximum || MaxPlayingWindows < 1 || MaxPlayingWindows > MaxConnectedWindows)
+            throw new InvalidDataException("연결 창 수는 1~10개, 동시 재생 창 수는 연결 창 수 이하로 지정해 주세요.");
+    }
+}
 
 /// <summary>User lifecycle choices are independent of theme revisions and never control Codex shutdown.</summary>
 internal sealed class RuntimePreferenceStore
@@ -23,13 +31,17 @@ internal sealed class RuntimePreferenceStore
                 return new();
             RejectLink(path);
             var data = JsonContract.Read(File.ReadAllBytes(path), 16 * 1024);
-            JsonContract.Fields(data, "formatVersion", "launchWithCodex", "exitWithCodex", "automaticUpdates", "startAtSignIn", "assetStoragePath");
+            JsonContract.Fields(data, "formatVersion", "launchWithCodex", "exitWithCodex", "automaticUpdates", "startAtSignIn", "assetStoragePath", "maxConnectedWindows", "maxPlayingWindows", "hideStartGreeting");
             if (data["formatVersion"]?.GetValue<int>() != 1)
                 throw new InvalidDataException("실행 설정 버전을 지원하지 않습니다.");
             try
             {
-                return new(data["launchWithCodex"]!.GetValue<bool>(), data["exitWithCodex"]!.GetValue<bool>(), data["automaticUpdates"]?.GetValue<bool>() ?? false, data["startAtSignIn"]?.GetValue<bool>() ?? false,
-                    ValidateAssetPath(data["assetStoragePath"]?.GetValue<string>()));
+                var preferences = new RuntimePreferences(data["launchWithCodex"]!.GetValue<bool>(), data["exitWithCodex"]!.GetValue<bool>(), data["automaticUpdates"]?.GetValue<bool>() ?? false, data["startAtSignIn"]?.GetValue<bool>() ?? false,
+                    ValidateAssetPath(data["assetStoragePath"]?.GetValue<string>()),
+                    data["maxConnectedWindows"]?.GetValue<int>() ?? WindowCapacity.DefaultConnected,
+                    data["maxPlayingWindows"]?.GetValue<int>() ?? WindowCapacity.DefaultPlaying, data["hideStartGreeting"]?.GetValue<bool>() ?? true);
+                preferences.ValidateWindowLimits();
+                return preferences;
             }
             catch (Exception error) when (error is InvalidOperationException or NullReferenceException) { throw new InvalidDataException("실행 설정 형식이 올바르지 않습니다.", error); }
         }
@@ -55,12 +67,14 @@ internal sealed class RuntimePreferenceStore
     }
     private void WriteCore(RuntimePreferences preferences)
     {
+        preferences.ValidateWindowLimits();
         ValidateAssetPath(preferences.AssetStoragePath);
         RejectLink(path);
         var temporary = path + "." + Guid.NewGuid().ToString("N") + ".tmp";
         try
         {
-            var data = new JsonObject { ["formatVersion"] = 1, ["launchWithCodex"] = preferences.LaunchWithCodex, ["exitWithCodex"] = preferences.ExitWithCodex, ["automaticUpdates"] = preferences.AutomaticUpdates, ["startAtSignIn"] = preferences.StartAtSignIn };
+            var data = new JsonObject { ["formatVersion"] = 1, ["launchWithCodex"] = preferences.LaunchWithCodex, ["exitWithCodex"] = preferences.ExitWithCodex, ["automaticUpdates"] = preferences.AutomaticUpdates, ["startAtSignIn"] = preferences.StartAtSignIn,
+                ["maxConnectedWindows"] = preferences.MaxConnectedWindows, ["maxPlayingWindows"] = preferences.MaxPlayingWindows, ["hideStartGreeting"] = preferences.HideStartGreeting };
             if (preferences.AssetStoragePath is not null) data["assetStoragePath"] = preferences.AssetStoragePath;
             using (var file = new FileStream(temporary, FileMode.CreateNew, FileAccess.Write, FileShare.None))
             {

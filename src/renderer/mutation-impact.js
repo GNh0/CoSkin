@@ -5,6 +5,10 @@ const discoverySelector = [
   "[data-app-navigation-rail]",
   "[data-sidebar-destination]",
   "[data-app-shell-main-surface]",
+  'main,[role="main"]',
+  "[data-start-screen-greeting]",
+  "[data-home-empty-state]",
+  "h1,h2",
   "[data-app-shell-left-panel-appearance]",
   "[data-app-action-sidebar-thread-row]",
   "[data-app-action-sidebar-project-row]",
@@ -39,7 +43,7 @@ export function mutationNeedsDiscovery(records) {
       (record.type === "attributes" ||
         (record.target.nodeType === 1 &&
           record.target.matches(
-            "[data-thread-scroll-footer],[data-codex-composer-root],[data-composer-body]",
+            '[data-thread-scroll-footer],[data-codex-composer-root],[data-composer-body],[data-app-shell-main-surface],[data-app-shell-focus-area="main"],main,[role="main"]',
           )) ||
         [...record.addedNodes, ...record.removedNodes].some(relevant)),
   );

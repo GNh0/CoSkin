@@ -7,6 +7,11 @@ import {
 } from "./library-controls.js";
 import { paginationState } from "../core/library-pagination.js";
 import {
+  clearDetailDraft,
+  detailDraft,
+  updateDetailDraft,
+} from "./detail-navigation.js";
+import {
   folderOptions,
   folderDescendants,
   folderIndex,
@@ -34,8 +39,13 @@ export function favoriteButton(panel, id, name) {
 export function organizationForm(panel) {
   const data = organization(panel);
   const current = data.themes[panel.selected] || {};
+  const baseline = {
+    groupId: current.groupId || "",
+    tags: (current.tags || []).join("\n"),
+  };
+  const draft = detailDraft(panel, "organization") || baseline;
   const root = h("form", { class: "organization-form" });
-  let groupId = current.groupId || "";
+  let groupId = draft.groupId;
   const groups = searchablePicker(panel, {
     key: "detail-group",
     label: t("group"),
@@ -44,6 +54,7 @@ export function organizationForm(panel) {
     value: groupId,
     onChange: (value) => {
       groupId = value;
+      track();
     },
   });
   const tags = h("textarea", {
@@ -52,7 +63,7 @@ export function organizationForm(panel) {
     "aria-label": t("tags"),
     placeholder: t("tagsPlaceholder"),
   });
-  tags.value = (current.tags || []).join("\n");
+  tags.value = draft.tags;
   const save = h("button", {
     type: "submit",
     class: "secondary",
@@ -69,20 +80,33 @@ export function organizationForm(panel) {
       save,
     ]),
   );
+  const values = () => ({ groupId, tags: tags.value });
+  const saveOrganization = async (input) => {
+    await panel.c.update("organization-write", {
+      id: panel.selected,
+      metadata: {
+        groupId: input.groupId || null,
+        tags: input.tags
+          .split(/\r?\n/u)
+          .map((value) => value.trim())
+          .filter(Boolean),
+      },
+    });
+    clearDetailDraft(panel, "organization", input);
+  };
+  const track = () =>
+    updateDetailDraft(
+      panel,
+      "organization",
+      values(),
+      baseline,
+      saveOrganization,
+    );
+  tags.addEventListener("input", track);
+  track();
   root.onsubmit = (event) => {
     event.preventDefault();
-    panel.action(() =>
-      panel.c.update("organization-write", {
-        id: panel.selected,
-        metadata: {
-          groupId: groupId || null,
-          tags: tags.value
-            .split(/\r?\n/u)
-            .map((value) => value.trim())
-            .filter(Boolean),
-        },
-      }),
-    )();
+    panel.action(() => saveOrganization(values()))();
   };
   return root;
 }

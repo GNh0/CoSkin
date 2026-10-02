@@ -530,6 +530,11 @@ export const controlMessages = {
 };
 
 Object.assign(controlMessages.ko, {
+  runtimeWindowsTitle: "여러 창과 영상 재생",
+  runtimeWindowsHelp: "한 CoSkin이 여러 Codex 창에 연결됩니다. 최소화된 창의 영상은 멈추며, 재생 한도 안에서는 최근 사용한 창을 우선합니다.",
+  runtimeConnectedLimit: "최대 연결 창 수", runtimeConnectedHelp: "1~10개. 한도를 줄일 때 편집·미리보기·미저장 설정이 있는 창은 작업을 마친 뒤 연결을 해제합니다.",
+  runtimePlayingLimit: "동시에 영상을 재생할 창 수", runtimePlayingHelp: "나머지 연결된 창은 영상을 정지합니다. 높은 값은 CPU·GPU·메모리 사용량을 늘릴 수 있습니다.",
+  runtimeWindowCount: "{count}개",
   runtimeStorageTitle: "테마 전체 보관 폴더",
   runtimeStorageHelp: "모든 테마의 이미지와 영상을 한 폴더에 함께 보관합니다. 저장하면 기존 파일을 복사하고 확인한 뒤 새 폴더를 사용합니다. 원래 폴더의 파일은 남겨 둡니다.",
   runtimeStorageCurrent: "현재 폴더: {path}", runtimeStorageUsed: "테마 파일 사용량: {size}",
@@ -547,6 +552,11 @@ Object.assign(controlMessages.ko, {
   runtimeUpdateupdating: "업데이트를 설치합니다. CoSkin이 다시 시작되고 테마와 Codex는 유지됩니다.",
 });
 Object.assign(controlMessages.en, {
+  runtimeWindowsTitle: "Windows and video playback",
+  runtimeWindowsHelp: "One CoSkin connects to multiple Codex windows. Videos pause in minimized windows; recently used windows have priority within the playback limit.",
+  runtimeConnectedLimit: "Maximum connected windows", runtimeConnectedHelp: "1–10. When reducing the limit, windows with editing, previews, or unsaved settings stay connected until that work is finished.",
+  runtimePlayingLimit: "Windows playing video at once", runtimePlayingHelp: "Videos pause in the other connected windows. Higher values can increase CPU, GPU, and memory use.",
+  runtimeWindowCount: "{count}",
   runtimeStorageTitle: "Folder for all themes",
   runtimeStorageHelp: "Keep images and videos for every theme together in one folder. Saving copies and verifies the existing files before using the new folder. Files in the original folder are retained.",
   runtimeStorageCurrent: "Current folder: {path}", runtimeStorageUsed: "Theme files used: {size}",
@@ -564,6 +574,11 @@ Object.assign(controlMessages.en, {
   runtimeUpdateupdating: "Installing the update. CoSkin will restart; themes and Codex stay intact.",
 });
 Object.assign(controlMessages.ja, {
+  runtimeWindowsTitle: "複数ウィンドウと動画再生",
+  runtimeWindowsHelp: "1つのCoSkinが複数のCodexウィンドウに接続します。最小化したウィンドウの動画は停止し、再生上限内では最近使ったウィンドウを優先します。",
+  runtimeConnectedLimit: "接続ウィンドウ数の上限", runtimeConnectedHelp: "1～10。上限を減らす際、編集中・プレビュー中・未保存設定のあるウィンドウは作業終了まで接続を保ちます。",
+  runtimePlayingLimit: "同時に動画を再生する数", runtimePlayingHelp: "他の接続ウィンドウの動画は停止します。数を増やすとCPU・GPU・メモリ使用量が増える場合があります。",
+  runtimeWindowCount: "{count}個",
   runtimeStorageTitle: "すべてのテーマの保存フォルダー",
   runtimeStorageHelp: "すべてのテーマの画像と動画を1つのフォルダーに保存します。保存時に既存ファイルをコピーして確認した後、新しいフォルダーを使用します。元のフォルダーのファイルは保持します。",
   runtimeStorageCurrent: "現在のフォルダー: {path}", runtimeStorageUsed: "テーマファイル使用量: {size}",
@@ -581,6 +596,11 @@ Object.assign(controlMessages.ja, {
   runtimeUpdateupdating: "更新をインストール中です。CoSkinは再起動し、テーマとCodexは保持されます。",
 });
 Object.assign(controlMessages['zh-CN'], {
+  runtimeWindowsTitle: "多窗口与视频播放",
+  runtimeWindowsHelp: "一个CoSkin连接多个Codex窗口。最小化窗口的视频会暂停；播放上限内优先最近使用的窗口。",
+  runtimeConnectedLimit: "最多连接的窗口数", runtimeConnectedHelp: "1–10。降低上限时，正在编辑、预览或有未保存设置的窗口会保持连接，直到完成操作。",
+  runtimePlayingLimit: "同时播放视频的窗口数", runtimePlayingHelp: "其他已连接窗口的视频会暂停。较高数值可能增加CPU、GPU和内存用量。",
+  runtimeWindowCount: "{count}个",
   runtimeStorageTitle: "所有主题的存储文件夹",
   runtimeStorageHelp: "将所有主题的图片和视频保存在同一个文件夹中。保存时会先复制并验证现有文件，再使用新文件夹。原文件夹中的文件将保留。",
   runtimeStorageCurrent: "当前文件夹：{path}", runtimeStorageUsed: "主题文件占用：{size}",

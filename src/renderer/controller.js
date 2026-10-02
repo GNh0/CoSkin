@@ -4,6 +4,7 @@ import {
 } from "./scroll-media-policy.js";
 import { applyThemeTypography } from "./theme-typography.js";
 import { heartbeatExpired } from "./heartbeat-policy.js";
+import { BackgroundView, GreetingVisibility } from "./background-view.js";
 import {
   mediaMemoryBytes,
   mediaCacheBudget,
@@ -33,7 +34,11 @@ import { mutationNeedsDiscovery } from "./mutation-impact.js";
 import { Panel } from "./panel.js";
 import { decodeMedia, disposeMedia } from "./media.js";
 import { ResourceQueue } from "./resource-queue.js";
-import { openAssetSource, decodeAssetSource, releaseAssetSource } from "./media-source.js";
+import {
+  openAssetSource,
+  decodeAssetSource,
+  releaseAssetSource,
+} from "./media-source.js";
 import { readPoster, storePoster } from "./poster-cache.js";
 export async function decodeImage(data, mime) {
   const media = await decodeMedia(data, mime);
@@ -133,22 +138,37 @@ export class Controller {
     this.assetQueue = new ResourceQueue(2);
     this.assetAbort = new AbortController();
     this.reduced = matchMedia("(prefers-reduced-motion: reduce)");
+    this.nativeMotionPaused = window.__coskinNativeMotionPaused === true;
+    this.nativeSuspended = window.__coskinNativeSuspended === true;
+    this.suspended = this.nativeSuspended || document.hidden;
   }
   request(op, data = {}) {
-    const cleanup = ["transfer-cancel", "transfer-cancel-owner", "asset-media-release"].includes(op);
-    if (this.disposed && !cleanup) return Promise.reject(Error("연결이 종료되었습니다."));
+    const cleanup = [
+      "transfer-cancel",
+      "transfer-cancel-owner",
+      "asset-media-release",
+    ].includes(op);
+    if (this.disposed && !cleanup)
+      return Promise.reject(Error("연결이 종료되었습니다."));
     this.requestEpoch ??= crypto.randomUUID().replaceAll("-", "");
     const id = this.requestEpoch + ":" + ++this.next;
-    const send = () => window.__coskinRequest(JSON.stringify({
-      ...data,
-      contractVersion: 1,
-      sessionId: this.sessionId,
-      requestId: id,
-      op,
-    }));
+    const send = () =>
+      window.__coskinRequest(
+        JSON.stringify({
+          ...data,
+          contractVersion: 1,
+          sessionId: this.sessionId,
+          requestId: id,
+          op,
+        }),
+      );
     if (this.disposed) {
-      try { send(); return Promise.resolve({ ok: true }); }
-      catch (error) { return Promise.reject(error); }
+      try {
+        send();
+        return Promise.resolve({ ok: true });
+      } catch (error) {
+        return Promise.reject(error);
+      }
     }
     return new Promise((resolve, reject) => {
       const timer = setTimeout(
@@ -171,9 +191,14 @@ export class Controller {
             ? 15 * 60 * 1000
             : 30000,
       );
-      this.pending.set(id, { resolve, reject, timer });
-      try { send(); }
-      catch (error) { clearTimeout(timer); this.pending.delete(id); reject(error); }
+      this.pending.set(id, { op, resolve, reject, timer });
+      try {
+        send();
+      } catch (error) {
+        clearTimeout(timer);
+        this.pending.delete(id);
+        reject(error);
+      }
     });
   }
   response(id, value, error) {
@@ -214,6 +239,10 @@ export class Controller {
       });
     this.panel.render();
     this.events = new AbortController();
+    this.greetingVisibility = new GreetingVisibility();
+    this.backgroundView = new BackgroundView(this);
+    if (this.summary.runtimeSettingsAvailable)
+      this.receiveRuntimeSettings(await this.request("runtime-settings-read"));
     const signal = this.events.signal;
     this.reduced.addEventListener(
       "change",
@@ -288,6 +317,13 @@ export class Controller {
       childList: true,
       attributes: true,
       attributeFilter: [
+        "hidden",
+        "aria-hidden",
+        "data-composer-surface-variant",
+        "data-composer-layout",
+        "data-composer-body",
+        "data-composer-rail",
+        "data-composer-rail-item",
         "aria-selected",
         "aria-current",
         "aria-disabled",
@@ -295,6 +331,11 @@ export class Controller {
         "href",
         "data-project-id",
         "data-state",
+        "data-app-shell-main-surface",
+        "data-app-shell-focus-area",
+        "data-start-screen-greeting",
+        "data-home-empty-state",
+        "role",
         "data-app-action-sidebar-thread-id",
         "data-app-action-sidebar-thread-selected",
         "data-app-action-sidebar-thread-active",
@@ -457,26 +498,43 @@ export class Controller {
       return cached;
     }
     if (this.assetPending.has(hash)) return this.assetPending.get(hash);
-    const pending = this.assetQueue.run(async () => {
+    const pending = this.assetQueue
+      .run(async () => {
         let source, media, poster;
         try {
           source = await openAssetSource(this, hash, this.assetAbort.signal);
-          const transfer = source || await this.request("asset-read", { hash, largeChunks: true });
-          poster = isVideoMime(transfer.mime) ? await readPoster(this, hash, this.assetAbort.signal) : null;
+          const transfer =
+            source ||
+            (await this.request("asset-read", { hash, largeChunks: true }));
+          poster = isVideoMime(transfer.mime)
+            ? await readPoster(this, hash, this.assetAbort.signal)
+            : null;
           const hadPoster = !!poster;
           if (source) {
             const ownedPoster = poster;
             poster = null;
-            media = await decodeAssetSource(this, source, this.assetAbort.signal, ownedPoster);
+            media = await decodeAssetSource(
+              this,
+              source,
+              this.assetAbort.signal,
+              ownedPoster,
+            );
           } else {
-            const data = await (isVideoMime(transfer.mime) ? downloadBlob : downloadBytes)(this, transfer, this.assetAbort.signal);
+            const data = await (
+              isVideoMime(transfer.mime) ? downloadBlob : downloadBytes
+            )(this, transfer, this.assetAbort.signal);
             const ownedPoster = poster;
             poster = null;
             media = await decodeMedia(data, transfer.mime, ownedPoster);
           }
           if (this.disposed) throw Error("연결이 종료되었습니다.");
           if (isVideoMime(media.mime) && !hadPoster)
-            await storePoster(this, hash, media.frames[0].image, this.assetAbort.signal);
+            await storePoster(
+              this,
+              hash,
+              media.frames[0].image,
+              this.assetAbort.signal,
+            );
           return this.storeMedia(hash, media);
         } catch (error) {
           poster?.close();
@@ -577,6 +635,8 @@ export class Controller {
   refreshDecorations() {
     if (
       this.disposed ||
+      this.suspended ||
+      this.scrolling ||
       this.preview ||
       this.panel?.session?.previewing ||
       this.panel?.dirty ||
@@ -611,14 +671,35 @@ export class Controller {
   endExternalUpdate() {
     this.externalApplying = false;
   }
+  connectionProtected() {
+    return !!(
+      this.externalApplying ||
+      this.preview ||
+      this.pending.size ||
+      this.panel?.dirty ||
+      this.panel?.editing ||
+      this.panel?.busy ||
+      this.panel?.session?.previewing ||
+      this.panel?.runtimeSettingsDraft
+    );
+  }
+  tryReleaseConnection() {
+    if (this.connectionProtected()) return false;
+    this.dispose();
+    return true;
+  }
   trayBusyMessage() {
     return t("control.runtimeTrayBusy");
   }
   receiveRuntimeSettings(settings) {
     this.panel.runtimeSettings = { ...this.panel.runtimeSettings, ...settings };
+    this.greetingVisibility?.refresh(
+      this.panel.runtimeSettings.hideStartGreeting !== false,
+    );
     if (this.panel.settingsOpen) this.panel.render();
   }
   openLibrary() {
+    this.backgroundView?.toggle(false);
     if (!document.querySelector('nav[data-app-navigation-rail="true"]'))
       return false;
     if (this.panel.editing || this.panel.dirty || this.panel.session.previewing)
@@ -638,6 +719,7 @@ export class Controller {
     return true;
   }
   async openSettings() {
+    this.backgroundView?.toggle(false);
     if (!document.querySelector('nav[data-app-navigation-rail="true"]'))
       return false;
     if (this.panel.editing || this.panel.dirty || this.panel.session.previewing)
@@ -830,6 +912,8 @@ export class Controller {
         dec.setPlaying(
           !this.suspended &&
             !this.motionBlocked &&
+            (!this.backgroundView?.active ||
+              dec === this.backgroundView.background) &&
             !this.adapter.state(t.el).disabled,
         );
         if (document.hidden || dec.hidden || this.motionBlocked) {
@@ -844,6 +928,10 @@ export class Controller {
       }
     this.releaseUnusedMedia();
     this.panel.ensureEntry();
+    this.greetingVisibility?.refresh(
+      this.panel.runtimeSettings?.hideStartGreeting !== false,
+    );
+    this.backgroundView?.refresh();
   }
   removeDecoration(element) {
     this.viewportObserver?.unobserve(element);
@@ -972,6 +1060,9 @@ export class Controller {
     this.events?.abort();
     this.observer?.disconnect();
     this.localeObserver?.dispose();
+    this.backgroundView?.dispose();
+    this.greetingVisibility?.dispose();
+    this.backgroundInfo?.dispose();
     for (const dec of this.decorations.values()) dec.dispose();
     this.decorations.clear();
     this.panel?.dispose();

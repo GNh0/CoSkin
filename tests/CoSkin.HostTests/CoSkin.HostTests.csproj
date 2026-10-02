@@ -7,7 +7,12 @@
  <ItemGroup><Compile Include="../../src/CoSkin.Loader/NativeAttachment.cs;../../src/CoSkin.Loader/NativeConnectionDiscovery.cs" Link="%(Filename)%(Extension)" /></ItemGroup>
  <ItemGroup><Compile Include="../../src/CoSkin.Loader/DiagnosticLog.cs" Link="DiagnosticLog.cs" /></ItemGroup>
  <ItemGroup><Compile Include="../../src/CoSkin.Loader/Cdp.cs;../../src/CoSkin.Loader/NativeRendererSession.cs" Link="%(Filename)%(Extension)" /></ItemGroup>
+ <ItemGroup><Compile Include="../../src/CoSkin.Loader/RendererNotifications.cs" Link="RendererNotifications.cs" /></ItemGroup>
+ <ItemGroup><Compile Include="../../src/CoSkin.Loader/RendererReplies.cs" Link="RendererReplies.cs" /></ItemGroup>
+ <ItemGroup><Compile Include="../../src/CoSkin.Loader/RendererReadiness.cs" Link="RendererReadiness.cs" /></ItemGroup>
+ <ItemGroup><Compile Include="../../src/CoSkin.Loader/WindowCapacity.cs" Link="WindowCapacity.cs" /></ItemGroup>
  <ItemGroup><Compile Include="../../src/CoSkin.Loader/PosterCache.cs" Link="PosterCache.cs" /></ItemGroup>
+ <ItemGroup><Compile Include="../../src/CoSkin.Loader/MediaMetadata.cs;../../src/CoSkin.Loader/BackgroundMediaInfo.cs" Link="%(Filename)%(Extension)" /></ItemGroup>
  <ItemGroup><Compile Include="../../src/CoSkin.Loader/NativeTray.cs;../../src/CoSkin.Loader/ResidentMessages.cs" Link="%(Filename)%(Extension)" /></ItemGroup>
 </Project>
 

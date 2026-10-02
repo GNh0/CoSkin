@@ -2,11 +2,35 @@ import { nativeControlNames } from "./adapter-labels.js";
 import { discoverPaintSources } from "./adapter-paint.js";
 export function visibleMainSurfaces(document) {
   return [
-    ...document.querySelectorAll('main[data-app-shell-main-surface="default"]'),
+    ...document.querySelectorAll(
+      'main[data-app-shell-main-surface],main[data-app-shell-focus-area="main"],[role="main"][data-app-shell-main-surface]',
+    ),
   ].filter((element) => {
     const bounds = element.getBoundingClientRect();
-    return bounds.width > 0 && bounds.height > 0;
+    return (
+      bounds.width > 0 &&
+      bounds.height > 0 &&
+      !element.closest?.(
+        '[hidden],[aria-hidden="true"],[data-coskin-ui],iframe,webview',
+      )
+    );
   });
+}
+export function visibleComposerSurfaces(document) {
+  const roots = new Set();
+  for (const surface of document.querySelectorAll(
+    "[data-composer-surface-variant][data-composer-layout]",
+  )) {
+    if (
+      !surface.querySelector('[contenteditable="true"][data-codex-composer]') ||
+      surface.closest('[hidden],[aria-hidden="true"]')
+    )
+      continue;
+    const bounds = surface.getBoundingClientRect();
+    if (bounds.width > 0 && bounds.height > 0)
+      roots.add(surface.closest("[data-codex-composer-root]") || surface);
+  }
+  return [...roots];
 }
 // Discover supported DOM markers at runtime. Themes cannot supply selectors;
 // the host still verifies the signed original application and page identity.
@@ -140,18 +164,8 @@ export class CodexAdapter {
       if (id && id.length <= 512)
         add("sidebar.project-row", el, id, { project: id });
     }
-    const composers = [
-      ...d.querySelectorAll(
-        "[data-composer-surface-variant][data-composer-layout]",
-      ),
-    ].filter((el) =>
-      el.querySelector('[contenteditable="true"][data-codex-composer]'),
-    );
-    if (composers.length === 1)
-      add(
-        "composer.surface",
-        composers[0].closest("[data-codex-composer-root]") || composers[0],
-      );
+    const composers = visibleComposerSurfaces(d);
+    if (composers.length === 1) add("composer.surface", composers[0]);
     for (const summary of d.querySelectorAll(
       '[data-summary-panel-variant="summary"]',
     ))

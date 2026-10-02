@@ -5,7 +5,7 @@ namespace CoSkin;
 
 internal static class PipeTransportTests
 {
-    internal static async Task Run(Action<bool, string> check, string scratch, string? repositoryRoot = null, bool recoveryOnly = false)
+    internal static async Task Run(Action<bool, string> check, string scratch, string? repositoryRoot = null, bool recoveryOnly = false, bool windowRecoveryOnly = false)
     {
         var repository = repositoryRoot ?? Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "../../../../../"));
         var output = Path.Combine(scratch, "pipe-response.json");
@@ -28,6 +28,11 @@ internal static class PipeTransportTests
             await using var main = new Cdp();
             await main.ConnectPipe(connection);
             await using var renderer = new Cdp(main, 1);
+            if (windowRecoveryOnly)
+            {
+                await CheckWindowIsolation(main, renderer, check);
+                return;
+            }
             if (recoveryOnly)
             {
                 await CheckInvocationRecovery(renderer, check);
@@ -85,6 +90,8 @@ internal static class PipeTransportTests
             }
             finally { renderer.Event -= TypedBinding; }
             await CheckInvocationRecovery(renderer, check);
+            await CheckInvocationBudget(main, renderer, check);
+            await CheckWindowIsolation(main, renderer, check);
             var pending = renderer.Evaluate("await-binding");
             await main.DisposeAsync();
             try { await pending; check(false, "연결 종료 취소"); }
@@ -98,6 +105,84 @@ internal static class PipeTransportTests
             if (!child.HasExited) { child.Kill(); await child.WaitForExitAsync(); }
             await errors;
         }
+    }
+
+    private static async Task CheckInvocationBudget(Cdp main, Cdp survivor, Action<bool, string> check)
+    {
+        const string echo = "function(value) { return value; }";
+        await survivor.Evaluate("fixture-invoke-delays:120:120");
+        await using (var compound = new Cdp(main, 1))
+        {
+            try { await compound.Invoke(echo, new JsonArray { "overall-budget" }, TimeSpan.FromMilliseconds(180)); check(false, "Invoke 전체 시간 예산"); }
+            catch (TimeoutException) { check(!main.IsClosed, "window 준비와 함수 호출은 분리된 180ms가 아닌 전체 180ms 예산을 공유하며 전송은 유지"); }
+        }
+        await survivor.Evaluate("fixture-invoke-delays:240:0");
+        await using (var locked = new Cdp(main, 1))
+        {
+            var first = locked.Invoke(echo, new JsonArray { "slow-window-preparation" });
+            var wait = Stopwatch.StartNew();
+            while ((await survivor.Evaluate("fixture-window-preparing"))?.GetValue<bool>() != true && wait.Elapsed < TimeSpan.FromSeconds(1)) await Task.Delay(5);
+            check(wait.Elapsed < TimeSpan.FromSeconds(1), "느린 window 준비 중 function 잠금의 실제 경합 관측");
+            try { await locked.Invoke(echo, new JsonArray { "short-waiter" }, TimeSpan.FromMilliseconds(50)); check(false, "function 잠금 시간 상한"); }
+            catch (TimeoutException) { check(!main.IsClosed, "잠금을 기다리는 짧은 요청은 50ms에 실패하고 공유 연결·선행 요청은 보존"); }
+            check((await first)?.GetValue<string>() == "slow-window-preparation", "짧은 요청 시간 초과 뒤 선행 함수의 결과 보존");
+        }
+        await survivor.Evaluate("fixture-invoke-delays:0:0");
+        check((await survivor.Evaluate("after-budget-tests"))?.GetValue<string>() == "after-budget-tests", "함수 준비 예산 검사 후 정상 창의 응답 유지");
+    }
+
+    private static async Task CheckWindowIsolation(Cdp main, Cdp survivor, Action<bool, string> check)
+    {
+        const string mainUrl = "app://-/index.html";
+        const string detachedUrl = "app://-/detached-window.html?initialRoute=%2Fdetached-window";
+        await survivor.Evaluate("fixture-enable-second-window");
+        check((await main.Send("CoSkin.list"))["targets"]!.AsArray().Count == 2, "실제 인증 파이프에 서로 다른 두 주 창 대상 연결");
+        await using var disappearing = new Cdp(main, 2);
+        await disappearing.Send("Runtime.enable");
+        try
+        {
+            await disappearing.Evaluate("fixture-stalled-renderer", TimeSpan.FromMilliseconds(100));
+            check(false, "응답 없는 한 창의 제한 시간");
+        }
+        catch (TimeoutException error)
+        {
+            check(CodexPageContract.IsRecoverableRendererFailure(mainUrl, error, main.IsClosed) &&
+                CodexPageContract.IsRecoverableRendererFailure(detachedUrl, error, main.IsClosed),
+                "주 창과 보조 창의 실제 100ms 타임아웃은 공유 연결이 살아 있으면 창 단위 복구");
+        }
+        check((await survivor.Evaluate("survivor-after-timeout"))?.GetValue<string>() == "survivor-after-timeout" && !main.IsClosed,
+            "한 창 타임아웃 후 다른 창의 실제 응답과 공유 파이프 유지");
+        var notificationFailures = new List<Exception>();
+        var notificationClock = Stopwatch.StartNew();
+        await RendererNotifications.Broadcast([disappearing, survivor], "fixture-stalled-renderer",
+            (_, error) => notificationFailures.Add(error));
+        check(notificationFailures.Count == 1 && notificationFailures[0] is TimeoutException && notificationClock.Elapsed < TimeSpan.FromSeconds(5) && !main.IsClosed,
+            "응답 없는 창의 사후 알림은 실제 2초 상한에서 끝나고 다음 창·공유 연결을 유지");
+        try
+        {
+            await disappearing.Evaluate("fixture-close-during-command");
+            check(false, "명령 처리 중 닫힌 주 창");
+        }
+        catch (IOException error)
+        {
+            check(CodexPageContract.IsRecoverableRendererFailure(mainUrl, error, main.IsClosed),
+                "목록 조회 후 평가 도중 닫힌 주 창의 실제 프로토콜 오류 격리");
+        }
+        var failures = new List<int>();
+        await RendererNotifications.Broadcast([disappearing, survivor], "window.__coskin?.receiveSummary({})",
+            (window, _) => failures.Add(window.RendererId));
+        check(failures.SequenceEqual([2]) && (await survivor.Evaluate("fixture-summary-count"))?.GetValue<int>() == 1,
+            "닫힌 다른 창의 요약 전달 실패 뒤에도 정상 창에 요약을 전달하며 저장 결과를 바꾸지 않음");
+        await disappearing.DisposeAsync();
+        check((await survivor.Evaluate("survivor-after-close"))?.GetValue<string>() == "survivor-after-close" && !main.IsClosed && !survivor.IsClosed,
+            "실패한 창 정리 후 정상 창과 공유 연결 생존");
+        foreach (var error in new Exception[] { new TimeoutException(), new IOException("target closed while handling command"), new ObjectDisposedException("window") })
+            check(!CodexPageContract.IsRecoverableRendererFailure(mainUrl, error, sharedConnectionClosed: true),
+                "공유 전송 자체의 종료는 창 단위 재시도로 숨기지 않음 " + error.GetType().Name);
+        check(!CodexPageContract.IsRecoverableRendererFailure(mainUrl, new InvalidDataException("잘못된 연결 주소"), false) &&
+            !CodexPageContract.IsRecoverableRendererFailure(mainUrl, new TrayActionException("validation"), false) &&
+            !CodexPageContract.IsRecoverableRendererFailure("https://example.com", new TimeoutException(), false),
+            "인증·검증 실패와 외부 문서의 기존 연결 차단 경계 보존");
     }
 
     private static async Task CheckInvocationRecovery(Cdp renderer, Action<bool, string> check)

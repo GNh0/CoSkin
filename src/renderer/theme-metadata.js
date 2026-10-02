@@ -1,29 +1,40 @@
 import { h, icon } from "./components.js";
 import { t } from "./messages.js";
 import { text } from "./strings.js";
+import {
+  clearDetailDraft,
+  detailDraft,
+  updateDetailDraft,
+} from "./detail-navigation.js";
 
 export function themeMetadata(panel, creating = false) {
   const manifest = creating
     ? { name: "", description: "", author: { name: t("panel.user") } }
     : panel.doc.manifest;
+  const baseline = {
+    name: manifest.name,
+    description: manifest.description || "",
+    author: manifest.author.name,
+  };
+  const draft = (!creating && detailDraft(panel, "metadata")) || baseline;
   const root = h("form", {
     class: "theme-metadata panel-form panel-metadata-form",
   });
   const name = h("input", {
-    value: manifest.name,
+    value: draft.name,
     required: true,
     maxLength: 256,
     "aria-label": t("control.themeName"),
     placeholder: t("control.themeName"),
   });
   const description = h("textarea", {
-    value: manifest.description || "",
+    value: draft.description,
     maxLength: 4096,
     rows: 3,
     "aria-label": t("control.themeDescription"),
   });
   const author = h("input", {
-    value: manifest.author.name,
+    value: draft.author,
     required: true,
     maxLength: 256,
     "aria-label": t("control.themeAuthor"),
@@ -68,34 +79,51 @@ export function themeMetadata(panel, creating = false) {
     input.disabled = !!panel.busy;
   save.disabled = panel.busy;
   const cancel = panel.button(t("panel.cancel"), () => {
+    if (!creating) clearDetailDraft(panel, "metadata");
     panel.metadataMode = null;
     panel.render();
   });
   root.append(h("div", { class: "panel-form-footer" }, [cancel, save]));
+  const values = () => ({
+    name: name.value,
+    description: description.value,
+    author: author.value,
+  });
+  const saveMetadata = async (input) => {
+    if (!root.reportValidity()) return false;
+    const saved = Object.fromEntries(
+      Object.entries(input).map(([key, value]) => [key, value.trim()]),
+    );
+    if (!saved.name || !saved.author) return false;
+    if (creating) await panel.create(saved);
+    else {
+      panel.change(
+        () => {
+          panel.doc.manifest.name = saved.name;
+          if (saved.description)
+            panel.doc.manifest.description = saved.description;
+          else delete panel.doc.manifest.description;
+          panel.doc.manifest.author.name = saved.author;
+        },
+        { preview: false },
+      );
+      await panel.save();
+      clearDetailDraft(panel, "metadata", input);
+    }
+    return true;
+  };
+  if (!creating) {
+    const track = () =>
+      updateDetailDraft(panel, "metadata", values(), baseline, saveMetadata);
+    for (const input of [name, description, author])
+      input.addEventListener("input", track);
+    track();
+  }
   root.onsubmit = async (event) => {
     event.preventDefault();
     if (!root.reportValidity()) return;
     await panel.action(async () => {
-      const values = {
-        name: name.value.trim(),
-        description: description.value.trim(),
-        author: author.value.trim(),
-      };
-      if (!values.name || !values.author) return;
-      if (creating) await panel.create(values);
-      else {
-        panel.change(
-          () => {
-            panel.doc.manifest.name = values.name;
-            if (values.description)
-              panel.doc.manifest.description = values.description;
-            else delete panel.doc.manifest.description;
-            panel.doc.manifest.author.name = values.author;
-          },
-          { preview: false },
-        );
-        await panel.save();
-      }
+      if (!(await saveMetadata(values()))) return;
       panel.metadataMode = null;
       panel.render();
     })();

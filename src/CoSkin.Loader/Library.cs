@@ -61,6 +61,21 @@ internal sealed class Library : IDisposable
         // A verified file copy must not block liveness requests from other windows.
         if (request["op"]?.GetValue<string>() == "list") return Summary(State());
         if (request["op"]?.GetValue<string>() == "runtime-settings-read") return RuntimeSettingsDocument();
+        if (request["op"]?.GetValue<string>() == "background-media-info")
+        {
+            JsonObject document;
+            await gate.WaitAsync();
+            try
+            {
+                var id = JsonContract.String(request, "id");
+                var entry = State()["themes"]?[id]?.AsObject() ?? throw new InvalidDataException("테마를 찾지 못했습니다.");
+                var revision = request["revision"]?.GetValue<int>() ?? entry["revision"]!.GetValue<int>();
+                if (revision < 1 || revision > entry["revision"]!.GetValue<int>()) throw new InvalidDataException("테마 리비전 오류");
+                document = JsonContract.Read(File.ReadAllBytes(FilePath($"revision-{entry["key"]}-{revision}.json")));
+            }
+            finally { gate.Release(); }
+            return await Task.Run(() => BackgroundMediaInfo.Read(document, request["profile"]?.GetValue<string>(), hash => MediaMetadata.Read(assetStorage.PathForHash(hash))));
+        }
         if (request["op"]?.GetValue<string>() is "asset-storage-read" or "asset-storage-pick")
         {
             var storageRequest = new JsonObject();
@@ -246,10 +261,14 @@ internal sealed class Library : IDisposable
                     return UpdateDocument(ApplyUpdate is null ? new(UpdateState.Unavailable) : await ApplyUpdate());
                 case "runtime-settings-write":
                     var settings = request["settings"]?.AsObject() ?? throw new InvalidDataException("실행 설정이 필요합니다.");
-                    JsonContract.Fields(settings, "launchWithCodex", "exitWithCodex", "automaticUpdates", "startAtSignIn", "assetStoragePath");
+                    JsonContract.Fields(settings, "launchWithCodex", "exitWithCodex", "automaticUpdates", "startAtSignIn", "assetStoragePath", "maxConnectedWindows", "maxPlayingWindows", "hideStartGreeting");
                     var before = Preferences.Read();
                     var preferences = new RuntimePreferences(settings["launchWithCodex"]!.GetValue<bool>(), settings["exitWithCodex"]!.GetValue<bool>(), settings["automaticUpdates"]!.GetValue<bool>(), settings["startAtSignIn"]?.GetValue<bool>() ?? before.StartAtSignIn,
-                        settings.ContainsKey("assetStoragePath") ? settings["assetStoragePath"]?.GetValue<string>() : before.AssetStoragePath);
+                        settings.ContainsKey("assetStoragePath") ? settings["assetStoragePath"]?.GetValue<string>() : before.AssetStoragePath,
+                        settings.ContainsKey("maxConnectedWindows") ? settings["maxConnectedWindows"]!.GetValue<int>() : before.MaxConnectedWindows,
+                        settings.ContainsKey("maxPlayingWindows") ? settings["maxPlayingWindows"]!.GetValue<int>() : before.MaxPlayingWindows,
+                        settings.ContainsKey("hideStartGreeting") ? settings["hideStartGreeting"]!.GetValue<bool>() : before.HideStartGreeting);
+                    preferences.ValidateWindowLimits();
                     preferences = preferences with { AssetStoragePath = assetStorage.Normalize(preferences.AssetStoragePath) };
                     var startupChanged = before.StartAtSignIn != preferences.StartAtSignIn;
                     if (startupChanged && SetStartup is null) throw new TrayActionException("not-installed");
@@ -456,7 +475,8 @@ internal sealed class Library : IDisposable
             throw new InvalidDataException("안정적인 범위 ID를 확인하지 못했습니다.");
         return kind + ":" + id;
     }
-    internal static JsonObject PreferenceDocument(RuntimePreferences value) => new() { ["launchWithCodex"] = value.LaunchWithCodex, ["exitWithCodex"] = value.ExitWithCodex, ["automaticUpdates"] = value.AutomaticUpdates, ["startAtSignIn"] = value.StartAtSignIn, ["assetStoragePath"] = value.AssetStoragePath };
+    internal static JsonObject PreferenceDocument(RuntimePreferences value) => new() { ["launchWithCodex"] = value.LaunchWithCodex, ["exitWithCodex"] = value.ExitWithCodex, ["automaticUpdates"] = value.AutomaticUpdates, ["startAtSignIn"] = value.StartAtSignIn, ["assetStoragePath"] = value.AssetStoragePath,
+        ["maxConnectedWindows"] = value.MaxConnectedWindows, ["maxPlayingWindows"] = value.MaxPlayingWindows, ["hideStartGreeting"] = value.HideStartGreeting };
     private JsonObject RuntimeSettingsDocument()
     {
         var snapshot = Preferences.Read();

@@ -146,8 +146,8 @@ internal sealed class TrayController : IDisposable
                 _ => settings with { AutomaticUpdates = !settings.AutomaticUpdates }
             };
             library.Preferences.Write(settings);
-            foreach (var window in participants)
-                await window.Evaluate("window.__coskin?.receiveRuntimeSettings(" + Library.PreferenceDocument(settings).ToJsonString() + ")");
+            await RendererNotifications.Broadcast(participants, "window.__coskin?.receiveRuntimeSettings(" + Library.PreferenceDocument(settings).ToJsonString() + ")",
+                (window, error) => DiagnosticLog.Record("runtime-settings-notification-failure", error, reason: "id=" + window.RendererId));
             return;
         }
         if (participants.Length == 0 && command.Action == TrayAction.Settings)
@@ -159,6 +159,12 @@ internal sealed class TrayController : IDisposable
         }
         var selected = await RendererSelection.MainShell(participants) ?? throw new TrayActionException("not-connected");
         await activate(selected);
+        if (command.Action == TrayAction.BackgroundView)
+        {
+            if ((await selected.Evaluate("window.__coskin?.backgroundView?.toggle()", TimeSpan.FromSeconds(2)))?.GetValue<bool>() != true)
+                throw new TrayActionException("not-connected");
+            return;
+        }
         if (command.Action is TrayAction.Library or TrayAction.Settings)
         {
             if ((await selected.Evaluate(command.Action == TrayAction.Settings ? "window.__coskin?.openSettings()" : "window.__coskin?.openLibrary()"))?.GetValue<bool>() != true)
@@ -203,8 +209,8 @@ internal sealed class TrayController : IDisposable
             }
             await request(selected, operation);
             var summary = await library.Handle(new JsonObject { ["op"] = "list" }, _ => Task.CompletedTask, (_, _) => Task.CompletedTask);
-            foreach (var window in participants)
-                await window.Evaluate("window.__coskin?.receiveSummary(" + summary.ToJsonString() + ")");
+            await RendererNotifications.Broadcast(participants, "window.__coskin?.receiveSummary(" + summary.ToJsonString() + ")",
+                (window, error) => DiagnosticLog.Record("summary-notification-failure", error, reason: "id=" + window.RendererId));
         }
         finally
         {

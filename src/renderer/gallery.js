@@ -1,6 +1,9 @@
 import { t } from "./messages.js";
+import { rememberDetailList } from "./detail-navigation.js";
 import { h, busyImage, icon } from "./components.js";
 import { mountPreview } from "./previews.js";
+import { mediaBadge } from "./theme-media-info.js";
+import { appearanceText } from "./appearance-messages.js";
 import { themeMetadata } from "./theme-metadata.js";
 import { folderBrowser } from "./library-folders.js";
 import {
@@ -360,6 +363,13 @@ export function galleryPage(panel, section) {
   );
   tools.append(filters);
   optionsContent.append(
+    ...(panel.c.backgroundView
+      ? [
+          panel.button(appearanceText("backgroundOnly"), () =>
+            panel.c.backgroundView.toggle(),
+          ),
+        ]
+      : []),
     h("div", { class: "library-view-options" }, [
       h("label", { text: t("sortThemes") }),
       sort,
@@ -496,6 +506,7 @@ export function galleryPage(panel, section) {
     const previewVisible = panel.libraryDisplay !== "list";
     const open = panel.action(async () => {
       await panel.load(id);
+      rememberDetailList(panel, model, pageSize);
       panel.detail = true;
     });
     const scope = panel.scopeData();
@@ -504,6 +515,7 @@ export function galleryPage(panel, section) {
     const applied =
       panel.c.summary.enabled && panel.c.summary.bindings[scopeKey]?.id === id;
     const thumbnail = previewVisible ? busyImage() : null;
+    const media = previewVisible ? mediaBadge(panel, id, entry.revision) : null;
     const metadata = data.themes[id] || {};
     const labels = libraryLabels(entry, metadata);
     const body = h(
@@ -520,6 +532,7 @@ export function galleryPage(panel, section) {
         previewVisible ? thumbnail : explorerIcon(),
         h("div", { class: "card-info" }, [
           h("h3", { text: entry.name }),
+          ...(media ? [media.element] : []),
           h("span", {
             class: "muted",
             text: applied
@@ -573,6 +586,7 @@ export function galleryPage(panel, section) {
     apply.className = applied ? "secondary" : "primary";
     const preview = panel.button(t("preview"), async () => {
       await panel.load(id);
+      rememberDetailList(panel, model, pageSize);
       panel.startPreview();
     });
     preview.className = "secondary";
@@ -633,7 +647,10 @@ export function galleryPage(panel, section) {
       );
     }
     grid.append(card);
-    if (previewVisible) mountPreview(panel, thumbnail, id, entry.revision);
+    if (previewVisible)
+      mountPreview(panel, thumbnail, id, entry.revision, 640, {
+        onVisible: media.load,
+      });
   }
   content.append(grid);
   if (!model.items.length)

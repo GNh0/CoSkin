@@ -149,12 +149,20 @@ export function previewUrl(
   return promise;
 }
 
-export function mountPreview(panel, container, id, revision, width = 640) {
+export function mountPreview(
+  panel,
+  container,
+  id,
+  revision,
+  width = 640,
+  { onVisible } = {},
+) {
   const owner = new AbortController();
   const observer = new IntersectionObserver((entries) => {
     if (owner.signal.aborted || !entries.some((entry) => entry.isIntersecting))
       return;
     observer.disconnect();
+    onVisible?.();
     previewUrl(panel.c, id, revision, width, { signal: owner.signal })
       .then((url) => {
         if (owner.signal.aborted || !container.isConnected) return;

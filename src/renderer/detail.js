@@ -5,6 +5,12 @@ import { themeMetadata } from "./theme-metadata.js";
 import { revisionStatusUi } from "./revision-status.js";
 import { organizationForm } from "./library-organization.js";
 import { typographyControls } from "./typography-controls.js";
+import { mediaBadge } from "./theme-media-info.js";
+import { appearanceText } from "./appearance-messages.js";
+import {
+  detailNavigationBar,
+  detailNavigationPrompt,
+} from "./detail-navigation.js";
 export function detailPage(panel, section) {
   const manifest = panel.doc.manifest;
   const page = h("div", { class: "panel-page panel-detail-page" });
@@ -14,11 +20,31 @@ export function detailPage(panel, section) {
     h("header", { class: "panel-topbar" }, [
       back,
       h("span", { class: "panel-eyebrow", text: "CoSkin" }),
+      detailNavigationBar(panel),
     ]),
   );
+  const navigationPrompt = detailNavigationPrompt(panel);
+  if (navigationPrompt) page.append(navigationPrompt);
   const preview = busyImage();
   preview.className = "detail-preview";
-  mountPreview(panel, preview, panel.selected, panel.baseRevision, 1280);
+  const factBadge = mediaBadge(
+    panel,
+    panel.selected,
+    panel.baseRevision,
+    panel.profile,
+  );
+  const previewBadge = mediaBadge(
+    panel,
+    panel.selected,
+    panel.baseRevision,
+    panel.profile,
+  );
+  mountPreview(panel, preview, panel.selected, panel.baseRevision, 1280, {
+    onVisible: () => {
+      factBadge.load();
+      previewBadge.load();
+    },
+  });
   const apply = panel.button(t("apply"), () => panel.apply());
   apply.className = "primary";
   const info = h("div", { class: "detail-info" }, [
@@ -45,11 +71,11 @@ export function detailPage(panel, section) {
       h("div", { class: "detail-meta" }, [
         h("ul", { class: "detail-facts" }, [
           h("li", { text: t("author", { name: manifest.author.name }) }),
+          h("li", {}, [factBadge.element]),
           h("li", {
-            text: panel.doc.theme.profiles.map((p) => p.name).join(" · "),
-          }),
-          h("li", {
-            text: t("images", { count: Object.keys(panel.doc.assets).length }),
+            text: appearanceText("assets", {
+              count: Object.keys(panel.doc.assets).length,
+            }),
           }),
         ]),
         h("div", { class: "detail-actions detail-management-actions" }, [
@@ -75,6 +101,7 @@ export function detailPage(panel, section) {
   const media = h("div", { class: "panel-card detail-media-card" }, [
     h("div", { class: "panel-card-heading" }, [
       h("h2", { text: t("preview") }),
+      previewBadge.element,
     ]),
     preview,
   ]);

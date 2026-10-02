@@ -203,7 +203,8 @@
 .panel-settings-options > h2 {
   margin-bottom: 6px;
 }
-.panel-form .panel-switch-row {
+.panel-form .panel-switch-row,
+.panel-form .panel-setting-row {
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -213,11 +214,16 @@
   border-bottom: 1px solid var(--line);
   cursor: pointer;
 }
-.panel-switch-row:last-child {
+.panel-switch-row:last-child,
+.panel-setting-row:last-child {
   border-bottom: 0;
 }
 .panel-setting-copy {
   min-width: 0;
+}
+.panel-setting-row select {
+  width: 100px;
+  flex: 0 0 auto;
 }
 .panel-setting-copy strong {
   display: block;
@@ -766,4 +772,17 @@
   :host([data-mode="editor"]) * {
     transition: none !important;
   }
+}
+.background-media-badge {
+  display: inline-block;
+  width: fit-content;
+  min-height: 1.5em;
+  padding: 3px 7px;
+  border-radius: 6px;
+  background: #9ac4ff12;
+  color: #c6d8ee;
+  font-size: 11px;
+  font-weight: 500;
+  line-height: 1.3;
+  white-space: nowrap;
 }

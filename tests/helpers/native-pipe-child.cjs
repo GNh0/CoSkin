@@ -1,5 +1,6 @@
 const fs = require('node:fs');
 const vm = require('node:vm');
+const crypto = require('node:crypto');
 const [sourcePath, input, output, nonce, ownerPid, pipeId, delayOpen] = process.argv.slice(2);
 if (Number(delayOpen) > 0) {
   const open = fs.promises.open.bind(fs.promises);
@@ -25,6 +26,8 @@ const start = vm.runInThisContext('(' + fs.readFileSync(sourcePath, 'utf8') + ')
 const waits = new Map();
 let windowEvaluations = 0, functionCalls = 0, functionAttempts = 0, windowGeneration = 1;
 let forcedProtocolFailures = 0, forcedProtocolMessage = 'Could not find object with given id';
+let secondWindow = false, receivedSummaries = 0;
+let windowDelay = 0, callDelay = 0, preparingWindow = false;
 const rendererContext = vm.createContext({window: {
   __fixtureWait(key, value) {
     if (waits.has(key)) throw Error('Duplicate fixture binding');
@@ -42,12 +45,49 @@ const rendererContext = vm.createContext({window: {
 }});
 start(input, output, () => {
   globalThis.__coskinRendererBridge = {
-    list() { return [{id: '1', type: 'page', url: 'app://-/index.html'}]; },
+    list() {
+      const targets = [{id: '1', type: 'page', url: 'app://-/index.html'}];
+      if (secondWindow) targets.push({id: '2', type: 'page', url: 'app://-/index.html'});
+      return targets;
+    },
     async command(id, method, parameters) {
+      if (id === 2) {
+        if (!secondWindow) throw Error('target closed while handling command');
+        if (method === 'Runtime.evaluate') {
+          if (parameters.expression === 'fixture-close-during-command') {
+            secondWindow = false;
+            throw Error('target closed while handling command');
+          }
+          if (parameters.expression === 'fixture-stalled-renderer') return new Promise(() => {});
+          return {result: {value: parameters.expression}};
+        }
+        if (method === 'Runtime.enable') return {};
+        throw Error('Unsupported second-window command');
+      }
       if (id !== 1) throw Error('Unknown window');
       if (method === 'Runtime.evaluate') {
         const expression = parameters.expression;
+        if (expression === 'fixture-window-preparing') return {result: {value: preparingWindow}};
+        const delays = /^fixture-invoke-delays:(\d+):(\d+)$/.exec(expression);
+        if (delays) { windowDelay = Number(delays[1]); callDelay = Number(delays[2]); return {result: {value: true}}; }
+        if (expression === 'fixture-competing-owner') {
+          const competingInput = input + '.competing-owner';
+          const competingOutput = output + '.competing-owner';
+          const originalOwner = globalThis.__coskinNativeEndpoint.ownerPid;
+          fs.writeFileSync(competingInput, JSON.stringify({contractVersion: 2, pid: process.pid,
+            ownerPid: process.pid, nonce: crypto.randomBytes(32).toString('hex'),
+            pipeName: `CoSkin-${process.pid}-${crypto.randomBytes(16).toString('hex')}`, created: Date.now()}));
+          await start(competingInput, competingOutput, () => { throw Error('Competing owner must not install a bridge'); });
+          const refused = JSON.parse(fs.readFileSync(competingOutput, 'utf8'));
+          return {result: {value: {refused: Boolean(refused.error), ownerPreserved: globalThis.__coskinNativeEndpoint.ownerPid === originalOwner}}};
+        }
+        if (expression === 'fixture-enable-second-window') { secondWindow = true; return {result: {value: true}}; }
+        if (expression === 'fixture-summary-count') return {result: {value: receivedSummaries}};
+        if (expression.startsWith('window.__coskin?.receiveSummary(')) { receivedSummaries++; return {result: {value: true}}; }
         if (expression === 'window' && parameters.returnByValue === false) {
+          preparingWindow = true;
+          try { if (windowDelay) await new Promise(resolve => setTimeout(resolve, windowDelay)); }
+          finally { preparingWindow = false; }
           windowEvaluations++;
           return {result: {type: 'object', objectId: `fixture-window-${windowGeneration}`}};
         }
@@ -69,6 +109,7 @@ start(input, output, () => {
         return {result: {value: expression}};
       }
       if (method === 'Runtime.callFunctionOn') {
+        if (callDelay) await new Promise(resolve => setTimeout(resolve, callDelay));
         functionAttempts++;
         if (forcedProtocolFailures > 0) {
           forcedProtocolFailures--;

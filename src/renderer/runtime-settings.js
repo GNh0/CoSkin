@@ -1,6 +1,7 @@
 import { h } from "./components.js";
 import { t } from "./messages.js";
 import { text } from "./strings.js";
+import { appearanceText } from "./appearance-messages.js";
 export function storageBytes(bytes) {
   if (!Number.isFinite(bytes) || bytes < 0) return "—";
   const units = ["B", "KiB", "MiB", "GiB", "TiB"];
@@ -38,6 +39,7 @@ export function settingsPage(panel, section) {
   ]);
   root.append(options);
   const fields = {};
+  const windowFields = {};
   const storage = panel.runtimeSettings?.assetStorage;
   const initialStoragePath =
     panel.runtimeSettings?.assetStoragePath ?? storage?.defaultPath;
@@ -52,6 +54,12 @@ export function settingsPage(panel, section) {
   const settingsValues = () => ({
     ...Object.fromEntries(
       Object.entries(fields).map(([name, field]) => [name, field.checked]),
+    ),
+    ...Object.fromEntries(
+      Object.entries(windowFields).map(([name, field]) => [
+        name,
+        Number(field.value),
+      ]),
     ),
     ...(storageInput
       ? { assetStoragePath: storageInput.value.trim() || null }
@@ -92,6 +100,86 @@ export function settingsPage(panel, section) {
       input,
     ]);
     options.append(row);
+  }
+  if (
+    Number.isInteger(panel.runtimeSettings?.maxConnectedWindows) &&
+    Number.isInteger(panel.runtimeSettings?.maxPlayingWindows)
+  ) {
+    const capacity = h("div", { class: "panel-settings-options" }, [
+      h("h2", { text: t("control.runtimeWindowsTitle") }),
+      h("p", {
+        class: "panel-section-help",
+        text: t("control.runtimeWindowsHelp"),
+      }),
+    ]);
+    for (const [key, title, help] of [
+      [
+        "maxConnectedWindows",
+        "control.runtimeConnectedLimit",
+        "control.runtimeConnectedHelp",
+      ],
+      [
+        "maxPlayingWindows",
+        "control.runtimePlayingLimit",
+        "control.runtimePlayingHelp",
+      ],
+    ]) {
+      const input = h("select", { "aria-label": t(title) });
+      for (let count = 1; count <= 10; count++) {
+        const option = h("option", {
+          value: String(count),
+          text: t("control.runtimeWindowCount", { count }),
+        });
+        option.value = String(count);
+        input.append(option);
+      }
+      input.value = String(preferences[key]);
+      input.disabled = panel.busy;
+      windowFields[key] = input;
+      input.onchange = () => {
+        const connected = Number(windowFields.maxConnectedWindows.value);
+        const playing = windowFields.maxPlayingWindows;
+        if (Number(playing.value) > connected)
+          playing.value = String(connected);
+        for (const option of playing.children)
+          option.disabled = Number(option.value) > connected;
+        updateDraft();
+      };
+      capacity.append(
+        h("label", { class: "panel-setting-row" }, [
+          h("div", { class: "panel-setting-copy" }, [
+            h("strong", { text: t(title) }),
+            h("p", { text: t(help) }),
+          ]),
+          input,
+        ]),
+      );
+    }
+    const playing = windowFields.maxPlayingWindows;
+    for (const option of playing.children)
+      option.disabled =
+        Number(option.value) > Number(windowFields.maxConnectedWindows.value);
+    root.append(capacity);
+  }
+  if (typeof panel.runtimeSettings?.hideStartGreeting === "boolean") {
+    const input = h("input", {
+      type: "checkbox",
+      class: "panel-switch",
+      "aria-label": appearanceText("hideGreeting"),
+    });
+    input.checked = preferences.hideStartGreeting === true;
+    input.disabled = panel.busy;
+    fields.hideStartGreeting = input;
+    input.onchange = updateDraft;
+    root.append(
+      h("label", { class: "panel-switch-row" }, [
+        h("div", { class: "panel-setting-copy" }, [
+          h("strong", { text: appearanceText("hideGreeting") }),
+          h("p", { text: appearanceText("hideGreetingHelp") }),
+        ]),
+        input,
+      ]),
+    );
   }
   if (storage) {
     storageInput = h("input", {
@@ -225,6 +313,11 @@ export function settingsPage(panel, section) {
     const settings = settingsValues();
     panel.runtimeSettingsDraft = settings;
     const requestSettings = { ...settings };
+    if (settings.hideStartGreeting === panel.runtimeSettings.hideStartGreeting)
+      delete requestSettings.hideStartGreeting;
+    for (const key of Object.keys(windowFields))
+      if (settings[key] === panel.runtimeSettings[key])
+        delete requestSettings[key];
     if (
       storage &&
       (settings.assetStoragePath ?? storage.defaultPath) === initialStoragePath
@@ -236,6 +329,7 @@ export function settingsPage(panel, section) {
       panel.runtimeSettings = await panel.c.request("runtime-settings-write", {
         settings: requestSettings,
       });
+      panel.c.receiveRuntimeSettings?.(panel.runtimeSettings);
       panel.runtimeSettingsDraft = null;
     })();
   };

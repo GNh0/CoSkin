@@ -69,6 +69,7 @@ internal static class Program
             if (installed) library.SetStartup = enabled => new InstallationService(store, new WindowsInstallationPlatform()).SetStartup(enabled);
             var sessions = new ConcurrentDictionary<string, Cdp>();
             var requests = new ConcurrentDictionary<long, Task>();
+            var replies = new RendererReplies();
             long nextRequest = 0;
 #if COSKIN_INTEGRATION
             IntegrationWindows = () => sessions.Values.ToArray();
@@ -78,6 +79,11 @@ internal static class Program
             string? verifiedAppVersion = null;
             var nativeWindows = new ConcurrentDictionary<string, IntPtr>();
             var lastVisibility = new ConcurrentDictionary<string, bool>();
+            var lastPlaying = new ConcurrentDictionary<string, bool>();
+            var capacity = new WindowCapacity();
+            int? capacityOwner = null;
+            var uncertainWindows = new HashSet<string>(StringComparer.Ordinal);
+            var discoveredWindows = 0;
             var detachedRetryAfter = new Dictionary<string, DateTimeOffset>();
             var sessionId = Guid.NewGuid().ToString("N");
             using var stop = new CancellationTokenSource();
@@ -110,7 +116,14 @@ internal static class Program
                 }, connectionSignal.Wake);
             await tray.Ready;
             await using var updates = new UpdateCoordinator(library, () => sessions.Values.ToArray(), () => stop.Cancel(), installed);
-            instance.Start((command, cancellationToken) => ExternalRequest(command, number, library, () => sessions.Values.ToArray(), cancellationToken, LaunchOrAttach, requested => { number = requested; verifiedProcess = null; connectionSignal.RequestPort(requested); return Task.CompletedTask; }, () => new JsonObject { ["connectedPid"] = verifiedProcess, ["targetPid"] = options.CodexProcess, ["windows"] = sessions.Count, ["port"] = number }, () => { _ = Task.Run(async () => { await Task.Delay(250); stop.Cancel(); }); }));
+            instance.Start((command, cancellationToken) => ExternalRequest(command, number, library, () => sessions.Values.ToArray(), cancellationToken, LaunchOrAttach, requested => { number = requested; verifiedProcess = null; connectionSignal.RequestPort(requested); return Task.CompletedTask; }, () =>
+            {
+                var preferences = library.Preferences.Read();
+                return new JsonObject { ["connectedPid"] = verifiedProcess, ["targetPid"] = options.CodexProcess, ["windows"] = sessions.Count, ["port"] = number,
+                    ["maxConnectedWindows"] = preferences.MaxConnectedWindows, ["maxPlayingWindows"] = preferences.MaxPlayingWindows,
+                    ["playingWindows"] = lastPlaying.Count(pair => pair.Value), ["playbackLimitDeferred"] = lastPlaying.Count(pair => pair.Value) > preferences.MaxPlayingWindows,
+                    ["waitingWindows"] = Math.Max(0, discoveredWindows - sessions.Count), ["connectionLimitDeferred"] = sessions.Count > preferences.MaxConnectedWindows };
+            }, () => { _ = Task.Run(async () => { await Task.Delay(250); stop.Cancel(); }); }));
             var initialLaunch = await ResidentLaunch.Try(options.Command == LaunchCommand.Coupled, library.Preferences.Read(), async () => { await LaunchOrAttach(); return number; });
             if (initialLaunch.Port is int launchedPort)
             {
@@ -123,6 +136,17 @@ internal static class Program
                 tray.ReportConnectionFailure(launchError);
             }
             var initialImport = options.Command == LaunchCommand.Import;
+            var heartbeatPump = Task.Run(async () =>
+            {
+                using var timer = new PeriodicTimer(TimeSpan.FromSeconds(10));
+                try
+                {
+                    while (await timer.WaitForNextTickAsync(stop.Token))
+                        await RendererNotifications.Broadcast(sessions.Values.ToArray(), "window.__coskin?.heartbeat()",
+                            (window, error) => DiagnosticLog.Record("renderer-heartbeat-deferred", error, reason: "id=" + window.RendererId));
+                }
+                catch (OperationCanceledException) when (stop.IsCancellationRequested) { }
+            });
             Console.CancelKeyPress += (_, e) => { e.Cancel = true; stop.Cancel(); };
             Console.WriteLine("CoSkin 연결을 기다립니다. 종료하려면 Ctrl+C를 누르세요.");
             while (!stop.IsCancellationRequested)
@@ -150,8 +174,11 @@ internal static class Program
                         verifiedProcess = owner;
                         DiagnosticLog.Record("connected", targetPid: owner, reason: nativeDiscovery.VerifiedConnection(owner, number) is null ? "renderer-cdp" : "authenticated-pipe");
                         tray.WatchVerifiedProcess(owner);
-                        nativeWindows.Clear();
-                        lastVisibility.Clear();
+                        if (capacityOwner != owner)
+                        {
+                            nativeWindows.Clear(); lastVisibility.Clear(); lastPlaying.Clear();
+                            uncertainWindows.Clear(); capacity = new WindowCapacity(); capacityOwner = owner;
+                        }
                     }
                     var list = JsonNode.Parse(await Http.GetStringAsync($"http://127.0.0.1:{number}/json/list", stop.Token))!.AsArray();
                     if (list.Any(target => target?["type"]?.GetValue<string>() == "node"))
@@ -167,23 +194,114 @@ internal static class Program
                         }
                         list = await nativeSession.List();
                     }
-                    var alive = new HashSet<string>();
-                    foreach (var target in list)
+                    var supported = list.Where(target => target?["type"]?.GetValue<string>() == "page" && CodexPageContract.Supports(target?["url"]?.GetValue<string>())).ToArray();
+                    var alive = supported.Select(target => target!["id"]!.GetValue<string>()).ToHashSet(StringComparer.Ordinal);
+                    discoveredWindows = alive.Count;
+                    foreach (var ended in uncertainWindows.Where(id => !alive.Contains(id)).ToArray())
+                    {
+                        uncertainWindows.Remove(ended); lastPlaying.TryRemove(ended, out _);
+                        replies.Forget(owner + ":" + ended);
+                    }
+                    var candidates = new List<WindowCandidate>();
+                    foreach (var target in supported)
+                    {
+                        var id = target!["id"]!.GetValue<string>();
+                        var available = !detachedRetryAfter.TryGetValue(id, out var retryAt) || retryAt <= DateTimeOffset.UtcNow;
+                        var protectedWindow = false;
+                        if (uncertainWindows.Contains(id)) { protectedWindow = true; available = false; }
+                        if (sessions.TryGetValue(id, out var connected))
+                        {
+                            if (!available) protectedWindow = true;
+                            else try { protectedWindow = (await connected.Evaluate("window.__coskin?.connectionProtected() === true", TimeSpan.FromSeconds(2)))?.GetValue<bool>() == true; }
+                            catch (Exception error) when (CodexPageContract.IsRecoverableRendererFailure(target["url"]?.GetValue<string>(), error, nativeSession?.Main.IsClosed == true))
+                            {
+                                DiagnosticLog.Record("renderer-retry", error, reason: "id=" + id + ";step=capacity-state");
+                                detachedRetryAfter[id] = DateTimeOffset.UtcNow.AddSeconds(30);
+                                // A lost reply does not prove that the window or its video stopped.
+                                // Keep its connection and playback reservation until closure is confirmed.
+                                protectedWindow = true;
+                                available = false;
+                            }
+                        }
+                        if (nativeSession is not null) nativeWindows[id] = NativeWindow.RendererWindow(owner, target);
+                        nativeWindows.TryGetValue(id, out var handle);
+                        candidates.Add(new(id, NativeWindow.Visible(handle, owner), NativeWindow.Focused(handle, owner), sessions.ContainsKey(id) || uncertainWindows.Contains(id), protectedWindow, available));
+                    }
+                    foreach (var stale in sessions.Keys.Where(id => !alive.Contains(id)).ToArray())
+                    {
+                        if (sessions.TryRemove(stale, out var ended)) await ended.DisposeAsync();
+                        nativeWindows.TryRemove(stale, out _);
+                        lastVisibility.TryRemove(stale, out _);
+                        lastPlaying.TryRemove(stale, out _);
+                        detachedRetryAfter.Remove(stale);
+                        replies.Forget(owner + ":" + stale);
+                        DiagnosticLog.Record("renderer-removed", reason: "id=" + stale);
+                    }
+                    var limits = library.Preferences.Read();
+                    var plan = capacity.Select(candidates, limits.MaxConnectedWindows, limits.MaxPlayingWindows);
+                    foreach (var candidate in candidates.Where(candidate => candidate.Connected && !plan.Connected.Contains(candidate.Id)).ToArray())
+                    {
+                        if (!sessions.TryGetValue(candidate.Id, out var previous)) continue;
+                        try
+                        {
+                            // The renderer checks again atomically, so a new draft between polling and release cannot be lost.
+                            if ((await previous.Evaluate("window.__coskin?.tryReleaseConnection() ?? true", TimeSpan.FromSeconds(2)))?.GetValue<bool>() != true)
+                            {
+                                var index = candidates.FindIndex(item => item.Id == candidate.Id);
+                                candidates[index] = candidate with { Protected = true };
+                                continue;
+                            }
+                            sessions.TryRemove(candidate.Id, out _);
+                            await previous.DisposeAsync();
+                            lastVisibility.TryRemove(candidate.Id, out _);
+                            lastPlaying.TryRemove(candidate.Id, out _);
+                            replies.Forget(owner + ":" + candidate.Id);
+                            DiagnosticLog.Record("renderer-capacity-release", reason: "id=" + candidate.Id);
+                        }
+                        catch (Exception error) when (CodexPageContract.IsRecoverableRendererFailure(supported.First(target => target!["id"]!.GetValue<string>() == candidate.Id)!["url"]?.GetValue<string>(), error, nativeSession?.Main.IsClosed == true))
+                        {
+                            // If release cannot be confirmed, retain ownership and stop its motion instead of attaching a duplicate.
+                            var index = candidates.FindIndex(item => item.Id == candidate.Id);
+                            candidates[index] = candidate with { Protected = true };
+                            DiagnosticLog.Record("renderer-capacity-release-deferred", error, reason: "id=" + candidate.Id);
+                        }
+                    }
+                    candidates = candidates.Select(candidate => candidate with { Connected = sessions.ContainsKey(candidate.Id) || uncertainWindows.Contains(candidate.Id) }).ToList();
+                    plan = capacity.Select(candidates, limits.MaxConnectedWindows, limits.MaxPlayingWindows);
+                    // Pause the previous budget first; starting the next window must not briefly exceed the playback limit.
+                    foreach (var previous in sessions.Where(pair => lastPlaying.GetValueOrDefault(pair.Key) && !plan.Playing.Contains(pair.Key)))
+                    {
+                        try
+                        {
+                            await previous.Value.Evaluate("window.__coskin?.pauseMotion(true)", TimeSpan.FromSeconds(2));
+                            lastPlaying[previous.Key] = false;
+                        }
+                        catch (Exception error) when (CodexPageContract.IsRecoverableRendererFailure(supported.First(target => target!["id"]!.GetValue<string>() == previous.Key)!["url"]?.GetValue<string>(), error, nativeSession?.Main.IsClosed == true))
+                        {
+                            // A timed-out pause is not counted as released playback capacity.
+                            DiagnosticLog.Record("renderer-playback-pause-deferred", error, reason: "id=" + previous.Key);
+                        }
+                    }
+                    var initializedThisPass = false;
+                    foreach (var target in supported)
                     {
                         var pageUrl = target?["url"]?.GetValue<string>();
                         if (target?["type"]?.GetValue<string>() != "page" || !CodexPageContract.Supports(pageUrl))
                             continue;
                         var id = target["id"]!.GetValue<string>();
+                        if (!plan.Connected.Contains(id)) continue;
                         if (detachedRetryAfter.TryGetValue(id, out var retryAfter) && retryAfter > DateTimeOffset.UtcNow)
                             continue;
                         var rendererClock = System.Diagnostics.Stopwatch.StartNew();
                         var newlyConnected = false;
                         Cdp? pendingSession = null;
+                        var rendererStage = "attach";
                         alive.Add(id);
                         try
                         {
                             if (!sessions.TryGetValue(id, out var cdp))
                             {
+                                if ((sessions.Count >= limits.MaxConnectedWindows && !uncertainWindows.Contains(id)) || initializedThisPass) continue;
                                 newlyConnected = true;
                                 if (nativeSession is not null) cdp = new Cdp(nativeSession.Main, int.Parse(id, System.Globalization.CultureInfo.InvariantCulture));
                                 else
@@ -197,10 +315,13 @@ internal static class Program
                                 }
                                 pendingSession = cdp;
                                 var current = cdp;
+                                var requestOwner = owner;
+                                var replyTarget = requestOwner + ":" + id;
                                 cdp.Event += message => {
                                     if (message["method"]?.GetValue<string>() != "Runtime.bindingCalled" || message["params"]?["name"]?.GetValue<string>() != "__coskinRequest") return;
                                     var requestNumber = Interlocked.Increment(ref nextRequest);
-                                    var pending = Handle(current, library, message["params"]!["payload"]!.GetValue<string>(), sessionId, () => sessions.Values.ToArray(), stop.Token);
+                                    var pending = Handle(current, library, message["params"]!["payload"]!.GetValue<string>(), sessionId, () => sessions.Values.ToArray(),
+                                        replies, replyTarget, () => capacityOwner == requestOwner && sessions.TryGetValue(id, out var active) ? active : null, stop.Token);
                                     requests[requestNumber] = pending;
                                     _ = pending.ContinueWith(completed => { requests.TryRemove(requestNumber, out _); }, TaskScheduler.Default);
                                 };
@@ -211,25 +332,33 @@ internal static class Program
                             }
                             if (newlyConnected)
                             {
-                                await cdp.Evaluate("window.__coskinHostVersion=" + System.Text.Json.JsonSerializer.Serialize(verifiedAppVersion) + ";window.__coskinEngineVersion=" + System.Text.Json.JsonSerializer.Serialize(ProductVersion.Display.Split('+')[0]));
+                                rendererStage = "metadata";
+                                await cdp.Evaluate("window.__coskinNativeMotionPaused=true;window.__coskinNativeSuspended=true;window.__coskin?.pauseMotion(true);window.__coskin?.suspend(true);window.__coskinHostVersion=" + System.Text.Json.JsonSerializer.Serialize(verifiedAppVersion) + ";window.__coskinEngineVersion=" + System.Text.Json.JsonSerializer.Serialize(ProductVersion.Display.Split('+')[0]));
+                                lastPlaying[id] = false;
                                 await cdp.Evaluate("window.__coskinSessionId=" + System.Text.Json.JsonSerializer.Serialize(sessionId) + ";if(window.__coskin)window.__coskin.sessionId=window.__coskinSessionId");
                                 var appLanguage = (await cdp.Evaluate("document.documentElement.lang || navigator.language"))?.GetValue<string>();
                                 await library.Handle(new JsonObject { ["op"] = "runtime-locale", ["locale"] = UiLocale.Normalize(appLanguage) }, _ => Task.CompletedTask, (_, _) => Task.CompletedTask);
                             }
-                            var status = await cdp.Evaluate("Boolean(window.__coskin)");
+                            var status = await cdp.Evaluate("Boolean(window.__coskin)", TimeSpan.FromSeconds(2));
                             var needsInjection = status?.GetValue<bool>() != true;
                             if (needsInjection)
                             {
+                                if (initializedThisPass) continue;
+                                initializedThisPass = true;
+                                rendererStage = "initialize";
                                 await cdp.Evaluate("window.__coskinSessionId=" + System.Text.Json.JsonSerializer.Serialize(sessionId));
-                                await cdp.Evaluate(bundle);
-                                await cdp.Evaluate("window.__coskinReady");
+                                await cdp.Evaluate(bundle, TimeSpan.FromSeconds(5));
+                                await RendererReadiness.Wait((expression, timeout) => cdp.Evaluate(expression, timeout), TimeSpan.FromSeconds(10));
                                 if (await cdp.Evaluate("Boolean(window.__coskin)") is not JsonValue ready || !ready.GetValue<bool>())
                                     throw new InvalidDataException("화면 초기화를 완료하지 못했습니다.");
                                 Console.WriteLine("Codex 창에 CoSkin 테마스킨 목록을 연결했습니다.");
                             }
                             if (newlyConnected || needsInjection)
-                                DiagnosticLog.Record("renderer-ready", elapsedMs: rendererClock.ElapsedMilliseconds);
-                            await cdp.Evaluate("window.__coskin?.heartbeat()");
+                                DiagnosticLog.Record("renderer-ready", elapsedMs: rendererClock.ElapsedMilliseconds, reason: "id=" + id + ";page=" + (CodexPageContract.IsDetached(pageUrl) ? "detached" : "main"));
+                            rendererStage = "heartbeat";
+                            await cdp.Evaluate("window.__coskin?.heartbeat()", TimeSpan.FromSeconds(2));
+                            rendererStage = "pending-response";
+                            await replies.Deliver(owner + ":" + id, (function, arguments) => cdp.Invoke(function, arguments, TimeSpan.FromSeconds(2)));
                             if (!nativeWindows.TryGetValue(id, out var window) || window == IntPtr.Zero)
                             {
                                 if (nativeSession is not null) window = NativeWindow.RendererWindow(owner, target!);
@@ -241,41 +370,51 @@ internal static class Program
                                 nativeWindows[id] = window;
                             }
                             var nativeVisible = NativeWindow.Visible(window, owner);
+                            rendererStage = "visibility";
                             if (window == IntPtr.Zero)
                             {
-                                await cdp.Evaluate("window.__coskin?.pauseMotion(true);window.__coskin?.suspend(false)");
+                                await cdp.Evaluate("window.__coskin?.pauseMotion(true);window.__coskin?.suspend(false)", TimeSpan.FromSeconds(2));
+                                lastPlaying[id] = false;
                                 continue;
                             }
-                            await cdp.Evaluate("window.__coskin?.pauseMotion(false)");
-                            if (newlyConnected || !lastVisibility.TryGetValue(id, out var previousVisible) || previousVisible != nativeVisible)
-                                await cdp.Evaluate("window.__coskin?.suspend(" + (nativeVisible ? "false" : "true") + ")");
-                            lastVisibility[id] = nativeVisible;
-                        detachedRetryAfter.Remove(id);
-                        }
-                        catch (Exception error) when (CodexPageContract.IsRecoverableDetachedFailure(pageUrl, error))
-                        {
-                            DiagnosticLog.Record("detached-renderer-retry", error, elapsedMs: rendererClock.ElapsedMilliseconds);
-                            detachedRetryAfter[id] = DateTimeOffset.UtcNow.AddSeconds(30);
-                            alive.Remove(id);
-                            try
+                            var playing = nativeVisible && plan.Playing.Contains(id) &&
+                                (lastPlaying.GetValueOrDefault(id) || lastPlaying.Count(pair => pair.Value) < limits.MaxPlayingWindows);
+                            if (newlyConnected || needsInjection || !lastPlaying.TryGetValue(id, out var previousPlaying) || previousPlaying != playing)
                             {
-                                if (sessions.TryRemove(id, out var failed)) await failed.DisposeAsync();
-                                if (pendingSession is not null) await pendingSession.DisposeAsync();
+                                if (playing) lastPlaying[id] = true; // Reserve before sending an effect whose reply may be lost.
+                                await cdp.Evaluate("window.__coskin?.pauseMotion(" + (playing ? "false" : "true") + ")", TimeSpan.FromSeconds(2));
+                                if (!playing) lastPlaying[id] = false;
                             }
-                            catch (Exception cleanupError) { DiagnosticLog.Record("detached-renderer-cleanup", cleanupError); }
-                            nativeWindows.TryRemove(id, out _);
+                            if (newlyConnected || needsInjection || !lastVisibility.TryGetValue(id, out var previousVisible) || previousVisible != nativeVisible)
+                                await cdp.Evaluate("window.__coskin?.suspend(" + (nativeVisible ? "false" : "true") + ")", TimeSpan.FromSeconds(2));
+                            lastVisibility[id] = nativeVisible;
+                            lastPlaying[id] = playing;
+                            uncertainWindows.Remove(id);
+                            detachedRetryAfter.Remove(id);
+                        }
+                        catch (Exception error) when (CodexPageContract.IsRecoverableRendererFailure(pageUrl, error, nativeSession?.Main.IsClosed == true))
+                        {
+                            DiagnosticLog.Record("renderer-retry", error, elapsedMs: rendererClock.ElapsedMilliseconds, reason: "id=" + id + ";step=" + rendererStage + ";page=" + (CodexPageContract.IsDetached(pageUrl) ? "detached" : "main"));
+                            detachedRetryAfter[id] = DateTimeOffset.UtcNow.AddSeconds(30);
+                            var closedTarget = error.Message.Contains("target closed while handling command", StringComparison.Ordinal);
+                            if (closedTarget || !sessions.ContainsKey(id))
+                            {
+                                try
+                                {
+                                    if (sessions.TryRemove(id, out var failed)) await failed.DisposeAsync();
+                                    if (pendingSession is not null) await pendingSession.DisposeAsync();
+                                }
+                                catch (Exception cleanupError) { DiagnosticLog.Record("renderer-cleanup", cleanupError, reason: "id=" + id); }
+                                nativeWindows.TryRemove(id, out _);
+                                lastPlaying.TryRemove(id, out _);
+                                uncertainWindows.Remove(id);
+                                replies.Forget(owner + ":" + id);
+                            }
                             lastVisibility.TryRemove(id, out _);
                         }
                     }
                     foreach (var missing in detachedRetryAfter.Keys.Where(id => !list.Any(target => target?["id"]?.GetValue<string>() == id)).ToArray())
                         detachedRetryAfter.Remove(missing);
-                    foreach (var stale in sessions.Keys.Where(k => !alive.Contains(k)).ToArray())
-                    {
-                        await sessions[stale].DisposeAsync();
-                        sessions.TryRemove(stale, out _);
-                        nativeWindows.TryRemove(stale, out _);
-                        lastVisibility.TryRemove(stale, out _);
-                    }
                     connectionSignal.Connected(number);
                     if (initialImport && sessions.Count > 0)
                     {
@@ -297,6 +436,7 @@ internal static class Program
                     connectionSignal.Block();
                     nativeDiscovery.Invalidate();
                     Console.Error.WriteLine("연결을 중지했습니다. 테마스킨 목록은 보존합니다. " + ex.Message);
+                    uncertainWindows.UnionWith(sessions.Keys);
                     foreach (var session in sessions.Values)
                         await session.DisposeAsync();
                     sessions.Clear();
@@ -317,6 +457,7 @@ internal static class Program
                     connectionSignal.BeginRecovery(number);
                     nativeDiscovery.Invalidate();
                     Console.Error.WriteLine("연결 대기: " + ex.Message);
+                    uncertainWindows.UnionWith(sessions.Keys);
                     foreach (var session in sessions.Values)
                         await session.DisposeAsync();
                     sessions.Clear();
@@ -337,6 +478,9 @@ internal static class Program
                 }
                 catch (OperationCanceledException) { break; }
             }
+            stop.Cancel();
+            try { await heartbeatPump.WaitAsync(TimeSpan.FromSeconds(3)); }
+            catch (TimeoutException) { DiagnosticLog.Record("renderer-heartbeat-cleanup-pending"); }
             await instance.StopServer();
             foreach (var cdp in sessions.Values)
             {
@@ -426,11 +570,20 @@ internal static class Program
             }
             finally { library.CancelTransfer(token); }
             var summary = await library.Handle(new JsonObject { ["op"] = "list" }, _ => Task.CompletedTask, (_, _) => Task.CompletedTask);
-            foreach (var window in windows())
-                await window.Evaluate("window.__coskin?.receiveSummary(" + summary.ToJsonString() + ")");
+            await RendererNotifications.Broadcast(windows(), "window.__coskin?.receiveSummary(" + summary.ToJsonString() + ")",
+                (window, error) => DiagnosticLog.Record("summary-notification-failure", error, reason: "id=" + window.RendererId));
         }
-        var opened = await renderer.Evaluate("window.__coskin.openLibrary()");
-        return new JsonObject { ["ok"] = true, ["deferred"] = opened?.GetValue<bool>() != true };
+        try
+        {
+            var opened = await renderer.Evaluate("window.__coskin.openLibrary()");
+            return new JsonObject { ["ok"] = true, ["deferred"] = opened?.GetValue<bool>() != true };
+        }
+        catch (Exception error) when (file is not null)
+        {
+            // Import is already committed. Opening a closing window cannot undo it.
+            DiagnosticLog.Record("import-interface-deferred", error, reason: "id=" + renderer.RendererId);
+            return new JsonObject { ["ok"] = true, ["deferred"] = true };
+        }
     }
     private static async Task<JsonNode> ExecuteRequest(Cdp cdp, Library library, JsonObject request, Func<Cdp[]> windows)
     {
@@ -457,7 +610,7 @@ internal static class Program
                             source = await openMedia!(temporaryFile, mime, bytes.LongLength, hash);
                             await cdp.Evaluate("window.__coskinDecodeURL(" + source.ToJsonString() + ")", TimeSpan.FromMinutes(5));
                         }
-                        finally
+                finally
                         {
                             if (source?["token"]?.GetValue<string>() is string mediaToken)
                                 try { await releaseMedia!(mediaToken); } catch { }
@@ -496,9 +649,32 @@ internal static class Program
                     }
                 });
     }
-    private static async Task Handle(Cdp cdp, Library library, string payload, string sessionId, Func<Cdp[]> windows, CancellationToken shuttingDown)
+    private static async Task Handle(Cdp cdp, Library library, string payload, string sessionId, Func<Cdp[]> windows,
+        RendererReplies replies, string replyTarget, Func<Cdp?> currentWindow, CancellationToken shuttingDown)
     {
         string? requestId = null;
+        var operationCompleted = false;
+        async Task DeliverReply()
+        {
+            var active = currentWindow();
+            if (active is null || active.IsClosed || shuttingDown.IsCancellationRequested) return;
+            await replies.Deliver(replyTarget, (function, arguments) => active.Invoke(function, arguments, TimeSpan.FromSeconds(2)));
+        }
+        async Task CompleteReply(JsonNode? value, JsonNode? error)
+        {
+            if (replies.TryEnqueue(replyTarget, requestId!, value, error))
+            {
+                await DeliverReply();
+                return;
+            }
+            // Existing responses remain intact. Still try the newly completed
+            // response directly rather than leaving a healthy caller busy.
+            DiagnosticLog.Record("response-backlog-capacity", reason: "id=" + cdp.RendererId);
+            var active = currentWindow();
+            if (active is not null && !active.IsClosed && !shuttingDown.IsCancellationRequested)
+                await active.Invoke(RendererReplies.ResponseFunction,
+                    new JsonArray(JsonValue.Create(requestId), value?.DeepClone(), error?.DeepClone()), TimeSpan.FromSeconds(2));
+        }
         try
         {
             var request = JsonContract.Read(System.Text.Encoding.UTF8.GetBytes(payload), 4 * 1024 * 1024);
@@ -506,24 +682,44 @@ internal static class Program
             if (request["sessionId"]?.GetValue<string>() != sessionId || request["contractVersion"]?.GetValue<int>() != 1)
                 throw new InvalidDataException("연결 계약 오류");
             var result = await ExecuteRequest(cdp, library, request, windows);
-            if (request["op"]?.GetValue<string>() is "create" or "save" or "import" or "apply" or "disable" or "enable" or "inherit" or "delete" or "motion-policy" or "organization-write" or "organization-batch" or "group-write" or "group-delete")
+            operationCompleted = true;
+            try
             {
-                var summary = await library.Handle(new JsonObject { ["op"] = "list" }, _ => Task.CompletedTask, (_, _) => Task.CompletedTask);
-                foreach (var window in windows())
-                    await window.Evaluate("window.__coskin?.receiveSummary(" + summary.ToJsonString() + ")");
+                await CompleteReply(result, null);
             }
-            if (!cdp.IsClosed && !shuttingDown.IsCancellationRequested)
-                await cdp.Invoke("function(id,value,error){this.__coskin?.response(id,value,error)}", new JsonArray(JsonValue.Create(requestId), result.DeepClone(), null));
+            finally
+            {
+                if (request["op"]?.GetValue<string>() == "runtime-settings-write")
+                    try
+                    {
+                        await RendererNotifications.Broadcast(windows(), "window.__coskin?.receiveRuntimeSettings(" + result.ToJsonString() + ")",
+                            (window, error) => DiagnosticLog.Record("settings-notification-failure", error, reason: "id=" + window.RendererId));
+                    }
+                    catch (Exception error) { DiagnosticLog.Record("settings-notification-failure", error, reason: "id=" + cdp.RendererId); }
+                if (request["op"]?.GetValue<string>() is "create" or "save" or "import" or "apply" or "disable" or "enable" or "inherit" or "delete" or "motion-policy" or "organization-write" or "organization-batch" or "group-write" or "group-delete")
+                    try
+                    {
+                        var summary = await library.Handle(new JsonObject { ["op"] = "list" }, _ => Task.CompletedTask, (_, _) => Task.CompletedTask);
+                        await RendererNotifications.Broadcast(windows(), "window.__coskin?.receiveSummary(" + summary.ToJsonString() + ")",
+                            (window, error) => DiagnosticLog.Record("summary-notification-failure", error, reason: "id=" + window.RendererId));
+                    }
+                    catch (Exception error) { DiagnosticLog.Record("summary-notification-failure", error, reason: "id=" + cdp.RendererId); }
+            }
         }
         catch (Exception ex)
         {
-            if (cdp.IsClosed || shuttingDown.IsCancellationRequested) return;
+            if (operationCompleted)
+            {
+                DiagnosticLog.Record("completed-request-delivery-failure", ex, reason: "id=" + cdp.RendererId);
+                return;
+            }
+            if (shuttingDown.IsCancellationRequested) return;
             var failure = Failure.Describe(ex);
             Console.Error.WriteLine($"{failure.Code}: {ex}");
             if (requestId is not null)
                 try
                 {
-                    await cdp.Invoke("function(id,value,error){this.__coskin?.response(id,value,error)}", new JsonArray(JsonValue.Create(requestId), null, new JsonObject { ["code"] = failure.Code, ["message"] = failure.Message, ["line"] = failure.Line, ["column"] = failure.Column }));
+                    await CompleteReply(null, new JsonObject { ["code"] = failure.Code, ["message"] = failure.Message, ["line"] = failure.Line, ["column"] = failure.Column });
                 }
                 catch (Exception reply) { Console.Error.WriteLine("요청 응답 실패: " + reply.Message); }
         }

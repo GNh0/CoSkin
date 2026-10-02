@@ -12,6 +12,21 @@ Task Validate(JsonObject _) => Task.CompletedTask; // Contract/decoder behavior 
 Task Decode(byte[] _, string __) => Task.CompletedTask;
 try
 {
+    WindowCapacityTests.Run(Check);
+    MediaMetadataTests.Run(Check);
+    await RendererRepliesTests.Run(Check);
+    await RendererReadinessTests.Run(Check);
+    if (args.Contains("--renderer-replies-only", StringComparer.Ordinal))
+    {
+        Console.WriteLine($"{passed} tests passed");
+        return;
+    }
+    if (args.Contains("--window-recovery-only", StringComparer.Ordinal))
+    {
+        await PipeTransportTests.Run(Check, scratch, windowRecoveryOnly: true);
+        Console.WriteLine($"{passed} tests passed");
+        return;
+    }
     if (args.Contains("--library-media-only", StringComparer.Ordinal))
     {
         await LibraryMediaTests.Run(Check, scratch);
@@ -327,6 +342,44 @@ try
     Check(runtimeStore.Read() == new RuntimePreferences(false, true), "두 실행 연동 옵션 독립 저장");
     runtimeStore.Write(new RuntimePreferences(true, false));
     Check(runtimeStore.Read() == new RuntimePreferences(true, false), "직접 종료 뒤 재실행 설정 보존");
+    runtimeStore.Write(new RuntimePreferences(MaxConnectedWindows: 3, MaxPlayingWindows: 1));
+    Check(runtimeStore.Read().MaxConnectedWindows == 3 && runtimeStore.Read().MaxPlayingWindows == 1, "별도 연결·동시 재생 한도 저장과 재읽기");
+    var persistedSettings = File.ReadAllBytes(Path.Combine(scratch, "runtime-settings", "runtime-preferences.json"));
+    foreach (var invalid in new[] { new RuntimePreferences(MaxConnectedWindows: 0), new RuntimePreferences(MaxConnectedWindows: 11), new RuntimePreferences(MaxConnectedWindows: 2, MaxPlayingWindows: 3), new RuntimePreferences(MaxPlayingWindows: 0) })
+        Reject(() => runtimeStore.Write(invalid), "범위 밖 한도는 기존 설정 파일을 교체하기 전에 거절");
+    Check(File.ReadAllBytes(Path.Combine(scratch, "runtime-settings", "runtime-preferences.json")).SequenceEqual(persistedSettings), "잘못된 연결·재생 한도는 기존 설정 바이트 보존");
+    using (var limitsLibrary = new Library(Path.Combine(scratch, "window-limits-library")))
+    {
+        var settings = Library.PreferenceDocument(new RuntimePreferences(MaxConnectedWindows: 5, MaxPlayingWindows: 1));
+        await limitsLibrary.Handle(new JsonObject { ["op"] = "runtime-settings-write", ["settings"] = settings.DeepClone() }, Validate, Decode);
+        settings.Remove("maxConnectedWindows"); settings.Remove("maxPlayingWindows"); settings["exitWithCodex"] = true;
+        await limitsLibrary.Handle(new JsonObject { ["op"] = "runtime-settings-write", ["settings"] = settings }, Validate, Decode);
+        Check(limitsLibrary.Preferences.Read() == new RuntimePreferences(ExitWithCodex: true, MaxConnectedWindows: 5, MaxPlayingWindows: 1), "구버전 설정 요청은 저장된 창 한도를 기본값으로 되돌리지 않음");
+    }
+    var legacySettingsPath = Path.Combine(scratch, "legacy-window-limits"); Directory.CreateDirectory(legacySettingsPath);
+    var legacySettings = "{\"formatVersion\":1,\"launchWithCodex\":true,\"exitWithCodex\":false}";
+    File.WriteAllText(Path.Combine(legacySettingsPath, "runtime-preferences.json"), legacySettings);
+    Check(new RuntimePreferenceStore(legacySettingsPath).Read() == new RuntimePreferences() && File.ReadAllText(Path.Combine(legacySettingsPath, "runtime-preferences.json")) == legacySettings, "이전 설정은 5연결·2재생과 시작 안내 기본 숨김으로 읽고 파일 자동 변경 없음");
+    using (var greetingLibrary = new Library(Path.Combine(scratch, "greeting-settings-library")))
+    {
+        var settings = Library.PreferenceDocument(new RuntimePreferences(HideStartGreeting: true));
+        await greetingLibrary.Handle(new JsonObject { ["op"] = "runtime-settings-write", ["settings"] = settings.DeepClone() }, Validate, Decode);
+        Check(greetingLibrary.Preferences.Read().HideStartGreeting, "시작 안내 숨김 설정 저장·재읽기");
+        settings.Remove("hideStartGreeting");
+        await greetingLibrary.Handle(new JsonObject { ["op"] = "runtime-settings-write", ["settings"] = settings.DeepClone() }, Validate, Decode);
+        Check(greetingLibrary.Preferences.Read().HideStartGreeting, "숨김 옵션이 없는 이전 설정 요청은 현재 옵션을 보존");
+        var path = Path.Combine(scratch, "greeting-settings-library", "runtime-preferences.json");
+        var before = File.ReadAllBytes(path); settings["hideStartGreeting"] = "false";
+        try { await greetingLibrary.Handle(new JsonObject { ["op"] = "runtime-settings-write", ["settings"] = settings }, Validate, Decode); throw new Exception("잘못된 숨김 값 승인"); }
+        catch (Exception error) when (error is InvalidOperationException or InvalidDataException)
+        { Check(File.ReadAllBytes(path).SequenceEqual(before), "boolean 아닌 숨김 요청은 기존 설정 바이트를 변경하지 않음"); }
+        settings["hideStartGreeting"] = false;
+        await greetingLibrary.Handle(new JsonObject { ["op"] = "runtime-settings-write", ["settings"] = settings.DeepClone() }, Validate, Decode);
+        Check(!greetingLibrary.Preferences.Read().HideStartGreeting, "사용자가 선택한 시작 안내 표시 옵션은 재실행 후에도 유지");
+        settings.Remove("hideStartGreeting");
+        await greetingLibrary.Handle(new JsonObject { ["op"] = "runtime-settings-write", ["settings"] = settings.DeepClone() }, Validate, Decode);
+        Check(!greetingLibrary.Preferences.Read().HideStartGreeting, "이전 설정 요청이 명시적 안내 표시 선택을 숨김 기본값으로 덮어쓰지 않음");
+    }
     var lifetime = new TargetLifetime();
     Check(ReleaseVersion.Parse("0.1.0-beta.2").CompareTo(ReleaseVersion.Parse("0.1.0")) < 0 && ReleaseVersion.Parse("0.1.0-beta.10").CompareTo(ReleaseVersion.Parse("0.1.0-beta.2")) > 0, "beta에서 안정 버전 및 숫자 prerelease 우선순위");
     Check(ReleaseVersion.Parse("0.1.0+build.a").CompareTo(ReleaseVersion.Parse("0.1.0+build.b")) == 0, "빌드 메타데이터는 업데이트 우선순위를 바꾸지 않음");

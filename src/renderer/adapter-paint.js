@@ -11,6 +11,46 @@ const footerSelector =
 const threadFooterSelector = '[data-thread-scroll-footer="true"]';
 const protectedFooterSelector =
   '[data-coskin-ui],[data-coskin-decoration],[data-coskin-transition],iframe,webview,[role="dialog"],[role="menu"],[role="listbox"],[role="tooltip"],[popover]';
+const shellAnchorSelector =
+  '[data-app-shell-focus-area="main"],[data-app-shell-main-surface],main,[role="main"]';
+const contentBoundarySelector =
+  protectedFooterSelector +
+  ',[data-message-id],[data-message-author-role],article,pre,canvas,video,input,textarea,[contenteditable="true"],.monaco-editor,.cm-editor,[data-app-shell-focus-area="secondary"],[data-app-shell-right-panel],[data-summary-panel-variant]';
+
+// New pages can add opaque structural wrappers without a page-specific route.
+// Peel only one full-area shell branch at each level. Smaller functional panels,
+// messages, editors and embedded surfaces keep their native paint.
+export function structuralShellPaintSources(root) {
+  const result = new Set();
+  for (const anchor of [...root.querySelectorAll(shellAnchorSelector)].slice(
+    0,
+    64,
+  )) {
+    if (!anchor.isConnected || anchor.closest(contentBoundarySelector))
+      continue;
+    const bounds = anchor.getBoundingClientRect();
+    if (bounds.width < 180 || bounds.height < 180) continue;
+    result.add(anchor);
+    let branch = anchor;
+    for (let depth = 0; depth < 4; depth++) {
+      const candidates = [...branch.children].filter((element) => {
+        if (!element.isConnected || element.closest(contentBoundarySelector))
+          return false;
+        const rect = element.getBoundingClientRect();
+        return (
+          rect.width >= bounds.width * 0.85 &&
+          rect.height >= bounds.height * 0.85 &&
+          Math.abs(rect.left - bounds.left) <= bounds.width * 0.08 &&
+          Math.abs(rect.top - bounds.top) <= bounds.height * 0.08
+        );
+      });
+      if (candidates.length !== 1) break;
+      branch = candidates[0];
+      result.add(branch);
+    }
+  }
+  return [...result];
+}
 
 function nativeComposerFooter(footer) {
   if (
@@ -108,7 +148,9 @@ export function discoverPaintSources(target, root, retained = new Map()) {
         "[data-app-shell-main-surface],[data-app-shell-compact-page-gutter],[data-new-tab-scroll-root]",
       )
     ) {
-      const main = element.closest("[data-app-shell-main-surface]");
+      const main =
+        element.closest("[data-app-shell-main-surface]") ||
+        element.closest('[data-app-shell-focus-area="main"]');
       const bounds = main?.getBoundingClientRect();
       if (
         !bounds ||
@@ -123,6 +165,11 @@ export function discoverPaintSources(target, root, retained = new Map()) {
         'file-tree-container[data-file-tree-virtualized="true"]',
       ),
     });
+  }
+  if (!composer) {
+    const seen = new Set(sources.map(({ element }) => element));
+    for (const element of structuralShellPaintSources(root))
+      if (!seen.has(element)) sources.push({ element, clearImage: false });
   }
   if (target === "app.background")
     for (const element of root.querySelectorAll(

@@ -131,6 +131,13 @@ internal sealed class Cdp : IAsyncDisposable
         ObjectDisposedException.ThrowIf(Volatile.Read(ref disposed) != 0, this);
         if (parent is not null)
             return await parent.Send("CoSkin.command", new JsonObject { ["rendererId"] = rendererId, ["method"] = method, ["parameters"] = parameters ?? new JsonObject() }, timeout);
+        var started = System.Diagnostics.Stopwatch.StartNew();
+        TimeSpan Remaining()
+        {
+            var remaining = (timeout ?? TimeSpan.FromSeconds(30)) - started.Elapsed;
+            if (remaining <= TimeSpan.Zero) throw new TimeoutException("Codex 요청 시간이 초과되었습니다.");
+            return remaining;
+        }
         var id = Interlocked.Increment(ref next);
         var completion = new TaskCompletionSource<JsonObject>(TaskCreationOptions.RunContinuationsAsynchronously);
         pending[id] = completion;
@@ -138,9 +145,12 @@ internal sealed class Cdp : IAsyncDisposable
         if (data.Length > 8 * 1024 * 1024) { pending.TryRemove(id, out _); throw new InvalidDataException("파이프 요청 크기 제한"); }
         try
         {
-            await sendLock.WaitAsync(cancellation);
+            if (!await sendLock.WaitAsync(Remaining(), cancellation))
+                throw new TimeoutException("Codex 전송 준비 시간이 초과되었습니다.");
             try
             {
+                // Once a framed pipe write begins, finish it under the transport lifetime
+                // token. Cancelling a partial frame would corrupt all windows sharing it.
                 if (pipe is not null)
                 {
                     var header = new byte[4];
@@ -151,7 +161,7 @@ internal sealed class Cdp : IAsyncDisposable
                 else await socket.SendAsync(data, WebSocketMessageType.Text, true, cancellation);
             }
             finally { sendLock.Release(); }
-            return await completion.Task.WaitAsync(timeout ?? TimeSpan.FromSeconds(30), cancellation);
+            return await completion.Task.WaitAsync(Remaining(), cancellation);
         }
         finally { pending.TryRemove(id, out _); }
     }
@@ -164,15 +174,27 @@ internal sealed class Cdp : IAsyncDisposable
     }
     internal async Task<JsonNode?> Invoke(string function, JsonArray arguments, TimeSpan? timeout = null)
     {
+        var started = System.Diagnostics.Stopwatch.StartNew();
+        TimeSpan Remaining()
+        {
+            var remaining = (timeout ?? TimeSpan.FromSeconds(30)) - started.Elapsed;
+            if (remaining <= TimeSpan.Zero) throw new TimeoutException("Codex 함수 요청 시간이 초과되었습니다.");
+            return remaining;
+        }
+        async Task AcquireFunctionLock()
+        {
+            if (!await functionLock.WaitAsync(Remaining(), cancellation))
+                throw new TimeoutException("Codex 함수 준비 시간이 초과되었습니다.");
+        }
         for (var attempt = 0; attempt < 2; attempt++)
         {
-            await functionLock.WaitAsync(cancellation);
+            await AcquireFunctionLock();
             string objectId;
             try
             {
                 if (windowObject is null)
                 {
-                    var window = await Send("Runtime.evaluate", new JsonObject { ["expression"] = "window", ["returnByValue"] = false });
+                    var window = await Send("Runtime.evaluate", new JsonObject { ["expression"] = "window", ["returnByValue"] = false }, Remaining());
                     windowObject = window["result"]?["objectId"]?.GetValue<string>() ?? throw new IOException("Codex 함수 연결을 준비하지 못했습니다.");
                 }
                 objectId = windowObject;
@@ -186,12 +208,12 @@ internal sealed class Cdp : IAsyncDisposable
                 result = await Send("Runtime.callFunctionOn", new JsonObject {
                     ["objectId"] = objectId, ["functionDeclaration"] = function, ["arguments"] = values,
                     ["awaitPromise"] = true, ["returnByValue"] = true,
-                }, timeout);
+                }, Remaining());
             }
             catch (IOException error) when (attempt == 0 && !IsClosed &&
                 (error.Message.Contains("Could not find object with given id", StringComparison.Ordinal) || error.Message.Contains("Cannot find context with specified id", StringComparison.Ordinal)))
             {
-                await functionLock.WaitAsync(cancellation);
+                await AcquireFunctionLock();
                 try { if (windowObject == objectId) windowObject = null; }
                 finally { functionLock.Release(); }
                 continue;

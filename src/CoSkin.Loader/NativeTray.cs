@@ -3,7 +3,7 @@ namespace CoSkin;
 
 internal enum TrayAction
 {
-    Library, Settings, OpenCodex, ToggleStartup, ToggleDecoration, Refresh, ToggleLaunch, ToggleExit, ToggleUpdates, Apply, Exit
+    Library, Settings, OpenCodex, ToggleStartup, ToggleDecoration, Refresh, ToggleLaunch, ToggleExit, ToggleUpdates, Apply, Exit, BackgroundView
 }
 internal sealed record TrayCommand(TrayAction Action, string? Theme = null);
 internal sealed record TrayTheme(string Id, string Name, bool Applied);
@@ -252,6 +252,7 @@ internal sealed class NativeTray : IDisposable
         AppendMenu(menu, 0x10, (UIntPtr)themeMenu, ResidentMessages.Themes(state.Locale));
         Item(labels.Decoration, new(TrayAction.ToggleDecoration), blocked || !state.Connected, state.Enabled);
         Item(labels.Refresh, new(TrayAction.Refresh), blocked || !state.Connected || !state.Enabled);
+        Item(TrayMessages.BackgroundView(state.Locale), new(TrayAction.BackgroundView), blocked || !state.Connected || !state.Enabled);
         if (!state.Connected)
             Item(ResidentMessages.OpenCodex(state.Locale), new(TrayAction.OpenCodex), blocked);
         var settingsMenu = CreatePopupMenu();

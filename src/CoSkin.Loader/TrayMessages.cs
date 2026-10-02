@@ -3,6 +3,10 @@ namespace CoSkin;
 internal sealed record TrayLabels(string Library, string Settings, string Decoration, string Refresh, string Launch, string ExitTogether, string Exit, string AutomaticUpdates);
 internal static class TrayMessages
 {
+    internal static string BackgroundView(string locale) => locale.Split('-', '_')[0].ToLowerInvariant() switch
+    {
+        "ko" => "배경만 보기 / 화면 복구", "ja" => "背景のみ表示 / 画面を復元", "zh" => "仅显示背景 / 恢复界面", _ => "Background only / restore interface"
+    };
     internal static TrayLabels For(string locale)
     {
         var language = locale.Split('-', '_')[0].ToLowerInvariant();

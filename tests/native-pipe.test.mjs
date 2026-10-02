@@ -128,6 +128,28 @@ test('Native pipe denies wrong authentication and unsupported main commands', {s
   assert.equal(good.child.exitCode, null);
 });
 
+test('One CoSkin owner serves multiple windows and rejects a competing owner or second client', {skip: process.platform !== 'win32', timeout: 15000}, async t => {
+  const f = await fixture(t);
+  await f.auth();
+  const invoke = expression => f.send('CoSkin.command', {rendererId: 1, method: 'Runtime.evaluate', parameters: {expression}});
+  await invoke('fixture-enable-second-window');
+  assert.deepEqual((await f.send('CoSkin.list')).result.targets.map(target => target.id), ['1', '2']);
+  const competing = (await invoke('fixture-competing-owner')).result.result.value;
+  assert.deepEqual(competing, {refused: true, ownerPreserved: true});
+  const extra = net.connect('\\\\.\\pipe\\' + f.ready.pipeName);
+  t.after(() => extra.destroy());
+  let dataReceived = false;
+  extra.on('data', () => { dataReceived = true; });
+  await new Promise((resolve, reject) => {
+    const deadline = setTimeout(() => reject(Error('Competing client was not closed')), 3000);
+    extra.once('close', () => { clearTimeout(deadline); resolve(); });
+    extra.on('error', () => {});
+  });
+  assert.equal(dataReceived, false);
+  assert.equal((await f.send('CoSkin.list')).result.targets.length, 2);
+  assert.equal(f.child.exitCode, null);
+});
+
 test('Native pipe keeps reading a binding reply while another evaluation awaits it', {skip: process.platform !== 'win32', timeout: 15000}, async t => {
   const f = await fixture(t); await f.auth();
   const waiting = f.send('CoSkin.command', {rendererId: 1, method: 'Runtime.evaluate', parameters: {expression: 'await-binding'}});

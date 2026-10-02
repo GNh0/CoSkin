@@ -43,6 +43,8 @@ internal static class NativeWindow
     [DllImport("user32.dll")]
     private static extern bool IsWindowVisible(IntPtr window);
     [DllImport("user32.dll")]
+    private static extern IntPtr GetForegroundWindow();
+    [DllImport("user32.dll")]
     private static extern bool GetWindowRect(IntPtr window, out Rect rectangle);
     [DllImport("user32.dll")]
     private static extern IntPtr MonitorFromRect(ref Rect rectangle, uint flags);
@@ -137,6 +139,12 @@ internal static class NativeWindow
         if (!GetWindowRect(window, out var rectangle) || rectangle.Right <= rectangle.Left || rectangle.Bottom <= rectangle.Top)
             return false;
         return MonitorFromRect(ref rectangle, 0) != IntPtr.Zero;
+    }
+    internal static bool Focused(IntPtr window, int processId)
+    {
+        if (window == IntPtr.Zero || GetForegroundWindow() != window) return false;
+        GetWindowThreadProcessId(window, out var owner);
+        return owner == processId;
     }
     internal static string VerifyExecutable(int processId)
     {
