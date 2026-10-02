@@ -16,9 +16,12 @@ const paneShellSelector =
 const shellAnchorSelector =
   '[data-app-shell-focus-area="main"],[data-app-shell-main-surface],main,[role="main"],' +
   paneShellSelector;
+const computerSurfaceSelector =
+  "[data-codex-cloud-computer],[data-dot-computer-preview]";
 const contentBoundarySelector =
   protectedFooterSelector +
-  ',[data-message-id],[data-message-author-role],article,pre,canvas,video,input,textarea,[contenteditable="true"],.monaco-editor,.cm-editor,[data-summary-panel-variant],[data-codex-cloud-computer],[data-dot-computer-preview]';
+  ',[data-message-id],[data-message-author-role],article,pre,canvas,video,input,textarea,[contenteditable="true"],.monaco-editor,.cm-editor,[data-summary-panel-variant],' +
+  computerSurfaceSelector;
 
 function coversShell(element, bounds) {
   const rect = element.getBoundingClientRect();
@@ -75,6 +78,28 @@ export function structuralShellPaintSources(root) {
       if (candidates.length !== 1) break;
       branch = candidates[0];
       result.add(branch);
+    }
+  }
+  // A computer tab can split into overlapping full-area shell branches. The
+  // unique-child walk deliberately stops there. Follow the known computer
+  // surface's ancestors instead, never its preview or controls, and stay
+  // inside the native pane with the same full-area geometry requirement.
+  for (const computer of [
+    ...root.querySelectorAll(computerSurfaceSelector),
+  ].slice(0, 32)) {
+    const pane = computer.closest(paneShellSelector);
+    if (!pane?.isConnected || pane.closest(contentBoundarySelector)) continue;
+    const bounds = pane.getBoundingClientRect();
+    if (bounds.width < 180 || bounds.height < 180) continue;
+    let parent = computer.parentElement;
+    for (let depth = 0; parent && parent !== pane && depth < 16; depth++) {
+      if (parent.closest(contentBoundarySelector)) break;
+      if (
+        parent.matches('div,section,main,[role="main"]') &&
+        coversShell(parent, bounds)
+      )
+        result.add(parent);
+      parent = parent.parentElement;
     }
   }
   return [...result];

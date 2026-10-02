@@ -362,6 +362,52 @@ test("right pane background stays readable and restores exactly while the embedd
   assert.equal(computer.style.getPropertyValue("background-color"), "navy");
 });
 
+test("the observed Dot computer wrapper clears and restores while its internal paint stays intact", () => {
+  const api = fixture();
+  const pane = new api.Element("aside"),
+    branch = new api.Element("div"),
+    sibling = new api.Element("div"),
+    outer = new api.Element("div"),
+    computer = new api.Element("div"),
+    video = new api.Element("video");
+  const bounds = {
+    x: 1046,
+    y: 160,
+    width: 472,
+    height: 763,
+  };
+  for (const element of [pane, branch, sibling, outer, computer])
+    element.rect = bounds;
+  pane.setAttribute("data-app-shell-focus-area", "right-panel");
+  computer.setAttribute("data-codex-cloud-computer", "true");
+  outer.style.setProperty("background-color", "rgb(24, 24, 24)", "important");
+  computer.style.setProperty("background-color", "navy");
+  video.rect = { ...bounds, height: 330, bottom: 490 };
+  video.style.setProperty("background-color", "black");
+  api.root.append(pane);
+  pane.append(branch, sibling);
+  branch.append(outer);
+  outer.append(computer);
+  computer.append(video);
+  const app = api.decorate();
+  app.set({ background: { color: "#201c2b", opacity: 1 } });
+  assert.equal(outer.style.getPropertyValue("background-color"), "transparent");
+  app.position();
+  assert.equal(outer.style.getPropertyValue("background-color"), "transparent");
+  assert.equal(computer.style.getPropertyValue("background-color"), "navy");
+  assert.equal(video.style.getPropertyValue("background-color"), "black");
+  app.dispose();
+  assert.equal(
+    outer.style.getPropertyValue("background-color"),
+    "rgb(24, 24, 24)",
+  );
+  assert.equal(
+    outer.style.getPropertyPriority("background-color"),
+    "important",
+  );
+  assert.equal(computer.style.getPropertyValue("background-color"), "navy");
+});
+
 test("solid footer clearing requires native timeline, direct composer sibling and an empty noninteractive mask", () => {
   for (const mutate of [
     (api) => api.timeline.removeAttribute("data-app-action-timeline-scroll"),

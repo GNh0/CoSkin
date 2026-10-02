@@ -33,6 +33,8 @@ const discoverySelector = [
   "[data-composer-rail-item]",
   "[data-summary-panel-variant]",
   "[data-app-shell-tab-panel-controller]",
+  "[data-codex-cloud-computer]",
+  "[data-dot-computer-preview]",
   "[data-file-tree-virtualized]",
   "button[aria-label]",
   "button[title]",

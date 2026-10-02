@@ -686,6 +686,69 @@ test("the observed agent pane gutter gets a readable backdrop while functional c
   f.view.dispose();
 });
 
+test("a computer tab's opaque outer branch is discovered without painting its preview or overlapping sibling", () => {
+  const f = fixture();
+  const bounds = {
+    left: 1046,
+    top: 160,
+    width: 472,
+    height: 763,
+    right: 1518,
+    bottom: 923,
+  };
+  const pane = f.doc.createElement("aside");
+  pane.setAttribute("data-app-shell-focus-area", "right-panel");
+  pane.rect = bounds;
+  f.foreground.append(pane);
+  const branch = f.doc.createElement("div"),
+    sibling = f.doc.createElement("div");
+  for (const element of [branch, sibling]) {
+    element.rect = bounds;
+    pane.append(element);
+  }
+  const outer = f.doc.createElement("div"),
+    computer = f.doc.createElement("div"),
+    video = f.doc.createElement("video");
+  outer.rect = computer.rect = bounds;
+  outer.style.setProperty("background-color", "rgb(24, 24, 24)");
+  computer.setAttribute("data-codex-cloud-computer", "true");
+  computer.style.setProperty("background-color", "navy");
+  video.rect = { ...bounds, height: 330, bottom: 490 };
+  branch.append(outer);
+  outer.append(computer);
+  computer.append(video);
+  const sources = discoverPaintSources("app.background", f.doc.body);
+  assert.ok(sources.some((s) => s.element === outer));
+  for (const element of [computer, video, sibling])
+    assert.ok(!sources.some((s) => s.element === element));
+  assert.equal(computer.style.getPropertyValue("background-color"), "navy");
+  assert.equal(
+    mutationNeedsDiscovery([
+      {
+        type: "childList",
+        target: outer,
+        addedNodes: [computer],
+        removedNodes: [],
+      },
+    ]),
+    true,
+  );
+  const content = f.doc.createElement("div");
+  video.append(content);
+  assert.equal(
+    mutationNeedsDiscovery([
+      {
+        type: "childList",
+        target: video,
+        addedNodes: [content],
+        removedNodes: [],
+      },
+    ]),
+    false,
+  );
+  f.view.dispose();
+});
+
 test("a late plain full-area page wrapper is discovered without rediscovering streamed message content", () => {
   const f = fixture();
   const bounds = {
