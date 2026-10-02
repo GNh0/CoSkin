@@ -3,6 +3,7 @@ import { MediaPlayer } from "./media.js";
 import { NativePaintScope } from "./native-paint.js";
 import { TextPaint } from "./text-paint.js";
 import { blendColors, readableThemeColor } from "../core/theme-colors.js";
+import { containedBackgroundTop } from "./media-viewport.js";
 const rgba = (color, opacity = 1) => {
   const v = parseInt((color || "#000000").slice(1), 16);
   return `rgba(${v >> 16},${(v >> 8) & 255},${v & 255},${opacity})`;
@@ -310,6 +311,17 @@ export class Decoration {
   position() {
     this.updatePaintSurfaces();
     const r = this.target.el.getBoundingClientRect();
+    this.players.get("background")?.setViewportTop(
+      this.target.target === "app.background" &&
+        this.style?.background?.fit === "contain"
+        ? containedBackgroundTop(
+            r,
+            this.paintSurfaces
+              .filter((surface) => surface.chromeHeader)
+              .map((surface) => surface.element.getBoundingClientRect()),
+          )
+        : 0,
+    );
     const wasHidden = this.hidden;
     const icon = this.layers.icon,
       v = this.style?.icon;

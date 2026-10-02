@@ -223,6 +223,7 @@ export class MediaPlayer {
     this.canvas.height = Math.max(1, Math.round(rect.height * scale));
     this.fit = fit;
     this.position = position;
+    this.viewportTop = 0;
     Object.assign(this.canvas.style, {
       position: "absolute",
       inset: "0",
@@ -329,14 +330,29 @@ export class MediaPlayer {
     this.draw();
     this.videoAppearance();
   }
+  setViewportTop(top) {
+    const next = Number.isFinite(top) ? Math.max(0, top) : 0;
+    if (this.viewportTop === next) return;
+    this.viewportTop = next;
+    this.resize();
+  }
   resize() {
     const rect = this.parent.getBoundingClientRect();
+    const top = Math.min(this.viewportTop, Math.max(0, rect.height - 1));
+    const availableHeight = Math.max(1, rect.height - top);
+    if (this.appliedViewportTop !== top) {
+      for (const element of [this.canvas, this.video].filter(Boolean)) {
+        element.style.top = `${top}px`;
+        element.style.height = top ? `calc(100% - ${top}px)` : "100%";
+      }
+      this.appliedViewportTop = top;
+    }
     const scale = Math.min(
       1,
-      Math.sqrt(1048576 / Math.max(1, rect.width * rect.height)),
+      Math.sqrt(1048576 / Math.max(1, rect.width * availableHeight)),
     );
     const width = Math.max(1, Math.round(rect.width * scale));
-    const height = Math.max(1, Math.round(rect.height * scale));
+    const height = Math.max(1, Math.round(availableHeight * scale));
     if (this.canvas.width === width && this.canvas.height === height) return;
     this.canvas.width = width;
     this.canvas.height = height;
