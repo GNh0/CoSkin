@@ -315,6 +315,53 @@ test("the observed solid footer backdrop and its focus-mode parent are app paint
   );
 });
 
+test("right pane background stays readable and restores exactly while the embedded computer paint is preserved", () => {
+  const api = fixture();
+  const pane = new api.Element("aside"),
+    gutter = new api.Element("div"),
+    computer = new api.Element("div");
+  const bounds = {
+    left: 1046,
+    top: 40,
+    width: 472,
+    height: 800,
+    right: 1518,
+    bottom: 840,
+  };
+  pane.rect = gutter.rect = bounds;
+  pane.setAttribute("data-app-shell-focus-area", "right-panel");
+  gutter.setAttribute("data-app-shell-compact-page-gutter", "true");
+  gutter.style.setProperty("background-color", "rgb(24, 24, 24)", "important");
+  computer.rect = { ...bounds, height: 340, bottom: 380 };
+  computer.setAttribute("data-codex-cloud-computer", "true");
+  computer.style.setProperty("background-color", "navy");
+  api.root.append(pane);
+  pane.append(gutter);
+  gutter.append(computer);
+  const app = api.decorate();
+  app.set({ background: { color: "#201c2b", opacity: 1 } });
+  assert.equal(
+    gutter.style.getPropertyValue("background-color"),
+    "rgba(32,28,43,0.45)",
+  );
+  assert.equal(computer.style.getPropertyValue("background-color"), "navy");
+  app.position();
+  assert.equal(
+    gutter.style.getPropertyValue("background-color"),
+    "rgba(32,28,43,0.45)",
+  );
+  app.dispose();
+  assert.equal(
+    gutter.style.getPropertyValue("background-color"),
+    "rgb(24, 24, 24)",
+  );
+  assert.equal(
+    gutter.style.getPropertyPriority("background-color"),
+    "important",
+  );
+  assert.equal(computer.style.getPropertyValue("background-color"), "navy");
+});
+
 test("solid footer clearing requires native timeline, direct composer sibling and an empty noninteractive mask", () => {
   for (const mutate of [
     (api) => api.timeline.removeAttribute("data-app-action-timeline-scroll"),

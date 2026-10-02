@@ -317,7 +317,8 @@ internal sealed class NativeTray : IDisposable
             }
             catch (Exception error)
             {
-                Console.Error.WriteLine(error);
+                DiagnosticLog.Record("tray-action-failure", error, reason: "action=" + command.Action);
+                Console.Error.WriteLine(Failure.Describe(error).Message);
                 notices.Enqueue(TrayMessages.Error(lastLocale, error is TrayActionException actionError ? actionError.Code : Failure.Describe(error).Code));
                 PostMessage(window, Notice, UIntPtr.Zero, IntPtr.Zero);
             }

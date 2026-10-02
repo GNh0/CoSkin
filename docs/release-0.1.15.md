@@ -1,0 +1,7 @@
+# CoSkin 0.1.15
+
+Theme refresh now updates connected windows independently without bringing another window to the foreground. Previously, a hidden, scrolling, or busy renderer returned false, making the entire tray action fail with a generic warning. Refresh requests now coalesce until that renderer becomes visible or finishes its protected work. Drafts and previews stay intact. Closed windows are skipped, and each remaining window has a two-second deadline; a stalled window does not delay a responsive window's refresh. Local diagnostics identify the tray action and failing renderer without retaining remote exception details.
+
+The outer right and bottom pane shells can now reveal the theme background. A translucent backdrop on the native pane gutter keeps task text readable. Embedded computer previews, browser documents, editor content, message cards and popups retain their own paint. Discovery follows bounded structural branches and responds to new wrappers without depending on a route name.
+
+Renderer and actual authenticated pipe tests cover deferred refresh, failed-window isolation and protected content. In a read-only native integration run, both connected renderers accepted refresh in 15 ms, including a hidden renderer, and the right task-pane gutter changed from opaque paint to the intended backdrop. Existing settings, library revisions and the Codex process were preserved. This does not establish every future panel layout or extend the prior multi-window playback load measurements.

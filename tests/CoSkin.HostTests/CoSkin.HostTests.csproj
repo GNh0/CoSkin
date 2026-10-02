@@ -15,6 +15,7 @@
  <ItemGroup><Compile Include="../../src/CoSkin.Loader/MediaMetadata.cs;../../src/CoSkin.Loader/BackgroundMediaInfo.cs" Link="%(Filename)%(Extension)" /></ItemGroup>
  <ItemGroup><Compile Include="../../src/CoSkin.Loader/NativeTray.cs;../../src/CoSkin.Loader/ResidentMessages.cs" Link="%(Filename)%(Extension)" /></ItemGroup>
  <ItemGroup><Compile Include="../../src/CoSkin.Loader/ExternalImportOptions.cs" Link="ExternalImportOptions.cs" /></ItemGroup>
+ <ItemGroup><Compile Include="../../src/CoSkin.Loader/RendererRefresh.cs" Link="RendererRefresh.cs" /></ItemGroup>
 </Project>
 
 

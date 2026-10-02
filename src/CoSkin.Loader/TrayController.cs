@@ -157,6 +157,13 @@ internal sealed class TrayController : IDisposable
                 ApplyRuntimePreferences(choice.Preferences);
             return;
         }
+        if (command.Action == TrayAction.Refresh)
+        {
+            if (await RendererRefresh.Request(participants,
+                (window, error) => DiagnosticLog.Record("tray-refresh-window-failure", error, reason: "id=" + window.RendererId)) == 0)
+                throw new TrayActionException("not-connected");
+            return;
+        }
         var selected = await RendererSelection.MainShell(participants) ?? throw new TrayActionException("not-connected");
         await activate(selected);
         if (command.Action == TrayAction.BackgroundView)
@@ -178,13 +185,6 @@ internal sealed class TrayController : IDisposable
                 await window.Evaluate("window.__coskin?.panel?.notify(window.__coskin?.trayBusyMessage())");
                 return;
             }
-        if (command.Action == TrayAction.Refresh)
-        {
-            foreach (var window in participants)
-                if ((await window.Evaluate("window.__coskin?.refreshDecorations()"))?.GetValue<bool>() != true)
-                    throw new TrayActionException("busy");
-            return;
-        }
         JsonObject operation;
         if (command.Action == TrayAction.Apply)
             operation = new()

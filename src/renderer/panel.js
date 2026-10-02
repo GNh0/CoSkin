@@ -248,6 +248,7 @@ export class Panel {
       }
       this.busy = false;
       this.render();
+      if (this.c.decorationRefreshPending) this.c.schedule();
     };
   }
   button(label, fn, disabled = false) {

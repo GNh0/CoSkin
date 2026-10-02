@@ -100,15 +100,25 @@ export class Decoration {
       this.paintSources.delete(element);
     }
     for (const source of descriptors) {
-      const { element, clearImage, summaryHeader, chromeHeader, fileTree } =
-        source;
+      const {
+        element,
+        clearImage,
+        summaryHeader,
+        chromeHeader,
+        panelBackdrop,
+        fileTree,
+      } = source;
       this.paintSources.set(element, source);
       if (this.style?.background) {
         const paint =
-          summaryHeader || chromeHeader
+          summaryHeader || chromeHeader || panelBackdrop
             ? rgba(
                 this.style.background.color,
-                chromeHeader ? 0.96 : (this.style.background.opacity ?? 1),
+                chromeHeader
+                  ? 0.96
+                  : panelBackdrop
+                    ? 0.45
+                    : (this.style.background.opacity ?? 1),
               )
             : "transparent";
         this.paintScope.set(element, "background-color", paint);
@@ -235,8 +245,17 @@ export class Decoration {
           this.paintScope.set(
             surface.element,
             "background-color",
-            surface.summaryHeader || surface.chromeHeader
-              ? rgba(v.color, surface.chromeHeader ? 0.96 : (v.opacity ?? 1))
+            surface.summaryHeader ||
+              surface.chromeHeader ||
+              surface.panelBackdrop
+              ? rgba(
+                  v.color,
+                  surface.chromeHeader
+                    ? 0.96
+                    : surface.panelBackdrop
+                      ? 0.45
+                      : (v.opacity ?? 1),
+                )
               : "transparent",
             "important",
           );

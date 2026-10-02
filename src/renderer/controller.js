@@ -175,6 +175,7 @@ export class Controller {
         () => {
           this.pending.delete(id);
           reject(Error("연결 요청 시간이 초과되었습니다."));
+          if (this.decorationRefreshPending) this.schedule();
         },
         ["runtime-settings-write", "asset-storage-pick"].includes(op)
           ? 15 * 60 * 1000
@@ -198,6 +199,7 @@ export class Controller {
         clearTimeout(timer);
         this.pending.delete(id);
         reject(error);
+        if (this.decorationRefreshPending) this.schedule();
       }
     });
   }
@@ -214,6 +216,7 @@ export class Controller {
         ),
       );
     else p.resolve(value);
+    if (this.decorationRefreshPending) this.schedule();
   }
   heartbeat() {
     this.lastHeartbeat = Date.now();
@@ -334,6 +337,8 @@ export class Controller {
         "data-state",
         "data-app-shell-main-surface",
         "data-app-shell-focus-area",
+        "data-codex-cloud-computer",
+        "data-dot-computer-preview",
         "data-start-screen-greeting",
         "data-home-empty-state",
         "data-feature",
@@ -637,25 +642,9 @@ export class Controller {
     return this.status();
   }
   refreshDecorations() {
-    if (
-      this.disposed ||
-      this.suspended ||
-      this.scrolling ||
-      this.preview ||
-      this.panel?.session?.previewing ||
-      this.panel?.dirty ||
-      this.panel?.editing ||
-      this.panel?.busy ||
-      this.externalApplying ||
-      this.pending.size
-    )
-      return false;
-    this.stopReplay(false);
-    for (const [element, decoration] of [...this.decorations]) {
-      decoration.dispose();
-      this.removeDecoration(element);
-    }
-    this.render();
+    if (this.disposed) return false;
+    this.decorationRefreshPending = true;
+    if (!this.connectionProtected()) this.render();
     return true;
   }
   beginExternalUpdate(allowUpdateRequest = false) {
@@ -674,6 +663,7 @@ export class Controller {
   }
   endExternalUpdate() {
     this.externalApplying = false;
+    if (this.decorationRefreshPending) this.schedule();
   }
   connectionProtected() {
     return !!(
@@ -791,6 +781,16 @@ export class Controller {
     if (this.suspended) {
       this.needsRender = true;
       return;
+    }
+    if (this.decorationRefreshPending && !this.connectionProtected()) {
+      this.decorationRefreshPending = false;
+      this.stopReplay(false);
+      for (const [element, decoration] of [...this.decorations]) {
+        decoration.dispose();
+        this.removeDecoration(element);
+      }
+      subset = null;
+      partial = false;
     }
     this.renderProfileCache = new WeakMap();
     this.renderContext = this.adapter.context();

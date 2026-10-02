@@ -235,28 +235,89 @@ test("connection release preserves drafts, edits, previews and pending requests 
   assert.equal(controller.tryReleaseConnection(), true);
   assert.equal(controller.released, true);
 });
-test("refresh while suspended or scrolling preserves the existing decoration instead of exposing native fill", () => {
+function refreshFixture() {
   const controller = Object.create(Controller.prototype);
-  let disposed = 0;
+  const counts = { disposed: 0, discovered: 0 };
   controller.decorations = new Map([
     [
       {},
       {
         dispose() {
-          disposed++;
+          counts.disposed++;
         },
+        setSuspended() {},
       },
     ],
   ]);
   controller.pending = new Map();
-  controller.panel = { session: {} };
+  controller.panel = { session: {}, ensureEntry() {} };
+  controller.summary = { enabled: false };
+  controller.adapter = {
+    context: () => ({}),
+    discover() {
+      counts.discovered++;
+      return [];
+    },
+  };
+  controller.stopReplay = () => {};
+  controller.releaseUnusedMedia = () => {};
+  return { controller, counts };
+}
+test("refresh while suspended or scrolling queues once and preserves decorations until safe", () => {
+  const { controller, counts } = refreshFixture();
   controller.suspended = true;
-  assert.equal(controller.refreshDecorations(), false);
+  assert.equal(controller.refreshDecorations(), true);
+  assert.equal(controller.refreshDecorations(), true);
+  assert.equal(controller.decorationRefreshPending, true);
+  assert.equal(counts.disposed, 0);
   controller.suspended = false;
   controller.scrolling = true;
-  assert.equal(controller.refreshDecorations(), false);
-  assert.equal(disposed, 0);
+  assert.equal(controller.refreshDecorations(), true);
+  assert.equal(controller.scrollRenderPending, true);
+  assert.equal(counts.disposed, 0);
   assert.equal(controller.decorations.size, 1);
+  controller.scrolling = false;
+  controller.render([{}], true);
+  assert.equal(controller.decorationRefreshPending, false);
+  assert.equal(counts.disposed, 1);
+  assert.equal(counts.discovered, 1);
+  controller.render();
+  assert.equal(counts.disposed, 1);
+});
+test("queued refresh preserves edits, previews and pending requests until they finish", () => {
+  for (const field of ["dirty", "editing", "busy", "runtimeSettingsDraft"]) {
+    const { controller, counts } = refreshFixture();
+    controller.panel[field] = true;
+    assert.equal(controller.refreshDecorations(), true);
+    assert.equal(counts.disposed, 0);
+    assert.equal(counts.discovered, 0);
+    assert.equal(controller.panel[field], true);
+    controller.panel[field] = false;
+    controller.render();
+    assert.equal(counts.disposed, 1);
+  }
+  const { controller, counts } = refreshFixture();
+  controller.preview = { document: "draft" };
+  assert.equal(controller.refreshDecorations(), true);
+  assert.equal(controller.preview.document, "draft");
+  assert.equal(counts.disposed, 0);
+  controller.preview = null;
+  controller.pending.set("request", { timer: undefined, resolve() {} });
+  assert.equal(controller.refreshDecorations(), true);
+  assert.equal(counts.disposed, 0);
+  let scheduled = 0;
+  controller.schedule = () => scheduled++;
+  controller.response("request", {});
+  assert.equal(scheduled, 1);
+  controller.render();
+  assert.equal(counts.disposed, 1);
+});
+test("disposed renderers reject refresh without changing an existing decoration", () => {
+  const { controller, counts } = refreshFixture();
+  controller.disposed = true;
+  assert.equal(controller.refreshDecorations(), false);
+  assert.equal(controller.decorationRefreshPending, undefined);
+  assert.equal(counts.disposed, 0);
 });
 
 test("explicit greeting visibility is saved only when changed and applied to the current window", async () => {

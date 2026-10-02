@@ -27,6 +27,7 @@ const waits = new Map();
 let windowEvaluations = 0, functionCalls = 0, functionAttempts = 0, windowGeneration = 1;
 let forcedProtocolFailures = 0, forcedProtocolMessage = 'Could not find object with given id';
 let secondWindow = false, receivedSummaries = 0;
+let secondRefresh = 'deferred', refreshCount = 0;
 let windowDelay = 0, callDelay = 0, preparingWindow = false;
 const rendererContext = vm.createContext({window: {
   __fixtureWait(key, value) {
@@ -54,6 +55,10 @@ start(input, output, () => {
       if (id === 2) {
         if (!secondWindow) throw Error('target closed while handling command');
         if (method === 'Runtime.evaluate') {
+          if (parameters.expression === 'window.__coskin?.refreshDecorations()') {
+            if (secondRefresh === 'stalled') return new Promise(() => {});
+            return {result: {value: secondRefresh === 'deferred'}};
+          }
           if (parameters.expression === 'fixture-close-during-command') {
             secondWindow = false;
             throw Error('target closed while handling command');
@@ -67,6 +72,9 @@ start(input, output, () => {
       if (id !== 1) throw Error('Unknown window');
       if (method === 'Runtime.evaluate') {
         const expression = parameters.expression;
+        if (expression.startsWith('fixture-refresh-second:')) { secondRefresh = expression.split(':')[1]; return {result: {value: true}}; }
+        if (expression === 'fixture-refresh-count') return {result: {value: refreshCount}};
+        if (expression === 'window.__coskin?.refreshDecorations()') { refreshCount++; return {result: {value: true}}; }
         if (expression === 'fixture-window-preparing') return {result: {value: preparingWindow}};
         const delays = /^fixture-invoke-delays:(\d+):(\d+)$/.exec(expression);
         if (delays) { windowDelay = Number(delays[1]); callDelay = Number(delays[2]); return {result: {value: true}}; }

@@ -11,11 +11,14 @@ const footerSelector =
 const threadFooterSelector = '[data-thread-scroll-footer="true"]';
 const protectedFooterSelector =
   '[data-coskin-ui],[data-coskin-decoration],[data-coskin-transition],iframe,webview,[role="dialog"],[role="menu"],[role="listbox"],[role="tooltip"],[popover]';
+const paneShellSelector =
+  '[data-app-shell-focus-area="secondary"],[data-app-shell-focus-area="right-panel"],[data-app-shell-focus-area="bottom-panel"],[data-app-shell-right-panel]';
 const shellAnchorSelector =
-  '[data-app-shell-focus-area="main"],[data-app-shell-main-surface],main,[role="main"]';
+  '[data-app-shell-focus-area="main"],[data-app-shell-main-surface],main,[role="main"],' +
+  paneShellSelector;
 const contentBoundarySelector =
   protectedFooterSelector +
-  ',[data-message-id],[data-message-author-role],article,pre,canvas,video,input,textarea,[contenteditable="true"],.monaco-editor,.cm-editor,[data-app-shell-focus-area="secondary"],[data-app-shell-focus-area="right-panel"],[data-app-shell-focus-area="bottom-panel"],[data-app-shell-right-panel],[data-summary-panel-variant],[data-codex-cloud-computer],[data-dot-computer-preview]';
+  ',[data-message-id],[data-message-author-role],article,pre,canvas,video,input,textarea,[contenteditable="true"],.monaco-editor,.cm-editor,[data-summary-panel-variant],[data-codex-cloud-computer],[data-dot-computer-preview]';
 
 function coversShell(element, bounds) {
   const rect = element.getBoundingClientRect();
@@ -49,8 +52,8 @@ export function shellPaintMutationNeedsDiscovery(record) {
 }
 
 // New pages can add opaque structural wrappers without a page-specific route.
-// Peel only one full-area shell branch at each level. Smaller functional panels,
-// messages, editors and embedded surfaces keep their native paint.
+// Peel one full-area shell branch per pane. Message cards, editor content and
+// embedded computer/browser surfaces keep their native paint.
 export function structuralShellPaintSources(root) {
   const result = new Set();
   for (const anchor of [...root.querySelectorAll(shellAnchorSelector)].slice(
@@ -187,6 +190,9 @@ export function discoverPaintSources(target, root, retained = new Map()) {
     sources.push({
       element,
       clearImage: false,
+      panelBackdrop:
+        !!element.closest(paneShellSelector) &&
+        element.matches("[data-app-shell-compact-page-gutter]"),
       fileTree: element.matches(
         'file-tree-container[data-file-tree-virtualized="true"]',
       ),

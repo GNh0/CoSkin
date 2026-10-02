@@ -570,7 +570,7 @@ test("new page shell wrappers are detected by geometry while the computer panel 
   f.view.dispose();
 });
 
-test("the observed Dot messaging shell behind deep full-area wrappers is cleared while bubbles and the right computer pane keep native paint", () => {
+test("Dot messaging and the outer right pane are discovered while bubbles and the computer preview keep native paint", () => {
   const f = fixture();
   const bounds = {
     left: 365,
@@ -619,9 +619,70 @@ test("the observed Dot messaging shell behind deep full-area wrappers is cleared
   assert.ok(sources.includes(messaging));
   assert.ok(sources.includes(thread));
   assert.ok(!sources.includes(bubble));
-  assert.ok(!sources.includes(right));
+  assert.ok(sources.includes(right));
   assert.ok(!sources.includes(computer));
   assert.equal(computer.style.getPropertyValue("background-color"), "navy");
+  f.view.dispose();
+});
+
+test("the observed agent pane gutter gets a readable backdrop while functional content keeps its paint", () => {
+  const f = fixture();
+  const bounds = {
+    left: 1046,
+    top: 160,
+    width: 472,
+    height: 763,
+    right: 1518,
+    bottom: 923,
+  };
+  const pane = f.doc.createElement("aside");
+  pane.setAttribute("data-app-shell-focus-area", "right-panel");
+  pane.rect = bounds;
+  f.foreground.append(pane);
+  let parent = pane;
+  for (let depth = 0; depth < 6; depth++) {
+    const wrapper = f.doc.createElement("div");
+    wrapper.rect = bounds;
+    parent.append(wrapper);
+    parent = wrapper;
+  }
+  const gutter = f.doc.createElement("div");
+  gutter.setAttribute("data-app-shell-compact-page-gutter", "true");
+  gutter.rect = bounds;
+  gutter.style.setProperty("background-color", "rgb(24, 24, 24)");
+  parent.append(gutter);
+  const message = f.doc.createElement("article"),
+    editor = f.doc.createElement("div"),
+    embed = f.doc.createElement("iframe");
+  editor.setAttribute("class", "monaco-editor");
+  for (const content of [message, editor, embed]) {
+    content.rect = bounds;
+    content.style.setProperty("background-color", "navy");
+    gutter.append(content);
+  }
+  const descriptors = discoverPaintSources("app.background", f.doc.body);
+  assert.equal(
+    descriptors.find((s) => s.element === gutter)?.panelBackdrop,
+    true,
+  );
+  for (const content of [message, editor, embed]) {
+    assert.ok(!descriptors.some((s) => s.element === content));
+    assert.equal(content.style.getPropertyValue("background-color"), "navy");
+  }
+  const late = f.doc.createElement("div");
+  late.rect = bounds;
+  gutter.append(late);
+  assert.equal(
+    mutationNeedsDiscovery([
+      {
+        type: "childList",
+        target: gutter,
+        addedNodes: [late],
+        removedNodes: [],
+      },
+    ]),
+    true,
+  );
   f.view.dispose();
 });
 

@@ -91,6 +91,7 @@ internal static class PipeTransportTests
             finally { renderer.Event -= TypedBinding; }
             await CheckInvocationRecovery(renderer, check);
             await CheckInvocationBudget(main, renderer, check);
+            await CheckRefreshIsolation(main, renderer, check);
             await CheckWindowIsolation(main, renderer, check);
             var pending = renderer.Evaluate("await-binding");
             await main.DisposeAsync();
@@ -129,6 +130,33 @@ internal static class PipeTransportTests
         }
         await survivor.Evaluate("fixture-invoke-delays:0:0");
         check((await survivor.Evaluate("after-budget-tests"))?.GetValue<string>() == "after-budget-tests", "함수 준비 예산 검사 후 정상 창의 응답 유지");
+    }
+
+    private static async Task CheckRefreshIsolation(Cdp main, Cdp survivor, Action<bool, string> check)
+    {
+        await survivor.Evaluate("fixture-enable-second-window");
+        await using var secondary = new Cdp(main, 2);
+        await survivor.Evaluate("fixture-refresh-second:deferred");
+        var failures = new List<int>();
+        check(await RendererRefresh.Request([secondary, survivor], (window, _) => failures.Add(window.RendererId)) == 2 && failures.Count == 0,
+            "숨김 창의 예약 새로고침과 정상 창의 새로고침을 함께 성공으로 처리");
+        await survivor.Evaluate("fixture-refresh-second:stalled");
+        var timer = Stopwatch.StartNew();
+        var refresh = RendererRefresh.Request([secondary, survivor], (window, _) => failures.Add(window.RendererId));
+        var visibleWait = Stopwatch.StartNew();
+        while ((await survivor.Evaluate("fixture-refresh-count"))?.GetValue<int>() != 2 && visibleWait.Elapsed < TimeSpan.FromSeconds(1))
+            await Task.Delay(5);
+        check(visibleWait.Elapsed < TimeSpan.FromSeconds(1) && !refresh.IsCompleted,
+            "응답이 멈춘 창이 먼저 있어도 정상 창은 기다리지 않고 새로고침");
+        check(await refresh == 1 && failures.SequenceEqual([2]) && timer.Elapsed < TimeSpan.FromSeconds(3),
+            "새로고침의 창별 2초 시간 제한과 실패 격리");
+        await survivor.Evaluate("fixture-refresh-second:not-ready");
+        check(await RendererRefresh.Request([secondary, survivor], (window, _) => failures.Add(window.RendererId)) == 1,
+            "아직 초기화되지 않은 창이 정상 창의 새로고침을 실패시키지 않음");
+        await secondary.DisposeAsync();
+        check(await RendererRefresh.Request([secondary, survivor], (window, _) => failures.Add(window.RendererId)) == 1 &&
+            !main.IsClosed && (await survivor.Evaluate("after-refresh"))?.GetValue<string>() == "after-refresh",
+            "종료된 창을 건너뛰며 공유 연결과 정상 창의 후속 응답 보존");
     }
 
     private static async Task CheckWindowIsolation(Cdp main, Cdp survivor, Action<bool, string> check)
