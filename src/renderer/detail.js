@@ -8,6 +8,10 @@ import { typographyControls } from "./typography-controls.js";
 import { mediaBadge } from "./theme-media-info.js";
 import { appearanceText } from "./appearance-messages.js";
 import {
+  backgroundExportForm,
+  backgroundExportText,
+} from "./background-export.js";
+import {
   detailNavigationBar,
   detailNavigationPrompt,
 } from "./detail-navigation.js";
@@ -21,6 +25,13 @@ export function detailPage(panel, section) {
       back,
       h("span", { class: "panel-eyebrow", text: "CoSkin" }),
       detailNavigationBar(panel),
+      ...(panel.c.summary.backgroundExportAvailable
+        ? [
+            panel.button(backgroundExportText("downloads"), () => {
+              panel.downloadsOpen = true;
+            }),
+          ]
+        : []),
     ]),
   );
   const navigationPrompt = detailNavigationPrompt(panel);
@@ -80,6 +91,13 @@ export function detailPage(panel, section) {
         ]),
         h("div", { class: "detail-actions detail-management-actions" }, [
           panel.button(t("export"), () => panel.export()),
+          ...(panel.c.summary.backgroundExportAvailable
+            ? [
+                panel.button(backgroundExportText("title"), () => {
+                  panel.backgroundExportOpen = !panel.backgroundExportOpen;
+                }),
+              ]
+            : []),
           panel.button(t("duplicate"), async () => {
             const doc = structuredClone(panel.doc);
             doc.manifest.id = "local." + crypto.randomUUID();
@@ -108,6 +126,8 @@ export function detailPage(panel, section) {
   page.append(h("div", { class: "detail-layout" }, [media, info]));
   info.append(organizationForm(panel));
   info.append(typographyControls(panel));
+  if (panel.backgroundExportOpen && panel.c.summary.backgroundExportAvailable)
+    info.append(backgroundExportForm(panel));
   if (panel.metadataMode === "edit") page.append(themeMetadata(panel));
   section.append(page);
 }

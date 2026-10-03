@@ -340,6 +340,32 @@ export function editorContext(panel, inspectorRoot) {
         panel.render();
       };
       body.append(h("label", { text: t("control.animatedImage") }), playback);
+      if (/\.(?:mp4|webm)$/i.test(current.image || "")) {
+        const rate = h("input", {
+          type: "number",
+          min: "0.1",
+          max: "4",
+          step: "0.05",
+          required: "",
+          value: current.videoPlaybackRate ?? 1,
+          "aria-label": t("control.videoPlaybackRate"),
+        });
+        rate.onchange = () => {
+          if (!rate.checkValidity()) {
+            rate.reportValidity();
+            return;
+          }
+          panel.change(() => {
+            requireEngineVersion(panel.doc.manifest, "0.1.17");
+            const state = panel.rule();
+            state.style ??= {};
+            state.style[layer] ??= {};
+            state.style[layer].videoPlaybackRate = Number(rate.value);
+          });
+          panel.render();
+        };
+        body.append(h("label", { text: t("control.videoPlaybackRate") }), rate);
+      }
       if (layer === "icon")
         for (const [key, label, maximum, defaultValue] of [
           ["sizePx", t("control.iconSize"), 256, 20],

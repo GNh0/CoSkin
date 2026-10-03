@@ -65,6 +65,9 @@ internal static class Program
             var bundle = File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "renderer.js"));
             using var library = new Library(store);
             library.PickAssetStoragePath = initial => NativeFolderPicker.Pick(initial, UiLocale.Normalize(System.Globalization.CultureInfo.CurrentUICulture.Name) == "ko" ? "테마 전체 보관 폴더" : "Theme storage folder");
+            library.PickBackgroundExportPath = (name, extension) => NativeFilePicker.SaveBackground(name, extension, library.Locale == "ko" ? "배경 추출 파일 저장" : "Save exported background");
+            library.PickThemeExportPath = name => NativeFilePicker.SaveTheme(name, library.Locale == "ko" ? "CoSkin 테마 내보내기" : "Export CoSkin theme");
+            library.PickBackgroundConverter = () => NativeFilePicker.Converter(library.Locale == "ko" ? "FFmpeg 변환기 선택" : "Select FFmpeg converter");
             var installed = WindowsInstaller.IsInstalledStore(library);
             if (installed) library.SetStartup = enabled => new InstallationService(store, new WindowsInstallationPlatform()).SetStartup(enabled);
             var sessions = new ConcurrentDictionary<string, Cdp>();
@@ -535,6 +538,23 @@ internal static class Program
         if (operation == "health")
         {
             var health = connectionStatus?.Invoke() ?? new JsonObject();
+            if (command["previewDiagnostics"]?.GetValue<bool>() == true)
+            {
+                var diagnostics = new JsonArray();
+                foreach (var window in windows())
+                {
+                    try
+                    {
+                        diagnostics.Add(new JsonObject { ["rendererId"] = window.RendererId,
+                            ["preview"] = (await window.Evaluate("window.__coskin?.previewDiagnostics() ?? null", TimeSpan.FromSeconds(2)))?.DeepClone() });
+                    }
+                    catch (Exception error)
+                    {
+                        diagnostics.Add(new JsonObject { ["rendererId"] = window.RendererId, ["error"] = Failure.Describe(error).Code });
+                    }
+                }
+                health["rendererDiagnostics"] = diagnostics;
+            }
             health["ok"] = true; health["pid"] = Environment.ProcessId; health["version"] = ProductVersion.Display;
             return health;
         }

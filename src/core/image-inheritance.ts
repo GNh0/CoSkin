@@ -15,6 +15,7 @@ const imageProperties = [
   "sizePx",
   "paddingPx",
   "imagePlayback",
+  "videoPlaybackRate",
 ] as const;
 
 /** Only same-image conditional overrides are reset; other images and motion remain. */

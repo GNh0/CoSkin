@@ -4,6 +4,7 @@ import { NativePaintScope } from "./native-paint.js";
 import { TextPaint } from "./text-paint.js";
 import { blendColors, readableThemeColor } from "../core/theme-colors.js";
 import { containedBackgroundTop } from "./media-viewport.js";
+import { nativeIconFor, ThreadIconLayout } from "./thread-icon.js";
 const rgba = (color, opacity = 1) => {
   const v = parseInt((color || "#000000").slice(1), 16);
   return `rgba(${v >> 16},${(v >> 8) & 255},${v & 255},${opacity})`;
@@ -73,12 +74,9 @@ export class Decoration {
       this.root.append(el);
       this.layers[name] = el;
     }
-    const icons = [...target.el.querySelectorAll("svg")].filter(
-      (svg) =>
-        !svg.closest("[data-coskin-decoration],[data-coskin-ui]") &&
-        svg.closest('button,[role="button"]') === target.el,
-    );
-    this.icon = icons.length === 1 ? icons[0] : null;
+    this.icon = nativeIconFor(target);
+    if (target.target === "sidebar.thread-row")
+      this.threadIconLayout = new ThreadIconLayout(target.el);
     this.paintScope = new NativePaintScope();
     this.paintSources = new Map();
     this.paintSurfaces = [];
@@ -211,6 +209,7 @@ export class Decoration {
         existing?.dispose();
         this.players.delete(name);
       }
+      this.players.get(name)?.setPlaybackRate(v.videoPlaybackRate ?? 1);
       if (name === "background") {
         el.style.backgroundColor = rgba(v.color, 1);
         el.style.opacity = String(v.opacity ?? 1);
@@ -301,11 +300,13 @@ export class Decoration {
         if (v.glow)
           el.style.boxShadow = `0 0 ${v.glow}px ${rgba(v.color, v.opacity)}`;
       } else if (name === "icon") {
-        if (!this.icon) {
+        if (!this.icon && !this.threadIconLayout) {
           el.style.display = "none";
           continue;
         }
         el.style.opacity = String(v.opacity ?? 1);
+        if (this.threadIconLayout && !this.players.has(name))
+          el.style.display = "none";
         if (v.image && this.icon && this.players.has(name)) {
           if (this.iconVisibility === undefined)
             this.iconVisibility = this.icon.style.visibility;
@@ -344,7 +345,9 @@ export class Decoration {
     const wasHidden = this.hidden;
     const icon = this.layers.icon,
       v = this.style?.icon;
-    if (v && this.icon) {
+    if (v && this.threadIconLayout && this.players.has("icon")) {
+      Object.assign(icon.style, this.threadIconLayout.position(v, r));
+    } else if (v && this.icon) {
       const ir = this.icon.getBoundingClientRect();
       const size = v.sizePx || ir.width;
       Object.assign(icon.style, {
@@ -671,6 +674,7 @@ export class Decoration {
     }
   }
   restoreIcon() {
+    this.threadIconLayout?.dispose();
     if (this.icon && this.iconVisibility !== undefined) {
       this.icon.style.visibility = this.iconVisibility;
       this.iconVisibility = undefined;

@@ -17,6 +17,10 @@ internal sealed class Library : IDisposable
             try { await lease.Release(token); } catch { }
     }
     internal Func<string?, string?>? PickAssetStoragePath { get; set; }
+    internal Func<string, string, string?>? PickBackgroundExportPath { get; set; }
+    internal Func<string, string?>? PickThemeExportPath { get; set; }
+    internal Func<string?>? PickBackgroundConverter { get; set; }
+    internal BackgroundExport BackgroundExports { get; }
     internal Func<bool, Task<UpdateResult>>? CheckUpdate { get; set; }
     internal Func<Task<UpdateResult>>? ApplyUpdate { get; set; }
     internal Action<bool>? SetStartup { get; set; }
@@ -30,6 +34,7 @@ internal sealed class Library : IDisposable
     internal void CancelTransfer(string token) => transfers.Cancel(token);
     public void Dispose()
     {
+        BackgroundExports.Dispose();
         transfers.Dispose();
     }
     internal string StorePath => root;
@@ -41,6 +46,7 @@ internal sealed class Library : IDisposable
         transfers = new TransferStore(Path.GetTempPath());
         Preferences = new RuntimePreferenceStore(this.root);
         assetStorage = new AssetStorageLocation(this.root, Preferences);
+        BackgroundExports = new BackgroundExport(this.root);
     }
     private string FilePath(string name) => Path.Combine(root, name);
     private JsonObject State() => File.Exists(FilePath("library.json")) ? JsonContract.Read(File.ReadAllBytes(FilePath("library.json")), LibraryJsonLimit) : new JsonObject { ["themes"] = new JsonObject(), ["bindings"] = new JsonObject(), ["enabled"] = true };
@@ -61,6 +67,13 @@ internal sealed class Library : IDisposable
         // A verified file copy must not block liveness requests from other windows.
         if (request["op"]?.GetValue<string>() == "list") return Summary(State());
         if (request["op"]?.GetValue<string>() == "runtime-settings-read") return RuntimeSettingsDocument();
+        if (request["op"]?.GetValue<string>() is "background-export-info" or "background-export-start" or
+            "background-export-status" or "background-export-cancel" or "background-export-converter-pick" or
+            "background-export-list" or "background-export-limit" or "background-export-queue-cancel" or
+            "background-export-retry" or "background-export-clear")
+            return await HandleBackgroundExport(request);
+        if (request["op"]?.GetValue<string>() == "theme-export-save")
+            return await HandleThemeExport(request, validate);
         if (request["op"]?.GetValue<string>() == "background-media-info")
         {
             JsonObject document;
@@ -484,6 +497,108 @@ internal sealed class Library : IDisposable
         result["assetStorage"] = assetStorage.Describe(snapshot).Document();
         return result;
     }
+    private async Task<JsonNode> HandleBackgroundExport(JsonObject request)
+    {
+        var operation = JsonContract.String(request, "op");
+        var match = System.Text.RegularExpressions.Regex.Match(request["requestId"]?.GetValue<string>() ?? "", "^([a-f0-9]{32}):[0-9]+$");
+        if (!match.Success) throw new InvalidDataException("배경 추출 소유자 계약 오류");
+        var owner = match.Groups[1].Value;
+        if (operation == "background-export-list") return BackgroundExports.List(request["offset"]?.GetValue<int>() ?? 0);
+        if (operation == "background-export-limit") { BackgroundExports.SetConcurrency(request["limit"]?.GetValue<int>() ?? 0); return BackgroundExports.List(0); }
+        if (operation == "background-export-queue-cancel") { BackgroundExports.CancelListed(JsonContract.String(request, "jobId")); return new JsonObject { ["ok"] = true }; }
+        if (operation == "background-export-retry") { BackgroundExports.Retry(owner, JsonContract.String(request, "jobId")); return new JsonObject { ["ok"] = true }; }
+        if (operation == "background-export-clear") { BackgroundExports.ClearFinished(); return new JsonObject { ["ok"] = true }; }
+        if (operation == "background-export-status") return BackgroundExports.Status(owner, JsonContract.String(request, "jobId"));
+        if (operation == "background-export-cancel") return BackgroundExports.Cancel(owner, JsonContract.String(request, "jobId"));
+        if (operation == "background-export-converter-pick")
+        {
+            if (PickBackgroundConverter is null) throw new InvalidDataException("변환기 선택 창을 사용할 수 없습니다.");
+            var path = await Task.Run(PickBackgroundConverter);
+            if (path is not null) await BackgroundExports.ConfigureConverter(path);
+            return new JsonObject { ["converterAvailable"] = BackgroundExports.FindConverter() is not null };
+        }
+        JsonObject document;
+        await gate.WaitAsync();
+        try
+        {
+            var entry = State()["themes"]?[JsonContract.String(request, "id")]?.AsObject() ?? throw new InvalidDataException("테마를 찾지 못했습니다.");
+            var revision = request["revision"]?.GetValue<int>() ?? entry["revision"]!.GetValue<int>();
+            if (revision < 1 || revision > entry["revision"]!.GetValue<int>()) throw new InvalidDataException("테마 리비전 오류");
+            document = JsonContract.Read(File.ReadAllBytes(FilePath($"revision-{entry["key"]}-{revision}.json")));
+        }
+        finally { gate.Release(); }
+        var asset = BackgroundMediaInfo.ResolveAsset(document, request["profile"]?.GetValue<string>())
+            ?? throw new InvalidDataException("이 테마 구성에는 추출할 배경이 없습니다.");
+        var source = assetStorage.PathForHash(asset.Hash);
+        var metadata = await Task.Run(() => MediaMetadata.Read(source));
+        if (operation == "background-export-info") return new JsonObject { ["kind"] = metadata.Kind,
+            ["mime"] = metadata.Mime, ["durationSeconds"] = metadata.DurationSeconds,
+            ["originalFormat"] = BackgroundExport.Extension("original", metadata.Mime),
+            ["converterAvailable"] = BackgroundExports.FindConverter() is not null };
+        var options = BackgroundExport.Options.Read(request, metadata);
+        if (BackgroundExports.Existing(owner, source, options) is string existing)
+            return new JsonObject { ["jobId"] = existing, ["duplicate"] = true };
+        if (options.Format != "original" && BackgroundExports.FindConverter() is null)
+            throw new InvalidDataException("배경 변환에 사용할 FFmpeg를 먼저 선택해 주세요.");
+        if (PickBackgroundExportPath is null) throw new InvalidDataException("배경 저장 창을 사용할 수 없습니다.");
+        var extension = BackgroundExport.Extension(options.Format, metadata.Mime);
+        var title = document["manifest"]?["name"]?.GetValue<string>() ?? "CoSkin";
+        var destination = await Task.Run(() => PickBackgroundExportPath(ExportFilename(title, "background", extension), extension));
+        if (destination is null) return new JsonObject { ["canceled"] = true };
+        return new JsonObject { ["jobId"] = BackgroundExports.Start(owner, source, metadata, options, destination) };
+    }
+    private static string ExportFilename(string title, string fallback, string extension)
+    {
+        var name = string.Concat(title.Take(140).Select(character => Path.GetInvalidFileNameChars().Contains(character) ? '_' : character)).Trim(' ', '.');
+        return (name.Length == 0 ? fallback : name) + "." + extension;
+    }
+    private async Task<JsonNode> HandleThemeExport(JsonObject request, Func<JsonObject, Task> validate)
+    {
+        var picker = PickThemeExportPath ?? throw new InvalidDataException("테마 저장 창을 사용할 수 없습니다.");
+        JsonObject document;
+        await gate.WaitAsync();
+        try
+        {
+            var entry = State()["themes"]?[JsonContract.String(request, "id")]?.AsObject() ?? throw new InvalidDataException("테마를 찾지 못했습니다.");
+            var revision = request["revision"]?.GetValue<int>() ?? entry["revision"]!.GetValue<int>();
+            if (revision < 1 || revision > entry["revision"]!.GetValue<int>()) throw new InvalidDataException("테마 리비전 오류");
+            document = JsonContract.Read(File.ReadAllBytes(FilePath($"revision-{entry["key"]}-{revision}.json")));
+        }
+        finally { gate.Release(); }
+        await validate(document);
+        var filename = ExportFilename(document["manifest"]?["name"]?.GetValue<string>() ?? "CoSkin", "theme", "coskin");
+        var selected = await Task.Run(() => picker(filename));
+        if (selected is null) return new JsonObject { ["canceled"] = true };
+        var destination = Path.GetFullPath(selected);
+        if (!Path.IsPathFullyQualified(selected) || !string.Equals(Path.GetExtension(destination), ".coskin", StringComparison.OrdinalIgnoreCase) ||
+            destination.StartsWith(Path.TrimEndingDirectorySeparator(root) + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase) ||
+            !Directory.Exists(Path.GetDirectoryName(destination)))
+            throw new InvalidDataException("테마 내보내기 저장 위치를 확인해 주세요.");
+        void CheckDestination()
+        {
+            for (var path = destination; path is not null; path = Path.GetDirectoryName(path))
+                if ((Directory.Exists(path) || File.Exists(path)) && File.GetAttributes(path).HasFlag(FileAttributes.ReparsePoint))
+                    throw new InvalidDataException("테마 저장 경로에 파일 연결을 사용할 수 없습니다.");
+        }
+        CheckDestination();
+        var bytes = await Task.Run(() => {
+            var assets = document["assets"]!.AsObject().ToDictionary(p => p.Key, p => ReadAsset(p.Value!.GetValue<string>()));
+            return Package.Export(document["manifest"]!.AsObject(), document["theme"]!.AsObject(), assets);
+        });
+        var temporary = Path.Combine(Path.GetDirectoryName(destination)!, ".coskin-export-" + Guid.NewGuid().ToString("N") + ".tmp");
+        try
+        {
+            await using (var output = new FileStream(temporary, FileMode.CreateNew, FileAccess.Write, FileShare.None, 1024 * 1024, true))
+            {
+                await output.WriteAsync(bytes);
+                output.Flush(true);
+            }
+            CheckDestination();
+            File.Move(temporary, destination, true);
+        }
+        finally { if (File.Exists(temporary)) File.Delete(temporary); }
+        return new JsonObject { ["saved"] = true, ["path"] = destination };
+    }
     internal static JsonObject UpdateDocument(UpdateResult value) => new() { ["status"] = value.State.ToString().ToLowerInvariant(), ["version"] = value.Update?.Version.ToString() };
     internal async Task<JsonObject> TrayState()
     {
@@ -508,6 +623,8 @@ internal sealed class Library : IDisposable
         result["runtimeSettingsAvailable"] = true;
         result["startupSettingsAvailable"] = SetStartup is not null;
         result["assetStoragePickerAvailable"] = PickAssetStoragePath is not null;
+        result["backgroundExportAvailable"] = PickBackgroundExportPath is not null;
+        result["themeExportAvailable"] = PickThemeExportPath is not null;
         return result;
     }
     private static JsonObject Document(ThemePackage p)

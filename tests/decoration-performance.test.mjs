@@ -24,7 +24,7 @@ test("행의 동일 스타일 및 불투명도 전환은 미디어 재생성과 
           }));
           builder.onLoad({ filter: /.*/, namespace: "mock-media" }, () => ({
             contents:
-              "export class MediaPlayer { constructor(media){ this.media = media; } updateAppearance(){} dispose(){} }",
+              "export class MediaPlayer { constructor(media){ this.media = media; } updateAppearance(){} setPlaybackRate(){} dispose(){} }",
             loader: "js",
           }));
           builder.onResolve({ filter: /.*/ }, (args) => ({
@@ -286,7 +286,7 @@ test("행의 동일 스타일 및 불투명도 전환은 미디어 재생성과 
     target: { target: "app.background", el: { style: {} } },
     root: { style: {} },
     layers: { background: appLayer },
-    players: new Map([["background", { media: video, updateAppearance() {} }]]),
+    players: new Map([["background", { media: video, updateAppearance() {}, setPlaybackRate() {} }]]),
     asset: () => video,
     paintSources: new Map(),
     paintSurfaces: [],

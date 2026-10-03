@@ -10,11 +10,16 @@ export function disposeMedia(media) {
   if (media.disposed) return;
   media.disposed = true;
   for (const frame of media.frames) frame.image.close();
-  if (media.videoUrl && !media.releaseSource) URL.revokeObjectURL(media.videoUrl);
+  if (media.videoUrl && !media.releaseSource)
+    URL.revokeObjectURL(media.videoUrl);
   media.releaseSource?.();
 }
 async function decodeVideo(bytes, mime, poster = null, directURL = false) {
-  const blob = directURL ? null : bytes instanceof Blob ? bytes : new Blob([bytes], { type: mime });
+  const blob = directURL
+    ? null
+    : bytes instanceof Blob
+      ? bytes
+      : new Blob([bytes], { type: mime });
   const videoUrl = directURL ? bytes : URL.createObjectURL(blob);
   const video = document.createElement("video");
   video.muted = true;
@@ -59,19 +64,20 @@ async function decodeVideo(bytes, mime, poster = null, directURL = false) {
       video.duration * 1000 > MEDIA_LIMITS.maxDurationMs
     )
       throw Error("영상 해상도 또는 길이 제한을 초과했습니다.");
-    if (!poster) await new Promise((resolve, reject) => {
-      const timer = setTimeout(() => {
-        video.onseeked = null;
-        reject(Error("영상 미리보기를 준비하지 못했습니다."));
-      }, 10000);
-      video.onseeked = () => {
-        clearTimeout(timer);
-        video.onseeked = null;
-        resolve();
-      };
-      video.currentTime = Math.min(15, video.duration * 0.15);
-    });
-    const image = poster || await createImageBitmap(video);
+    if (!poster)
+      await new Promise((resolve, reject) => {
+        const timer = setTimeout(() => {
+          video.onseeked = null;
+          reject(Error("영상 미리보기를 준비하지 못했습니다."));
+        }, 10000);
+        video.onseeked = () => {
+          clearTimeout(timer);
+          video.onseeked = null;
+          resolve();
+        };
+        video.currentTime = Math.min(15, video.duration * 0.15);
+      });
+    const image = poster || (await createImageBitmap(video));
     return {
       mime,
       width: video.videoWidth,
@@ -92,10 +98,14 @@ async function decodeVideo(bytes, mime, poster = null, directURL = false) {
     video.remove();
   }
 }
-export const decodeVideoURL = (url, mime, poster) => decodeVideo(url, mime, poster, true);
+export const decodeVideoURL = (url, mime, poster) =>
+  decodeVideo(url, mime, poster, true);
 export async function decodeMedia(data, mime, poster = null) {
   if (data instanceof Blob) {
-    if (data.size > (isVideoMime(mime) ? MEDIA_LIMITS.videoBytes : MEDIA_LIMITS.bytes))
+    if (
+      data.size >
+      (isVideoMime(mime) ? MEDIA_LIMITS.videoBytes : MEDIA_LIMITS.bytes)
+    )
       throw Error("미디어 파일 크기 제한을 초과했습니다.");
     if (isVideoMime(mime)) return decodeVideo(data, mime, poster);
     data = new Uint8Array(await data.arrayBuffer());
@@ -329,6 +339,12 @@ export class MediaPlayer {
     this.position = position;
     this.draw();
     this.videoAppearance();
+  }
+  setPlaybackRate(rate = 1) {
+    if (!this.video) return;
+    const next = Number.isFinite(rate) && rate >= 0.1 && rate <= 4 ? rate : 1;
+    this.video.defaultPlaybackRate = next;
+    this.video.playbackRate = next;
   }
   setViewportTop(top) {
     const next = Number.isFinite(top) ? Math.max(0, top) : 0;

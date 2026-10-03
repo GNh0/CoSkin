@@ -100,3 +100,8 @@ export async function storePoster(controller, hash, bitmap, signal) {
     if (canvas) canvas.width = canvas.height = 0;
   }
 }
+
+/** Capture pixels now; derived cache I/O must not delay displaying ready media. */
+export function storePosterLater(controller, hash, bitmap, signal) {
+  void storePoster(controller, hash, bitmap, signal).catch(() => {});
+}

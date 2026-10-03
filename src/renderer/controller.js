@@ -39,7 +39,7 @@ import {
   decodeAssetSource,
   releaseAssetSource,
 } from "./media-source.js";
-import { readPoster, storePoster } from "./poster-cache.js";
+import { readPoster, storePosterLater } from "./poster-cache.js";
 export async function decodeImage(data, mime) {
   const media = await decodeMedia(data, mime);
   disposeMedia(media);
@@ -171,13 +171,23 @@ export class Controller {
       }
     }
     return new Promise((resolve, reject) => {
+      const timing = { op, startedAt: Date.now(), preview: !!this.preview,
+        state: "pending", clock: performance.now() };
+      this.requestTimings ??= [];
+      this.requestTimings.push(timing);
+      if (this.requestTimings.length > 40) this.requestTimings.shift();
+      const finishTiming = (state) => {
+        timing.state = state;
+        timing.elapsedMs = Math.round(performance.now() - timing.clock);
+      };
       const timer = setTimeout(
         () => {
+          finishTiming("timeout");
           this.pending.delete(id);
           reject(Error("연결 요청 시간이 초과되었습니다."));
           if (this.decorationRefreshPending) this.schedule();
         },
-        ["runtime-settings-write", "asset-storage-pick"].includes(op)
+        ["runtime-settings-write", "asset-storage-pick", "background-export-start", "background-export-converter-pick", "theme-export-save"].includes(op)
           ? 15 * 60 * 1000
           : [
                 "asset-write",
@@ -192,10 +202,11 @@ export class Controller {
             ? 15 * 60 * 1000
             : 30000,
       );
-      this.pending.set(id, { op, resolve, reject, timer });
+      this.pending.set(id, { op, resolve, reject, timer, finishTiming });
       try {
         send();
       } catch (error) {
+        finishTiming("send-failed");
         clearTimeout(timer);
         this.pending.delete(id);
         reject(error);
@@ -206,6 +217,7 @@ export class Controller {
   response(id, value, error) {
     const p = this.pending.get(id);
     if (!p) return;
+    p.finishTiming?.(error ? "failed" : "ready");
     clearTimeout(p.timer);
     this.pending.delete(id);
     if (error)
@@ -507,17 +519,47 @@ export class Controller {
       return cached;
     }
     if (this.assetPending.has(hash)) return this.assetPending.get(hash);
+    const started = performance.now();
+    const metric = { startedAt: Date.now(), preview: !!this.preview, state: "queued" };
+    this.mediaLoadMetrics ??= [];
+    this.mediaLoadMetrics.push(metric);
+    if (this.mediaLoadMetrics.length > 10) this.mediaLoadMetrics.shift();
+    const elapsed = () => Math.round(performance.now() - started);
     const pending = this.assetQueue
       .run(async () => {
+        metric.queueMs = elapsed();
+        metric.state = "poster";
         let source, media, poster;
         try {
+          poster = await readPoster(this, hash, this.assetAbort.signal);
+          metric.posterMs = elapsed();
+          metric.cachedPoster = !!poster;
+          if (poster && this.preview && !this.disposed) {
+            const image = await createImageBitmap(poster);
+            if (this.disposed) {
+              image.close();
+              throw Error("연결이 종료되었습니다.");
+            }
+            this.storeMedia("poster:" + hash, {
+              mime: "image/png",
+              width: image.width,
+              height: image.height,
+              frames: [{ image, delay: 0 }],
+            });
+            this.renderMediaTargets(hash);
+            metric.firstImageMs = elapsed();
+          }
+          metric.state = "transfer";
           source = await openAssetSource(this, hash, this.assetAbort.signal);
           const transfer =
             source ||
             (await this.request("asset-read", { hash, largeChunks: true }));
-          poster = isVideoMime(transfer.mime)
-            ? await readPoster(this, hash, this.assetAbort.signal)
-            : null;
+          metric.sourceMs = elapsed();
+          metric.bytes = transfer.length;
+          if (!isVideoMime(transfer.mime)) {
+            poster?.close();
+            poster = null;
+          }
           const hadPoster = !!poster;
           if (source) {
             const ownedPoster = poster;
@@ -532,20 +574,28 @@ export class Controller {
             const data = await (
               isVideoMime(transfer.mime) ? downloadBlob : downloadBytes
             )(this, transfer, this.assetAbort.signal);
+            metric.transferMs = elapsed();
+            metric.state = "decode";
             const ownedPoster = poster;
             poster = null;
             media = await decodeMedia(data, transfer.mime, ownedPoster);
           }
           if (this.disposed) throw Error("연결이 종료되었습니다.");
+          const result = this.storeMedia(hash, media);
+          metric.totalMs = elapsed();
+          metric.firstImageMs ??= metric.totalMs;
+          metric.state = "ready";
           if (isVideoMime(media.mime) && !hadPoster)
-            await storePoster(
+            storePosterLater(
               this,
               hash,
               media.frames[0].image,
               this.assetAbort.signal,
             );
-          return this.storeMedia(hash, media);
+          return result;
         } catch (error) {
+          metric.totalMs = elapsed();
+          metric.state = "failed";
           poster?.close();
           if (media) disposeMedia(media);
           else await releaseAssetSource(this, source);
@@ -555,6 +605,41 @@ export class Controller {
       .finally(() => this.assetPending.delete(hash));
     this.assetPending.set(hash, pending);
     return pending;
+  }
+  previewDiagnostics() {
+    return {
+      previewing: !!this.preview,
+      pendingMedia: this.assetPending.size,
+      pendingRequests: this.pending.size,
+      cachedMedia: this.assetCache.size,
+      recentLoads: (this.mediaLoadMetrics || []).map((row) => ({ ...row })),
+      recentRequests: (this.requestTimings || []).map(({ clock, ...row }) => ({
+        ...row, elapsedMs: row.elapsedMs ?? Math.round(performance.now() - clock),
+      })),
+      recentRenders: (this.renderTimings || []).map((row) => ({ ...row })),
+      lastPreviewAction: this.lastPreviewAction ? { ...this.lastPreviewAction } : null,
+      lastBackgroundToggle: this.backgroundView?.lastToggle ? { ...this.backgroundView.lastToggle } : null,
+    };
+  }
+  renderMediaTargets(hash) {
+    const targets = [];
+    for (const decoration of this.decorations.values())
+      if (decoration.serialized?.includes("sha256:" + hash)) {
+        decoration.serialized = null;
+        targets.push(decoration.target);
+      }
+    if (targets.length) this.render(targets, true);
+    const key = "poster:" + hash;
+    const poster = this.assetCache.get(key);
+    if (poster && this.assetCache.has(hash)) {
+      const active = [...this.decorations.values()].some((decoration) =>
+        [...decoration.players.values()].some((player) => player.media === poster),
+      );
+      if (!active) {
+        this.assetCache.delete(key);
+        disposeMedia(poster);
+      }
+    }
   }
   asset(path) {
     const hash = path.startsWith("sha256:") ? path.slice(7) : null;
@@ -568,16 +653,10 @@ export class Controller {
     if (!this.assetPending.has(hash))
       this.loadMedia(hash)
         .then(() => {
-          const targets = [];
-          for (const decoration of this.decorations.values())
-            if (decoration.serialized?.includes("sha256:" + hash)) {
-              decoration.serialized = null;
-              targets.push(decoration.target);
-            }
-          if (targets.length) this.render(targets, true);
+          this.renderMediaTargets(hash);
         })
         .catch((error) => this.panel.notify(error.message));
-    return "";
+    return this.assetCache.get("poster:" + hash) || "";
   }
   renderAffected(node) {
     if (this.suspended || !this.targets) return;
@@ -782,6 +861,7 @@ export class Controller {
       this.needsRender = true;
       return;
     }
+    const renderStarted = performance.now();
     if (this.decorationRefreshPending && !this.connectionProtected()) {
       this.decorationRefreshPending = false;
       this.stopReplay(false);
@@ -795,6 +875,7 @@ export class Controller {
     this.renderProfileCache = new WeakMap();
     this.renderContext = this.adapter.context();
     const targets = subset || this.adapter.discover();
+    const discoveryMs = Math.round(performance.now() - renderStarted);
     if (!partial) this.targets = targets;
     const live = new Set();
     if (this.summary.enabled || this.preview) {
@@ -930,12 +1011,26 @@ export class Controller {
         dec.dispose();
         this.removeDecoration(el);
       }
+    const decorationsMs = Math.round(performance.now() - renderStarted) - discoveryMs;
+    const releaseStarted = performance.now();
     this.releaseUnusedMedia();
+    const mediaReleaseMs = Math.round(performance.now() - releaseStarted);
+    const entryStarted = performance.now();
     this.panel.ensureEntry();
+    const entryMs = Math.round(performance.now() - entryStarted);
+    const greetingStarted = performance.now();
     this.greetingVisibility?.refresh(
       this.panel.runtimeSettings?.hideStartGreeting !== false,
     );
+    const greetingMs = Math.round(performance.now() - greetingStarted);
+    const backgroundStarted = performance.now();
     this.backgroundView?.refresh();
+    this.renderTimings ??= [];
+    this.renderTimings.push({ startedAt: Date.now(), preview: !!this.preview, partial,
+      targets: targets.length, discoveryMs, decorationsMs, mediaReleaseMs, entryMs,
+      greetingMs, backgroundMs: Math.round(performance.now() - backgroundStarted),
+      totalMs: Math.round(performance.now() - renderStarted) });
+    if (this.renderTimings.length > 10) this.renderTimings.shift();
   }
   removeDecoration(element) {
     this.viewportObserver?.unobserve(element);

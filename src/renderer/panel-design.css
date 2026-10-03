@@ -786,3 +786,16 @@
   line-height: 1.3;
   white-space: nowrap;
 }
+.background-export-fields { display: grid; gap: 12px; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.background-export-field { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.background-export-fields > p, .background-export-fields > div { grid-column: 1 / -1; }
+.background-export-form select, .background-export-form input[type="number"] { width: 100%; box-sizing: border-box; min-height: 36px; }
+.background-export-form progress { width: 100%; margin-top: 14px; }
+.background-export-form [hidden] { display: none !important; }
+.background-export-form [role="status"] { overflow-wrap: anywhere; }
+.background-downloads [hidden] { display: none !important; }
+.background-download-list { display: grid; gap: 12px; margin-block: 16px; }
+.background-download-item p { margin-block: 8px; }
+.background-download-item progress { width: 100%; }
+.background-download-path, .background-download-item [role="status"] { overflow-wrap: anywhere; }
+.background-downloads select { min-height: 36px; }

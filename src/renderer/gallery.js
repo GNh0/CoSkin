@@ -5,6 +5,7 @@ import { mountPreview } from "./previews.js";
 import { mediaBadge } from "./theme-media-info.js";
 import { appearanceText } from "./appearance-messages.js";
 import { themeMetadata } from "./theme-metadata.js";
+import { backgroundExportText } from "./background-export.js";
 import { folderBrowser } from "./library-folders.js";
 import {
   explorerContents,
@@ -91,6 +92,13 @@ export function galleryPage(panel, section) {
         create,
         panel.button(t("import"), () => importer.click()),
         importer,
+        ...(panel.c.summary.backgroundExportAvailable
+          ? [
+              panel.button(backgroundExportText("downloads"), () => {
+                panel.downloadsOpen = true;
+              }),
+            ]
+          : []),
         optionsMenu,
         close,
       ]),

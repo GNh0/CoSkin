@@ -9,6 +9,7 @@ import { t } from "./messages.js";
 import { editorContext } from "./editor-context.js";
 import { galleryPage } from "./gallery.js";
 import { detailPage } from "./detail.js";
+import { backgroundDownloadsPage } from "./background-downloads.js";
 import { disposePreviews } from "./previews.js";
 import { text } from "./strings.js";
 import { validateTheme } from "../core/engine.ts";
@@ -151,14 +152,17 @@ export class Panel {
     this.preview();
   }
   startPreview() {
+    const started = performance.now();
     this.closePage();
     this.session.preview();
     this.modeLayout.update(true);
     this.c.preview = { document: this.doc, profile: this.profile };
     this.c.render();
     this.previewBar.hidden = false;
+    this.c.lastPreviewAction = { action: "start", totalMs: Math.round(performance.now() - started) };
   }
   endPreview() {
+    const started = performance.now();
     this.c.stopReplay(false);
     this.session.finish();
     this.modeLayout.update(false);
@@ -166,6 +170,7 @@ export class Panel {
     this.c.render();
     this.previewBar.hidden = true;
     this.openPage();
+    this.c.lastPreviewAction = { action: "cancel", totalMs: Math.round(performance.now() - started) };
   }
   async exitEdit() {
     if (this.dirty) {
@@ -469,6 +474,13 @@ export class Panel {
     this.message = t("panel.imported");
   }
   async export() {
+    if (this.c.summary?.themeExportAvailable) {
+      await this.c.request("theme-export-save", {
+        id: this.selected,
+        revision: this.baseRevision,
+      });
+      return;
+    }
     const result = await this.c.request("export", {
       chunked: true,
       largeChunks: true,
@@ -504,6 +516,7 @@ export class Panel {
       !this.editing &&
       !this.detail &&
       !this.settingsOpen &&
+      !this.downloadsOpen &&
       !this.metadataMode &&
       !this.deleteConfirm &&
       !this.closePrompt;
@@ -559,7 +572,8 @@ export class Panel {
         this.button(t("panel.cancel"), () => (this.deleteConfirm = null)),
       );
     } else if (!this.editing) {
-      if (this.settingsOpen) settingsPage(this, section);
+      if (this.downloadsOpen) backgroundDownloadsPage(this, section);
+      else if (this.settingsOpen) settingsPage(this, section);
       else if (this.detail && this.doc) detailPage(this, section);
       else this.library(section);
     } else this.editor(section);

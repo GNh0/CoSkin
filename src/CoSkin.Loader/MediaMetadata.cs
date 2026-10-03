@@ -135,6 +135,50 @@ internal static class MediaMetadata
         return null;
     }
     private sealed record Element(ulong Id, long End, bool Unknown);
+    // FFmpeg's native VP8/VP9 decoders do not read the WebM alpha side data.
+    // Select the matching libvpx decoder from actual track metadata, never the filename.
+    internal static string? WebmDecoder(string path)
+    {
+        using var source = File.OpenRead(path);
+        var header = Ebml(source, source.Length);
+        if (header.Id != 0x1a45dfa3 || header.Unknown) return null;
+        source.Position = header.End;
+        var segment = Ebml(source, source.Length);
+        if (segment.Id != 0x18538067) return null;
+        var count = 0;
+        while (source.Position < segment.End && ++count <= 4096)
+        {
+            var element = Ebml(source, segment.End);
+            if (element.Id == 0x1654ae6b && !element.Unknown)
+                while (source.Position < element.End && ++count <= 4096)
+                {
+                    var track = Ebml(source, element.End);
+                    if (track.Unknown) return null;
+                    if (track.Id == 0xae)
+                    {
+                        string? codec = null; var video = false;
+                        while (source.Position < track.End && ++count <= 4096)
+                        {
+                            var field = Ebml(source, track.End);
+                            if (field.Unknown) return null;
+                            var size = field.End - source.Position;
+                            if (field.Id == 0x83 && size == 1) video = source.ReadByte() == 1;
+                            else if (field.Id == 0x86 && size is > 0 and <= 256)
+                            {
+                                var bytes = new byte[(int)size]; source.ReadExactly(bytes);
+                                codec = Encoding.ASCII.GetString(bytes);
+                            }
+                            source.Position = field.End;
+                        }
+                        if (video) return codec switch { "V_VP8" => "libvpx", "V_VP9" => "libvpx-vp9", _ => null };
+                    }
+                    source.Position = track.End;
+                }
+            if (element.Unknown) return null;
+            source.Position = element.End;
+        }
+        return null;
+    }
     private static Element Ebml(Stream source, long parentEnd)
     {
         ulong Vint(bool id, out int width)

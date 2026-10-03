@@ -18,6 +18,7 @@ export interface LayerStyle {
   family?: string | null;
   autoColor?: boolean;
   imagePlayback?: "play" | "poster";
+  videoPlaybackRate?: number | null;
   color?: string | null;
   opacity?: number | null;
   image?: string | null;

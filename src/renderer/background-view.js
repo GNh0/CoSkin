@@ -283,6 +283,7 @@ export class BackgroundView {
   toggle(value = !this.active) {
     if (value && !this.available) return false;
     if (value === this.active) return true;
+    const started = performance.now();
     if (value) this.focus ??= document.activeElement;
     this.active = value;
     this.refresh();
@@ -296,6 +297,7 @@ export class BackgroundView {
         this.focus.focus({ preventScroll: true });
       this.focus = null;
     }
+    this.lastToggle = { active: value, totalMs: Math.round(performance.now() - started) };
     return true;
   }
   restoreForeground() {

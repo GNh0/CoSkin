@@ -1,0 +1,23 @@
+// Built-in destination IDs observed in the installed 26.930.3930 app bundle.
+export const navigationDestinations = Object.freeze([
+  ["home", "navigation.home"],
+  ["codex", "navigation.codex"],
+  ["agents", "navigation.agents"],
+  ["activity", "navigation.activity"],
+  ["projects", "navigation.projects"],
+  ["sites", "navigation.sites"],
+  ["maps", "navigation.maps"],
+  ["gpts", "navigation.gpts"],
+  ["pull-requests", "navigation.code-review"],
+  ["automations", "navigation.automations"],
+  ["library", "navigation.library"],
+  ["images", "navigation.images"],
+  ["customize", "navigation.plugins"],
+  ["archive", "navigation.archive"],
+  ["skills", "navigation.skills"],
+  ["security", "navigation.security"],
+  ["shopping", "navigation.shopping"],
+  ["finance", "navigation.finance"],
+  ["business", "navigation.business"],
+  ["health", "navigation.health"],
+]);

@@ -151,6 +151,23 @@ function runtime() {
   };
 }
 
+test("preview diagnostics bound request timings without retaining request data or IDs", async () => {
+  const api = runtime(), controller = api.controller();
+  for (let index = 0; index < 45; index++) {
+    const reading = controller.request("asset-read", { hash: token, personalLabel: "private-label" });
+    const sent = api.sent.at(-1);
+    controller.response(sent.requestId, { internalSecret: "private-result" });
+    await reading;
+  }
+  const diagnostics = controller.previewDiagnostics();
+  assert.equal(diagnostics.recentRequests.length, 40);
+  assert.equal(diagnostics.recentRequests.every((row) => row.op === "asset-read" && row.state === "ready"), true);
+  assert.equal(diagnostics.recentRequests.every((row) => row.elapsedMs === 0 && !Object.hasOwn(row, "clock")), true);
+  const text = JSON.stringify(diagnostics);
+  for (const privateValue of [token, api.sent[0].requestId, "private-label", "private-result", "verified-session"])
+    assert.equal(text.includes(privateValue), false);
+});
+
 test("actual controllers isolate equal sequence numbers with separate cryptographic request epochs", async () => {
   const api = runtime(),
     first = api.controller(),
@@ -367,7 +384,7 @@ test("CSP Blob fallback closes a cached poster if the video transfer fails befor
   assert.equal(api.bitmaps[0].closed, 1);
 });
 
-test("loadMedia cancellation during poster decode releases both source and discarded poster", async () => {
+test("loadMedia cancellation during the early poster decode closes it without opening source media", async () => {
   const api = runtime(),
     controller = api.controller(),
     calls = [];
@@ -390,34 +407,38 @@ test("loadMedia cancellation during poster decode releases both source and disca
   assert.equal(api.videos.length, 0);
   assert.equal(
     calls.filter((call) => call.op === "asset-media-release").length,
-    1,
+    0,
   );
+  assert.equal(calls.filter((call) => call.op === "asset-open").length, 0);
   assert.equal(controller.assetPending.size, 0);
   assert.equal(api.timers.size, 0);
 });
 
-test("loadMedia cancellation before a late native descriptor releases it without a poster read or fallback", async () => {
+test("loadMedia cancellation after a missing poster releases a late native descriptor without fallback", async () => {
   const api = runtime(),
     controller = api.controller(),
     calls = [];
-  let finishOpen;
+  let finishOpen, notifyOpen;
+  const opened = new Promise((resolve) => { notifyOpen = resolve; });
   const late = new Promise((resolve) => {
     finishOpen = resolve;
   });
   controller.request = async (op, data) => {
     calls.push({ op, data });
-    if (op === "asset-open") return late;
+    if (op === "asset-poster-read") return { available: false };
+    if (op === "asset-open") { notifyOpen(); return late; }
     assert.equal(op, "asset-media-release");
     return { ok: true };
   };
   const load = controller.loadMedia(token);
   const rejected = assert.rejects(load, { name: "AbortError" });
+  await opened;
   controller.assetAbort.abort();
   finishOpen(descriptor());
   await rejected;
   assert.deepEqual(
     calls.map((call) => call.op),
-    ["asset-open", "asset-media-release"],
+    ["asset-poster-read", "asset-open", "asset-media-release"],
   );
   assert.equal(api.bitmaps.length, 0);
   assert.equal(api.videos.length, 0);

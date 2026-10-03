@@ -117,6 +117,7 @@ export const controlMessages = {
     cover: "영역 채우기",
     stretch: "늘이기",
     animatedImage: "GIF·영상 재생",
+    videoPlaybackRate: "동영상 재생 배속",
     play: "재생",
     poster: "첫 프레임으로 정지",
     iconSize: "아이콘 크기(px)",
@@ -249,6 +250,7 @@ export const controlMessages = {
     cover: "Fill area",
     stretch: "Stretch",
     animatedImage: "GIF / video playback",
+    videoPlaybackRate: "Video playback speed",
     play: "Play",
     poster: "Stop at first frame",
     iconSize: "Icon size (px)",
@@ -382,6 +384,7 @@ export const controlMessages = {
     cover: "領域を埋める",
     stretch: "引き伸ばす",
     animatedImage: "GIF・動画の再生",
+    videoPlaybackRate: "動画の再生速度",
     play: "再生",
     poster: "最初のフレームで停止",
     iconSize: "アイコンサイズ (px)",
@@ -512,6 +515,7 @@ export const controlMessages = {
     cover: "填充区域",
     stretch: "拉伸",
     animatedImage: "GIF / 视频播放",
+    videoPlaybackRate: "视频播放速度",
     play: "播放",
     poster: "停在第一帧",
     iconSize: "图标大小 (px)",
@@ -531,89 +535,152 @@ export const controlMessages = {
 
 Object.assign(controlMessages.ko, {
   runtimeWindowsTitle: "여러 창과 영상 재생",
-  runtimeWindowsHelp: "한 CoSkin이 여러 Codex 창에 연결됩니다. 최소화된 창의 영상은 멈추며, 재생 한도 안에서는 최근 사용한 창을 우선합니다.",
-  runtimeConnectedLimit: "최대 연결 창 수", runtimeConnectedHelp: "1~10개. 한도를 줄일 때 편집·미리보기·미저장 설정이 있는 창은 작업을 마친 뒤 연결을 해제합니다.",
-  runtimePlayingLimit: "동시에 영상을 재생할 창 수", runtimePlayingHelp: "나머지 연결된 창은 영상을 정지합니다. 높은 값은 CPU·GPU·메모리 사용량을 늘릴 수 있습니다.",
+  runtimeWindowsHelp:
+    "한 CoSkin이 여러 Codex 창에 연결됩니다. 최소화된 창의 영상은 멈추며, 재생 한도 안에서는 최근 사용한 창을 우선합니다.",
+  runtimeConnectedLimit: "최대 연결 창 수",
+  runtimeConnectedHelp:
+    "1~10개. 한도를 줄일 때 편집·미리보기·미저장 설정이 있는 창은 작업을 마친 뒤 연결을 해제합니다.",
+  runtimePlayingLimit: "동시에 영상을 재생할 창 수",
+  runtimePlayingHelp:
+    "나머지 연결된 창은 영상을 정지합니다. 높은 값은 CPU·GPU·메모리 사용량을 늘릴 수 있습니다.",
   runtimeWindowCount: "{count}개",
   runtimeStorageTitle: "테마 전체 보관 폴더",
-  runtimeStorageHelp: "모든 테마의 이미지와 영상을 한 폴더에 함께 보관합니다. 저장하면 기존 파일을 복사하고 확인한 뒤 새 폴더를 사용합니다. 원래 폴더의 파일은 남겨 둡니다.",
-  runtimeStorageCurrent: "현재 폴더: {path}", runtimeStorageUsed: "테마 파일 사용량: {size}",
-  runtimeStoragePath: "보관 폴더 경로", runtimeStorageChoose: "폴더 선택", runtimeStorageDefault: "기본 폴더 사용",
-  runtimeStorageUnavailable: "현재 보관 폴더에 연결할 수 없습니다. 폴더를 다시 연결한 뒤 변경해 주세요.",
-  runtimeStartup: "Windows 로그인 시 CoSkin 실행", runtimeStartupHelp: "트레이에서 대기하다 Codex가 켜지면 연결합니다. 설치된 CoSkin에서 설정할 수 있습니다.",
-  runtimeUpdateTitle: "GitHub 업데이트", runtimeInstallUpdate: "업데이트 설치",
+  runtimeStorageHelp:
+    "모든 테마의 이미지와 영상을 한 폴더에 함께 보관합니다. 저장하면 기존 파일을 복사하고 확인한 뒤 새 폴더를 사용합니다. 원래 폴더의 파일은 남겨 둡니다.",
+  runtimeStorageCurrent: "현재 폴더: {path}",
+  runtimeStorageUsed: "테마 파일 사용량: {size}",
+  runtimeStoragePath: "보관 폴더 경로",
+  runtimeStorageChoose: "폴더 선택",
+  runtimeStorageDefault: "기본 폴더 사용",
+  runtimeStorageUnavailable:
+    "현재 보관 폴더에 연결할 수 없습니다. 폴더를 다시 연결한 뒤 변경해 주세요.",
+  runtimeStartup: "Windows 로그인 시 CoSkin 실행",
+  runtimeStartupHelp:
+    "트레이에서 대기하다 Codex가 켜지면 연결합니다. 설치된 CoSkin에서 설정할 수 있습니다.",
+  runtimeUpdateTitle: "GitHub 업데이트",
+  runtimeInstallUpdate: "업데이트 설치",
   runtimeUpdateidle: "GitHub의 서명된 안정 버전을 확인합니다.",
-  runtimeUpdateunavailable: "업데이트를 확인할 수 없습니다. 설치된 CoSkin과 안정 배포 정보를 확인해 주세요.",
-  runtimeUpdatedisabled: "자동 업데이트가 꺼져 있습니다. 수동 확인은 가능합니다.",
+  runtimeUpdateunavailable:
+    "업데이트를 확인할 수 없습니다. 설치된 CoSkin과 안정 배포 정보를 확인해 주세요.",
+  runtimeUpdatedisabled:
+    "자동 업데이트가 꺼져 있습니다. 수동 확인은 가능합니다.",
   runtimeUpdatecurrent: "현재 버전이 최신입니다.",
   runtimeUpdateready: "CoSkin {version}을 설치할 수 있습니다.",
-  runtimeUpdatedeferred: "CoSkin {version}이 준비됐습니다. 편집·미리보기를 마치고 설정을 저장하면 설치됩니다.",
+  runtimeUpdatedeferred:
+    "CoSkin {version}이 준비됐습니다. 편집·미리보기를 마치고 설정을 저장하면 설치됩니다.",
   runtimeUpdateretrypending: "업데이트 서버 연결을 잠시 후 다시 확인합니다.",
-  runtimeUpdateupdating: "업데이트를 설치합니다. CoSkin이 다시 시작되고 테마와 Codex는 유지됩니다.",
+  runtimeUpdateupdating:
+    "업데이트를 설치합니다. CoSkin이 다시 시작되고 테마와 Codex는 유지됩니다.",
 });
 Object.assign(controlMessages.en, {
   runtimeWindowsTitle: "Windows and video playback",
-  runtimeWindowsHelp: "One CoSkin connects to multiple Codex windows. Videos pause in minimized windows; recently used windows have priority within the playback limit.",
-  runtimeConnectedLimit: "Maximum connected windows", runtimeConnectedHelp: "1–10. When reducing the limit, windows with editing, previews, or unsaved settings stay connected until that work is finished.",
-  runtimePlayingLimit: "Windows playing video at once", runtimePlayingHelp: "Videos pause in the other connected windows. Higher values can increase CPU, GPU, and memory use.",
+  runtimeWindowsHelp:
+    "One CoSkin connects to multiple Codex windows. Videos pause in minimized windows; recently used windows have priority within the playback limit.",
+  runtimeConnectedLimit: "Maximum connected windows",
+  runtimeConnectedHelp:
+    "1–10. When reducing the limit, windows with editing, previews, or unsaved settings stay connected until that work is finished.",
+  runtimePlayingLimit: "Windows playing video at once",
+  runtimePlayingHelp:
+    "Videos pause in the other connected windows. Higher values can increase CPU, GPU, and memory use.",
   runtimeWindowCount: "{count}",
   runtimeStorageTitle: "Folder for all themes",
-  runtimeStorageHelp: "Keep images and videos for every theme together in one folder. Saving copies and verifies the existing files before using the new folder. Files in the original folder are retained.",
-  runtimeStorageCurrent: "Current folder: {path}", runtimeStorageUsed: "Theme files used: {size}",
-  runtimeStoragePath: "Storage folder path", runtimeStorageChoose: "Choose folder", runtimeStorageDefault: "Use default folder",
-  runtimeStorageUnavailable: "The current storage folder is unavailable. Reconnect it before changing folders.",
-  runtimeStartup: "Start CoSkin at Windows sign-in", runtimeStartupHelp: "Wait in the tray and connect when Codex opens. Available for installed CoSkin.",
-  runtimeUpdateTitle: "GitHub updates", runtimeInstallUpdate: "Install update",
+  runtimeStorageHelp:
+    "Keep images and videos for every theme together in one folder. Saving copies and verifies the existing files before using the new folder. Files in the original folder are retained.",
+  runtimeStorageCurrent: "Current folder: {path}",
+  runtimeStorageUsed: "Theme files used: {size}",
+  runtimeStoragePath: "Storage folder path",
+  runtimeStorageChoose: "Choose folder",
+  runtimeStorageDefault: "Use default folder",
+  runtimeStorageUnavailable:
+    "The current storage folder is unavailable. Reconnect it before changing folders.",
+  runtimeStartup: "Start CoSkin at Windows sign-in",
+  runtimeStartupHelp:
+    "Wait in the tray and connect when Codex opens. Available for installed CoSkin.",
+  runtimeUpdateTitle: "GitHub updates",
+  runtimeInstallUpdate: "Install update",
   runtimeUpdateidle: "Check signed stable releases on GitHub.",
-  runtimeUpdateunavailable: "Updates are unavailable. Check your CoSkin installation and stable release information.",
-  runtimeUpdatedisabled: "Automatic updates are off. You can still check manually.",
+  runtimeUpdateunavailable:
+    "Updates are unavailable. Check your CoSkin installation and stable release information.",
+  runtimeUpdatedisabled:
+    "Automatic updates are off. You can still check manually.",
   runtimeUpdatecurrent: "You're up to date.",
   runtimeUpdateready: "CoSkin {version} is ready to install.",
-  runtimeUpdatedeferred: "CoSkin {version} is ready. Finish editing or previewing and save settings before installing.",
+  runtimeUpdatedeferred:
+    "CoSkin {version} is ready. Finish editing or previewing and save settings before installing.",
   runtimeUpdateretrypending: "The update server will be checked again shortly.",
-  runtimeUpdateupdating: "Installing the update. CoSkin will restart; themes and Codex stay intact.",
+  runtimeUpdateupdating:
+    "Installing the update. CoSkin will restart; themes and Codex stay intact.",
 });
 Object.assign(controlMessages.ja, {
   runtimeWindowsTitle: "複数ウィンドウと動画再生",
-  runtimeWindowsHelp: "1つのCoSkinが複数のCodexウィンドウに接続します。最小化したウィンドウの動画は停止し、再生上限内では最近使ったウィンドウを優先します。",
-  runtimeConnectedLimit: "接続ウィンドウ数の上限", runtimeConnectedHelp: "1～10。上限を減らす際、編集中・プレビュー中・未保存設定のあるウィンドウは作業終了まで接続を保ちます。",
-  runtimePlayingLimit: "同時に動画を再生する数", runtimePlayingHelp: "他の接続ウィンドウの動画は停止します。数を増やすとCPU・GPU・メモリ使用量が増える場合があります。",
+  runtimeWindowsHelp:
+    "1つのCoSkinが複数のCodexウィンドウに接続します。最小化したウィンドウの動画は停止し、再生上限内では最近使ったウィンドウを優先します。",
+  runtimeConnectedLimit: "接続ウィンドウ数の上限",
+  runtimeConnectedHelp:
+    "1～10。上限を減らす際、編集中・プレビュー中・未保存設定のあるウィンドウは作業終了まで接続を保ちます。",
+  runtimePlayingLimit: "同時に動画を再生する数",
+  runtimePlayingHelp:
+    "他の接続ウィンドウの動画は停止します。数を増やすとCPU・GPU・メモリ使用量が増える場合があります。",
   runtimeWindowCount: "{count}個",
   runtimeStorageTitle: "すべてのテーマの保存フォルダー",
-  runtimeStorageHelp: "すべてのテーマの画像と動画を1つのフォルダーに保存します。保存時に既存ファイルをコピーして確認した後、新しいフォルダーを使用します。元のフォルダーのファイルは保持します。",
-  runtimeStorageCurrent: "現在のフォルダー: {path}", runtimeStorageUsed: "テーマファイル使用量: {size}",
-  runtimeStoragePath: "保存フォルダーのパス", runtimeStorageChoose: "フォルダーを選択", runtimeStorageDefault: "既定のフォルダーを使用",
-  runtimeStorageUnavailable: "現在の保存フォルダーに接続できません。再接続してから変更してください。",
-  runtimeStartup: "Windowsログイン時にCoSkinを起動", runtimeStartupHelp: "トレイで待機し、Codex起動時に接続します。インストール済みCoSkinで設定できます。",
-  runtimeUpdateTitle: "GitHub更新", runtimeInstallUpdate: "更新をインストール",
+  runtimeStorageHelp:
+    "すべてのテーマの画像と動画を1つのフォルダーに保存します。保存時に既存ファイルをコピーして確認した後、新しいフォルダーを使用します。元のフォルダーのファイルは保持します。",
+  runtimeStorageCurrent: "現在のフォルダー: {path}",
+  runtimeStorageUsed: "テーマファイル使用量: {size}",
+  runtimeStoragePath: "保存フォルダーのパス",
+  runtimeStorageChoose: "フォルダーを選択",
+  runtimeStorageDefault: "既定のフォルダーを使用",
+  runtimeStorageUnavailable:
+    "現在の保存フォルダーに接続できません。再接続してから変更してください。",
+  runtimeStartup: "Windowsログイン時にCoSkinを起動",
+  runtimeStartupHelp:
+    "トレイで待機し、Codex起動時に接続します。インストール済みCoSkinで設定できます。",
+  runtimeUpdateTitle: "GitHub更新",
+  runtimeInstallUpdate: "更新をインストール",
   runtimeUpdateidle: "GitHubの署名済み安定版を確認します。",
-  runtimeUpdateunavailable: "更新を確認できません。CoSkinのインストールと安定版の配信情報をご確認ください。",
+  runtimeUpdateunavailable:
+    "更新を確認できません。CoSkinのインストールと安定版の配信情報をご確認ください。",
   runtimeUpdatedisabled: "自動更新は無効です。手動で確認できます。",
   runtimeUpdatecurrent: "最新バージョンです。",
   runtimeUpdateready: "CoSkin {version}をインストールできます。",
-  runtimeUpdatedeferred: "CoSkin {version}を用意しました。編集・プレビューを終え、設定を保存すると更新できます。",
+  runtimeUpdatedeferred:
+    "CoSkin {version}を用意しました。編集・プレビューを終え、設定を保存すると更新できます。",
   runtimeUpdateretrypending: "しばらくして更新サーバーを再確認します。",
-  runtimeUpdateupdating: "更新をインストール中です。CoSkinは再起動し、テーマとCodexは保持されます。",
+  runtimeUpdateupdating:
+    "更新をインストール中です。CoSkinは再起動し、テーマとCodexは保持されます。",
 });
-Object.assign(controlMessages['zh-CN'], {
+Object.assign(controlMessages["zh-CN"], {
   runtimeWindowsTitle: "多窗口与视频播放",
-  runtimeWindowsHelp: "一个CoSkin连接多个Codex窗口。最小化窗口的视频会暂停；播放上限内优先最近使用的窗口。",
-  runtimeConnectedLimit: "最多连接的窗口数", runtimeConnectedHelp: "1–10。降低上限时，正在编辑、预览或有未保存设置的窗口会保持连接，直到完成操作。",
-  runtimePlayingLimit: "同时播放视频的窗口数", runtimePlayingHelp: "其他已连接窗口的视频会暂停。较高数值可能增加CPU、GPU和内存用量。",
+  runtimeWindowsHelp:
+    "一个CoSkin连接多个Codex窗口。最小化窗口的视频会暂停；播放上限内优先最近使用的窗口。",
+  runtimeConnectedLimit: "最多连接的窗口数",
+  runtimeConnectedHelp:
+    "1–10。降低上限时，正在编辑、预览或有未保存设置的窗口会保持连接，直到完成操作。",
+  runtimePlayingLimit: "同时播放视频的窗口数",
+  runtimePlayingHelp:
+    "其他已连接窗口的视频会暂停。较高数值可能增加CPU、GPU和内存用量。",
   runtimeWindowCount: "{count}个",
   runtimeStorageTitle: "所有主题的存储文件夹",
-  runtimeStorageHelp: "将所有主题的图片和视频保存在同一个文件夹中。保存时会先复制并验证现有文件，再使用新文件夹。原文件夹中的文件将保留。",
-  runtimeStorageCurrent: "当前文件夹：{path}", runtimeStorageUsed: "主题文件占用：{size}",
-  runtimeStoragePath: "存储文件夹路径", runtimeStorageChoose: "选择文件夹", runtimeStorageDefault: "使用默认文件夹",
+  runtimeStorageHelp:
+    "将所有主题的图片和视频保存在同一个文件夹中。保存时会先复制并验证现有文件，再使用新文件夹。原文件夹中的文件将保留。",
+  runtimeStorageCurrent: "当前文件夹：{path}",
+  runtimeStorageUsed: "主题文件占用：{size}",
+  runtimeStoragePath: "存储文件夹路径",
+  runtimeStorageChoose: "选择文件夹",
+  runtimeStorageDefault: "使用默认文件夹",
   runtimeStorageUnavailable: "当前存储文件夹不可用。请重新连接后再更改。",
-  runtimeStartup: "Windows登录时启动CoSkin", runtimeStartupHelp: "在托盘等待，并在Codex启动后连接。仅限已安装的CoSkin。",
-  runtimeUpdateTitle: "GitHub更新", runtimeInstallUpdate: "安装更新",
+  runtimeStartup: "Windows登录时启动CoSkin",
+  runtimeStartupHelp: "在托盘等待，并在Codex启动后连接。仅限已安装的CoSkin。",
+  runtimeUpdateTitle: "GitHub更新",
+  runtimeInstallUpdate: "安装更新",
   runtimeUpdateidle: "检查GitHub上的签名稳定版本。",
-  runtimeUpdateunavailable: "无法检查更新。请确认CoSkin安装和稳定版本发布信息。",
+  runtimeUpdateunavailable:
+    "无法检查更新。请确认CoSkin安装和稳定版本发布信息。",
   runtimeUpdatedisabled: "自动更新已关闭，仍可手动检查。",
   runtimeUpdatecurrent: "已是最新版本。",
   runtimeUpdateready: "CoSkin {version}可供安装。",
-  runtimeUpdatedeferred: "CoSkin {version}已就绪。请结束编辑或预览并保存设置后再安装。",
+  runtimeUpdatedeferred:
+    "CoSkin {version}已就绪。请结束编辑或预览并保存设置后再安装。",
   runtimeUpdateretrypending: "稍后将重新检查更新服务器。",
   runtimeUpdateupdating: "正在安装更新。CoSkin将重启，主题和Codex会保留。",
 });

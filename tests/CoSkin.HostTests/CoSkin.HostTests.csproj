@@ -16,6 +16,7 @@
  <ItemGroup><Compile Include="../../src/CoSkin.Loader/NativeTray.cs;../../src/CoSkin.Loader/ResidentMessages.cs" Link="%(Filename)%(Extension)" /></ItemGroup>
  <ItemGroup><Compile Include="../../src/CoSkin.Loader/ExternalImportOptions.cs" Link="ExternalImportOptions.cs" /></ItemGroup>
  <ItemGroup><Compile Include="../../src/CoSkin.Loader/RendererRefresh.cs" Link="RendererRefresh.cs" /></ItemGroup>
+ <ItemGroup><Compile Include="../../src/CoSkin.Loader/BackgroundExport.cs" Link="BackgroundExport.cs" /></ItemGroup>
 </Project>
 
 

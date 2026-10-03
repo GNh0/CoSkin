@@ -18,6 +18,9 @@ try
     Reject(() => ExternalImportOptions.ShowLibrary(new JsonObject { ["op"] = "open", ["showLibrary"] = false }), "가져오기가 아닌 요청에 배경 등록 옵션 사용 거절");
     Reject(() => ExternalImportOptions.ShowLibrary(new JsonObject { ["op"] = "import", ["showLibrary"] = null }), "null 표시 옵션 거절");
     Reject(() => ExternalImportOptions.ShowLibrary(new JsonObject { ["op"] = "import", ["unexpected"] = true }), "외부 명령의 미지원 필드 거절 유지");
+    Check(ExternalImportOptions.ShowLibrary(new JsonObject { ["op"] = "health", ["previewDiagnostics"] = true }), "미리보기 진단은 화면 이동 없는 상태 읽기에서만 허용");
+    Reject(() => ExternalImportOptions.ShowLibrary(new JsonObject { ["op"] = "import", ["previewDiagnostics"] = true }), "진단 옵션으로 테마 가져오기 동작을 변경하지 않음");
+    Reject(() => ExternalImportOptions.ShowLibrary(new JsonObject { ["op"] = "health", ["previewDiagnostics"] = "true" }), "미리보기 진단 상태 읽기 형식 경계 유지");
     WindowCapacityTests.Run(Check);
     MediaMetadataTests.Run(Check);
     await RendererRepliesTests.Run(Check);
@@ -36,6 +39,18 @@ try
     if (args.Contains("--library-media-only", StringComparer.Ordinal))
     {
         await LibraryMediaTests.Run(Check, scratch);
+        Console.WriteLine($"{passed} tests passed");
+        return;
+    }
+    if (args.Contains("--background-export-only", StringComparer.Ordinal))
+    {
+        await BackgroundExportTests.Run(Check, scratch);
+        Console.WriteLine($"{passed} tests passed");
+        return;
+    }
+    if (args.Contains("--theme-export-only", StringComparer.Ordinal))
+    {
+        await ThemeExportTests.Run(Check, scratch);
         Console.WriteLine($"{passed} tests passed");
         return;
     }
@@ -866,6 +881,7 @@ try
         }
     }
     var output = await store.Handle(new JsonObject { ["op"] = "export", ["id"] = id, ["revision"] = 1 }, Validate, Decode);
+    await ThemeExportTests.Run(Check, scratch);
     var package = Package.Read(Convert.FromBase64String(output["data"]!.GetValue<string>()));
     Check(!package.Files.Keys.Any(key => key.Contains("organization")) && package.Manifest["organization"] is null, "개인 분류 정보는 내보낸 테마에 포함하지 않음");
     Check(package.Files["assets/search.png"].SequenceEqual(assets["assets/search.png"]), "내보내기 자산 바이트 보존");
@@ -941,6 +957,7 @@ try
     await PipeTransportTests.Run(Check, scratch);
     await TransferOwnerTests.Run(Check, scratch);
     await LibraryMediaTests.Run(Check, scratch);
+    await BackgroundExportTests.Run(Check, scratch);
     TrayIconRecoveryTests.Run(Check);
     Console.WriteLine($"{passed} tests passed");
 }

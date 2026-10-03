@@ -4,7 +4,7 @@ import { downloadBytes, downloadBlob, throwIfAborted } from "./file-transfer.js"
 import { resolve } from "../core/engine.ts";
 import { applyThemeTypography } from "./theme-typography.js";
 import { t } from "./messages.js";
-import { readPoster, storePoster } from "./poster-cache.js";
+import { readPoster, storePosterLater } from "./poster-cache.js";
 import { openAssetSource, decodeAssetSource } from "./media-source.js";
 /** Draws a code-owned sample workspace. No current Codex content is read. */
 export async function drawPreviewScene(context, controller, document, signal) {
@@ -70,7 +70,7 @@ export async function drawPreviewScene(context, controller, document, signal) {
             if (isVideoMime(source.mime)) {
               videos.push(media);
               images.set(hash, media.frames[0].image);
-              await storePoster(controller, hash, media.frames[0].image, signal);
+              storePosterLater(controller, hash, media.frames[0].image, signal);
             } else {
               // Only the first image is used by the static gallery card.
               images.set(hash, media.frames[0].image);
@@ -92,7 +92,7 @@ export async function drawPreviewScene(context, controller, document, signal) {
             const media = await decodeMedia(bytes, mime);
             videos.push(media);
             images.set(hash, media.frames[0].image);
-            await storePoster(controller, hash, media.frames[0].image, signal);
+            storePosterLater(controller, hash, media.frames[0].image, signal);
           } else
             images.set(
               hash,

@@ -18,6 +18,7 @@ import {
 } from "./custom-effects.ts";
 import type { RuntimeEffect } from "./custom-effects.ts";
 import { MEDIA_LIMITS } from "./media-limits.js";
+import { navigationDestinations } from "./navigation-targets.js";
 // Pure contract shared by the renderer and executable tests. No CSS or code comes from themes.
 export const STATES: StateName[] = [
   "base",
@@ -32,11 +33,7 @@ export const TARGETS = [
   "app.background",
   "navigation.bar",
   "navigation.search",
-  "navigation.home",
-  "navigation.automations",
-  "navigation.library",
-  "navigation.images",
-  "navigation.plugins",
+  ...navigationDestinations.map(([, target]) => target),
   "navigation.new-thread",
   "sidebar.surface",
   "sidebar.project-row",
@@ -415,6 +412,7 @@ export function validateTheme(
                 "position",
                 "blurPx",
                 "imagePlayback",
+                "videoPlaybackRate",
               ],
               decoration: [
                 "image",
@@ -422,6 +420,7 @@ export function validateTheme(
                 "fit",
                 "position",
                 "imagePlayback",
+                "videoPlaybackRate",
               ],
               border: ["color", "opacity", "widthPx", "radiusPx", "glow"],
               icon: [
@@ -431,6 +430,7 @@ export function validateTheme(
                 "fit",
                 "paddingPx",
                 "imagePlayback",
+                "videoPlaybackRate",
               ],
               text: ["color", "opacity", "weight", "autoColor", "family"],
             }[layer];
@@ -456,6 +456,7 @@ export function validateTheme(
               )
                 fail("자산 참조 오류");
               else if (key === "opacity") num(val, 0, 1);
+              else if (key === "videoPlaybackRate") num(val, 0.1, 4);
               else if (
                 [
                   "blurPx",

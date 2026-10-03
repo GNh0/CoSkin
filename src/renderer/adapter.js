@@ -1,5 +1,6 @@
 import { nativeControlNames } from "./adapter-labels.js";
 import { discoverPaintSources } from "./adapter-paint.js";
+import { navigationDestinations } from "../core/navigation-targets.js";
 export function visibleMainSurfaces(document) {
   return [
     ...document.querySelectorAll(
@@ -44,11 +45,7 @@ export class CodexAdapter {
       "summary.surface",
       "sidebar.surface",
       "navigation.bar",
-      "navigation.home",
-      "navigation.automations",
-      "navigation.library",
-      "navigation.images",
-      "navigation.plugins",
+      ...navigationDestinations.map(([, target]) => target),
       "navigation.search",
       "navigation.new-thread",
       "sidebar.thread-row",
@@ -118,19 +115,14 @@ export class CodexAdapter {
     });
     this.navigation = candidates.length === 1 ? candidates[0] : null;
     add("navigation.bar", this.navigation);
-    const homes = d.querySelectorAll(
-      'button[data-sidebar-destination="builtin:home"]',
-    );
-    if (homes.length === 1) add("navigation.home", homes[0]);
-    for (const [destination, target] of [
-      ["automations", "navigation.automations"],
-      ["library", "navigation.library"],
-      ["images", "navigation.images"],
-      ["customize", "navigation.plugins"],
-    ]) {
-      const buttons = d.querySelectorAll(
-        `button[data-sidebar-destination="builtin:${destination}"]`,
-      );
+    for (const [destination, target] of navigationDestinations) {
+      const buttons = [...d.querySelectorAll(
+        `button[data-sidebar-destination="builtin:${destination}"],[role="menuitem"][data-sidebar-destination="builtin:${destination}"]`,
+      )].filter((element) => {
+        const bounds = element.getBoundingClientRect();
+        return bounds.width > 0 && bounds.height > 0 &&
+          !element.closest('[hidden],[aria-hidden="true"],[data-coskin-ui]');
+      });
       if (buttons.length === 1) add(target, buttons[0]);
     }
     const named = (names) =>
