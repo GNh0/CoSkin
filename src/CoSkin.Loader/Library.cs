@@ -387,10 +387,18 @@ internal sealed class Library : IDisposable
                         }
                         else
                         {
+                            if (request.ContainsKey("metadata"))
+                                throw new InvalidDataException("분류 복사는 새 테마를 만들 때만 사용할 수 있습니다.");
                             e = themes[id]?.AsObject() ?? throw new InvalidDataException("테마를 찾지 못했습니다.");
                             if (request["baseRevision"]?.GetValue<int>() != e["revision"]!.GetValue<int>())
                                 throw new InvalidDataException("다른 창에서 저장했습니다. 새 리비전을 읽거나 복제본을 저장하세요.");
                             rev = e["revision"]!.GetValue<int>() + 1;
+                        }
+                        if (op == "create" && request.ContainsKey("metadata"))
+                        {
+                            themes[id] = e;
+                            ThemeOrganization.WriteTheme(state, id, request["metadata"]?.AsObject()
+                                ?? throw new InvalidDataException("분류 정보가 필요합니다."));
                         }
                         Write($"revision-{e["key"]}-{rev}.json", doc);
                         e["revision"] = rev;

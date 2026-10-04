@@ -743,6 +743,26 @@ try
         Check(organized["organization"]?["themes"]?[id]?["favorite"]?.GetValue<bool>() == true && organized["organization"]?["themes"]?[id]?["tags"]?.AsArray().Count == 2, "즐겨찾기·그룹·태그는 정규화 후 재시작에도 보존");
         Check(JsonNode.DeepEquals(classificationBefore["bindings"], organized["bindings"]) && JsonNode.DeepEquals(classificationBefore["themes"], organized["themes"]), "분류 저장은 적용 바인딩과 테마 리비전을 변경하지 않음");
     }
+    var beforeDuplicate = await store.Handle(new JsonObject { ["op"] = "list" }, Validate, Decode);
+    var sourceMetadata = beforeDuplicate["organization"]!["themes"]![id]!.DeepClone();
+    var duplicateDocument = document.DeepClone().AsObject();
+    var duplicateId = "local." + Guid.NewGuid().ToString("N");
+    duplicateDocument["manifest"]!["id"] = duplicateId;
+    await store.Handle(new JsonObject { ["op"] = "create", ["document"] = duplicateDocument.DeepClone(), ["metadata"] = sourceMetadata.DeepClone() }, Validate, Decode);
+    using (var reopenedDuplicate = new Library(store.StorePath))
+    {
+        var afterDuplicate = await reopenedDuplicate.Handle(new JsonObject { ["op"] = "list" }, Validate, Decode);
+        var storedDuplicate = await reopenedDuplicate.Handle(new JsonObject { ["op"] = "read", ["id"] = duplicateId }, Validate, Decode);
+        Check(JsonNode.DeepEquals(storedDuplicate, duplicateDocument), "복제의 배경·아이콘·효과·프로필·자산을 재시작 후에도 그대로 읽음");
+        Check(JsonNode.DeepEquals(afterDuplicate["organization"]!["themes"]![duplicateId], sourceMetadata), "복제 폴더·태그·즐겨찾기는 테마 생성과 함께 저장");
+        Check(JsonNode.DeepEquals(afterDuplicate["bindings"], beforeDuplicate["bindings"]) && JsonNode.DeepEquals(afterDuplicate["themes"]![id], beforeDuplicate["themes"]![id]) && JsonNode.DeepEquals(afterDuplicate["organization"]!["themes"]![id], sourceMetadata), "복제는 원본 리비전·분류·적용 바인딩을 변경하지 않음");
+    }
+    await store.Handle(new JsonObject { ["op"] = "delete", ["id"] = duplicateId }, Validate, Decode);
+    var beforeInvalidDuplicate = File.ReadAllBytes(Path.Combine(store.StorePath, "library.json"));
+    var invalidDuplicate = duplicateDocument.DeepClone().AsObject();
+    invalidDuplicate["manifest"]!["id"] = "local." + Guid.NewGuid().ToString("N");
+    try { await store.Handle(new JsonObject { ["op"] = "create", ["document"] = invalidDuplicate, ["metadata"] = new JsonObject { ["groupId"] = "missing" } }, Validate, Decode); throw new Exception("복제의 잘못된 분류 승인"); }
+    catch (InvalidDataException) { Check(File.ReadAllBytes(Path.Combine(store.StorePath, "library.json")).SequenceEqual(beforeInvalidDuplicate), "잘못된 분류의 복제는 테마·분류 모두 저장하지 않음"); }
     try { await store.Handle(new JsonObject { ["op"] = "organization-write", ["id"] = id, ["metadata"] = new JsonObject { ["groupId"] = "missing" } }, Validate, Decode); throw new Exception("그룹 오류 승인"); }
     catch (InvalidDataException) { Check(true, "없는 그룹 지정 거절"); }
     await store.Handle(new JsonObject { ["op"] = "group-write", ["groupId"] = groupId, ["name"] = "애니메이션" }, Validate, Decode);

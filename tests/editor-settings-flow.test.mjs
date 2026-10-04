@@ -145,6 +145,123 @@ const button = (root, text) =>
     (element) => element.tag === "button" && element.textContent === text,
   );
 
+test("theme editing starts on the existing whole background instead of a stale row or body selection", () => {
+  const { panel } = setup({
+    target: "main.surface", targetItem: "old-item", pickedItem: "old-item",
+    selectedLayer: "icon", state: "hover", targetTitle: "Old row",
+    host: { hidden: true, dataset: {}, style: {} },
+    editBar: { hidden: true },
+    closePage() {},
+    modeLayout: { update() {} },
+    session: { edit() {} },
+  });
+  panel.doc.theme.profiles[0].rules = [
+    { id: "whole", target: "app.background", states: { base: { style: { background: { image: "assets/old.webm" } } } } },
+    { id: "glass", target: "main.surface", states: { base: { style: { background: { color: "#222222", opacity: 0.25 } } } } },
+  ];
+  const before = structuredClone(panel.doc);
+  panel.enterEdit();
+  assert.equal(panel.target, "app.background");
+  assert.equal(panel.state, "base");
+  assert.equal(panel.selectedLayer, null);
+  assert.equal(panel.targetItem, null);
+  assert.equal(panel.pickedItem, null);
+  assert.equal(panel.targetTitle, "");
+  assert.equal(panel.host.hidden, false);
+  assert.deepEqual(panel.doc, before);
+  assert.strictEqual(panel.c.preview.document, panel.doc);
+});
+
+test("duplicate preserves all profiles, local exceptions, assets and organization but never mutates the source or applies itself", async () => {
+  const { panel } = setup();
+  panel.doc.manifest.id = panel.selected;
+  panel.doc.theme.fontFamily = "Arial";
+  panel.doc.theme.autoTextColor = true;
+  panel.doc.theme.profiles.push({ id: "second", name: "Second", rules: [] });
+  panel.doc.theme.profiles[0].rules = [{ id: "icons", target: "sidebar.thread-row", states: {
+    base: { style: { icon: { image: "assets/icon.png", fit: "contain", opacity: 0.7 }, text: { color: "#abcdef" }, border: { color: "#123456" } } },
+    hover: { motion: { mode: "effects", events: { enter: [{ id: "pulse", effect: "icon.pulse", effectVersion: 1, layer: "icon" }] } } },
+  } }];
+  panel.doc.assets = { "assets/icon.png": "a".repeat(64) };
+  panel.doc.localOverrides = { default: [{ id: "one", target: "sidebar.thread-row", item: "thread-1", states: { base: { style: { text: { color: "#ffffff" } } } } }] };
+  const organization = { groupId: "character", tags: ["WebM", "My tag"], favorite: true };
+  panel.c.summary.organization = { themes: { [panel.selected]: organization } };
+  const source = panel.doc;
+  const before = structuredClone(source), metadataBefore = structuredClone(organization);
+  const operations = [];
+  panel.c.update = async (op, data) => { operations.push({ op, ...structuredClone(data) }); };
+  panel.load = async (id) => { panel.selected = id; panel.doc = structuredClone(operations[0].document); };
+  await panel.duplicate();
+  assert.equal(operations.length, 1);
+  assert.equal(operations[0].op, "create");
+  assert.match(panel.selected, /^local\./);
+  assert.notEqual(panel.selected, before.manifest.id);
+  assert.deepEqual(operations[0].metadata, metadataBefore);
+  assert.deepEqual(panel.doc.theme, before.theme);
+  assert.deepEqual(panel.doc.assets, before.assets);
+  assert.deepEqual(panel.doc.localOverrides, before.localOverrides);
+  assert.deepEqual(source, before);
+  assert.deepEqual(organization, metadataBefore);
+  assert.equal(before.manifest.name, "Original");
+  assert.equal(panel.c.summary.bindings.global.id, "applied.other");
+  panel.doc.theme.profiles[0].rules[0].states.base.style.icon.image = "assets/new.png";
+  assert.deepEqual(source, before);
+  assert.equal(before.theme.profiles[0].rules[0].states.base.style.icon.image, "assets/icon.png");
+});
+
+test("the target picker clears stale row/state/layer selection without editing any theme data", () => {
+  const { panel } = setup({ target: "sidebar.thread-row", targetItem: "thread-1", pickedItem: "thread-1", selectedLayer: "icon" });
+  const before = structuredClone(panel.doc);
+  const root = new Element("section");
+  // This test does not exercise the separate row-scope form.
+  panel.target = "main.surface";
+  editorContext(panel, root);
+  const target = all(root).find((e) => e.tag === "select" && e.children.some((option) => option.attributes.value === "app.background"));
+  assert.ok(target);
+  target.value = "app.background";
+  target.onchange();
+  assert.equal(panel.target, "app.background");
+  assert.equal(panel.selectedLayer, null);
+  assert.equal(panel.targetItem, null);
+  assert.equal(panel.state, "base");
+  assert.deepEqual(panel.doc, before);
+  assert.equal(panel.dirty, false);
+});
+
+for (const [target, layer] of [["app.background", "background"], ["navigation.home", "icon"], ["main.surface", "decoration"]]) {
+  test(`replacing a cloned ${layer} on ${target} changes only that layer and preserves the other styles, states and source`, async () => {
+    const { panel } = setup({ target, selectedLayer: layer, state: "base" });
+    const old = "assets/old.png", hash = "a".repeat(64), replacementHash = "b".repeat(64);
+    panel.doc.assets = { [old]: hash };
+    panel.doc.theme.profiles[0].rules = [
+      { id: "whole", target: "app.background", states: { base: { style: { background: { image: old, fit: "cover", opacity: 0.9 } } } } },
+      { id: "main", target: "main.surface", states: { base: { style: { background: { color: "#222222", opacity: 0.25 }, decoration: { image: old, fit: "contain" }, text: { color: "#ffffff" } } } } },
+      { id: "home", target: "navigation.home", states: { base: { style: { icon: { image: old, fit: "contain", sizePx: 24 }, border: { color: "#abcdef", widthPx: 1 } }, motion: { mode: "none" } }, hover: { style: { icon: { opacity: 0.5 } } } } },
+    ];
+    const source = panel.doc;
+    panel.doc = structuredClone(source);
+    const before = structuredClone(panel.doc);
+    panel.c.loadMedia = async () => new Promise(() => {});
+    panel.c.request = async (op) => op === "transfer-begin" ? { token: "fixture", chunkBytes: 24576 } : op === "asset-write" ? { hash: replacementHash, extension: ".png", mime: "image/png" } : {};
+    const root = new Element("section");
+    editorContext(panel, root);
+    const input = all(root).find((e) => e.tag === "input" && e.attributes.type === "file");
+    input.files = [new Blob([new Uint8Array([1, 2, 3])], { type: "image/png" })];
+    await input.onchange();
+    await panel.stopDraft();
+    const expected = structuredClone(before);
+    expected.assets[`assets/${replacementHash}.png`] = replacementHash;
+    const style = expected.theme.profiles[0].rules.find((r) => r.target === target).states.base.style[layer];
+    style.image = `assets/${replacementHash}.png`;
+    style.fit = "contain";
+    // Capability declarations may be filled for this minimal fixture.
+    expected.manifest.requirements = panel.doc.manifest.requirements;
+    assert.deepEqual(panel.doc, expected);
+    assert.deepEqual(source, before);
+    assert.equal(panel.c.summary.bindings.global.id, "applied.other");
+  });
+}
+
 test("editor tabs support keyboard wrapping and keep document and scope while changing the active section", () => {
   const { panel } = setup();
   const original = panel.doc;

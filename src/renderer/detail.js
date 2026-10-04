@@ -98,13 +98,7 @@ export function detailPage(panel, section) {
                 }),
               ]
             : []),
-          panel.button(t("duplicate"), async () => {
-            const doc = structuredClone(panel.doc);
-            doc.manifest.id = "local." + crypto.randomUUID();
-            doc.manifest.name += " " + t("duplicate");
-            await panel.c.update("create", { document: doc });
-            await panel.load(doc.manifest.id);
-          }),
+          panel.button(t("duplicate"), () => panel.duplicate()),
           Object.assign(
             panel.button(
               t("delete"),

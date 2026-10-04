@@ -4,13 +4,13 @@ import { typographyControls } from "./typography-controls.js";
 import { editorChrome, inspectorPreview } from "./editor-chrome.js";
 import { t } from "./messages.js";
 import { h, icon } from "./components.js";
-import { text, layerLabels } from "./strings.js";
+import { text, layerLabels, targetLabels } from "./strings.js";
 import { STATES } from "../core/engine.ts";
 import { requireEngineVersion } from "../core/engine-version.ts";
 import { MEDIA_LIMITS, isVideoMime } from "../core/media-limits.js";
 import { effectEditor } from "./effects-editor.js";
 import { effectPresets } from "./effect-presets.js";
-import { editorState } from "./editor-model.js";
+import { editorState, defaultEditorLayer } from "./editor-model.js";
 import { motionPolicyUi } from "./motion-policy-ui.js";
 import { targetScopeUi } from "./target-scope-ui.js";
 import { displayConditionUi } from "./display-condition-ui.js";
@@ -39,7 +39,25 @@ export function editorContext(panel, inspectorRoot) {
       ])
     : null;
   const selectors = h("div", { class: "inspector-selectors" });
-  if (panel.activeSection !== "animation") body.append(selectors);
+  body.append(selectors);
+  const target = h("select", { "aria-label": t("control.target") });
+  const supported = new Set([
+    ...(panel.c.adapter.supportedTargets || Object.keys(targetLabels)),
+    ...panel.doc.theme.profiles.find((p) => p.id === panel.profile).rules.map((r) => r.target),
+    panel.target,
+  ]);
+  for (const value of supported)
+    target.append(h("option", { value, text: targetLabels[value] || value }));
+  target.value = panel.target;
+  target.disabled = !!(panel.busy || panel.c.externalApplying);
+  target.onchange = () => {
+    if (panel.busy || panel.c.externalApplying || target.value === panel.target) return;
+    panel.selectTarget(target.value);
+    panel.render();
+  };
+  selectors.append(h("div", { class: "control-field" }, [
+    h("label", { text: t("control.target") }), target,
+  ]));
   const state = h("select", { "aria-label": t("control.displayCondition") });
   const labels = [
     t("control.alwaysShow"),
@@ -73,9 +91,7 @@ export function editorContext(panel, inspectorRoot) {
       panel.selectedLayer ||
       (panel.activeSection === "icon"
         ? "icon"
-        : panel.target.startsWith("navigation.")
-          ? "icon"
-          : "background");
+        : defaultEditorLayer(panel.target));
     layers.onchange = () => {
       panel.selectedLayer = layers.value;
       panel.render();
@@ -101,9 +117,7 @@ export function editorContext(panel, inspectorRoot) {
       panel.selectedLayer ||
       (panel.activeSection === "icon"
         ? "icon"
-        : panel.target.startsWith("navigation.")
-          ? "icon"
-          : "background");
+        : defaultEditorLayer(panel.target));
     if (layer !== chosen) continue;
     const current = editorState(panel).style?.[layer] || {};
     if (layer === "text") {

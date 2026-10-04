@@ -7,6 +7,7 @@ import { adoptUiStyles } from "./ui-styles.js";
 import { UiSession } from "../core/ui-session.ts";
 import { t } from "./messages.js";
 import { editorContext } from "./editor-context.js";
+import { initialEditorTarget } from "./editor-model.js";
 import { galleryPage } from "./gallery.js";
 import { detailPage } from "./detail.js";
 import { backgroundDownloadsPage } from "./background-downloads.js";
@@ -148,8 +149,19 @@ export class Panel {
     this.modeLayout.update(true);
     this.editBar.hidden = false;
     this.activeSection = "image";
+    this.selectTarget(initialEditorTarget(this.doc, this.profile));
     this.host.dataset.mode = "editor";
+    Object.assign(this.host.style, { left: "auto", right: "16px", top: "112px" });
+    this.host.hidden = false;
     this.preview();
+    this.render();
+  }
+  selectTarget(target) {
+    this.target = target;
+    Object.assign(this, defaultTargetSelection(target, null));
+    this.targetTitle = "";
+    this.selectedLayer = null;
+    this.state = "base";
   }
   startPreview() {
     const started = performance.now();
@@ -348,6 +360,17 @@ export class Panel {
     this.session.finish();
     this.detail = true;
     this.modeLayout.update(false);
+  }
+  async duplicate() {
+    const doc = structuredClone(this.doc);
+    const metadata = this.c.summary.organization?.themes[this.selected];
+    doc.manifest.id = "local." + crypto.randomUUID();
+    doc.manifest.name += " " + t("duplicate");
+    await this.c.update("create", {
+      document: doc,
+      ...(metadata ? { metadata: structuredClone(metadata) } : {}),
+    });
+    await this.load(doc.manifest.id);
   }
   change(fn, options = {}) {
     const previous = structuredClone(this.doc);
