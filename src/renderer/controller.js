@@ -619,6 +619,7 @@ export class Controller {
       recentRenders: (this.renderTimings || []).map((row) => ({ ...row })),
       lastPreviewAction: this.lastPreviewAction ? { ...this.lastPreviewAction } : null,
       lastBackgroundToggle: this.backgroundView?.lastToggle ? { ...this.backgroundView.lastToggle } : null,
+      backgroundView: this.backgroundView?.diagnostics() ?? null,
     };
   }
   renderMediaTargets(hash) {

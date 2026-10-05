@@ -150,6 +150,7 @@ function fixture() {
     display: element.display || "flex",
     flexDirection: "row",
     visibility: element.visibility || "visible",
+    opacity: element.style.getPropertyValue("opacity") || "1",
     webkitAppRegion: element.region || "none",
   });
   const header = doc.createElement("header");
@@ -250,6 +251,37 @@ test("background-only keeps native controls and reuses the player; Esc restores 
   assert.equal(f.doc.activeElement, f.input);
   assert.equal(f.c.renderCount, 1);
   assert.equal(f.player.viewportTop, 40);
+  f.view.dispose();
+});
+test("embedded browser visibility overrides cannot escape background-only; restore preserves the same guest and host styles", () => {
+  const f = fixture();
+  const portal = f.doc.createElement("div"), host = f.doc.createElement("div"), guest = f.doc.createElement("webview");
+  portal.setAttribute("data-embedded-frame-host-root", "true");
+  portal.style.setProperty("opacity", "0.8", "important");
+  host.style.setProperty("visibility", "visible");
+  host.style.setProperty("opacity", "1");
+  guest.setAttribute("src", "http://127.0.0.1:4283/");
+  host.append(guest); portal.append(host); f.doc.body.append(portal);
+  const originalRect = { ...guest.rect };
+  f.view.toggle(true);
+  assert.equal(f.view.diagnostics().embeddedHosts, 2);
+  assert.equal(f.view.diagnostics().hiddenEmbeddedHosts, 2);
+  assert.equal(portal.style.getPropertyValue("opacity"), "0");
+  assert.equal(host.style.getPropertyValue("visibility"), "visible");
+  assert.equal(guest.getAttribute("src"), "http://127.0.0.1:4283/");
+  assert.deepEqual(guest.rect, originalRect);
+  const latePortal = f.doc.createElement("div"), lateGuest = f.doc.createElement("iframe");
+  latePortal.setAttribute("data-browser-host-root", ""); latePortal.append(lateGuest); f.doc.body.append(latePortal);
+  assert.equal(mutationNeedsDiscovery([{type:"childList", target:f.doc.body, addedNodes:[latePortal], removedNodes:[]}]), true);
+  f.view.refresh();
+  assert.equal(f.view.diagnostics().hiddenEmbeddedHosts, 3);
+  f.view.toggle(false);
+  assert.equal(f.view.diagnostics().hiddenEmbeddedHosts, 0);
+  assert.equal(portal.style.getPropertyValue("opacity"), "0.8");
+  assert.equal(portal.style.getPropertyPriority("opacity"), "important");
+  assert.equal(latePortal.style.getPropertyValue("opacity"), "");
+  assert.equal(guest.parentElement, host);
+  assert.equal(guest.getAttribute("src"), "http://127.0.0.1:4283/");
   f.view.dispose();
 });
 test("the button stays in native flex flow with added controls and falls back when there is no room", () => {

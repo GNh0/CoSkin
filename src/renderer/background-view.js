@@ -310,7 +310,11 @@ export class BackgroundView {
     // Preserve toggle order, including Esc and disposal during a pending hide.
     this.nativeTask = this.nativeTask
       .then(() => active && this.c.disposed ? null : this.c.request("background-view", { active }))
-      .then((result) => { this.nativeSupported = result?.supported === true; })
+      .then((result) => {
+        this.nativeSupported = result?.supported === true;
+        this.nativeViews = result?.views ?? 0;
+        this.nativeError = null;
+      })
       .catch((error) => {
         this.nativeError = error.message;
         console.warn("CoSkin background-only browser visibility:", error);
@@ -323,6 +327,24 @@ export class BackgroundView {
       if (element.inert === true) element.inert = previous;
     this.inert.clear();
     this.lifted = null;
+  }
+  diagnostics() {
+    const hosts = [...document.querySelectorAll("[data-embedded-frame-host-root],webview,iframe")];
+    const hidden = (element) => {
+      for (let node = element; node; node = node.parentElement) {
+        const style = getComputedStyle(node);
+        if (style.display === "none" || style.opacity === "0") return true;
+      }
+      return ["hidden", "collapse"].includes(getComputedStyle(element).visibility);
+    };
+    return {
+      active: this.active,
+      embeddedHosts: hosts.length,
+      hiddenEmbeddedHosts: hosts.filter(hidden).length,
+      nativeSupported: this.nativeSupported ?? null,
+      nativeViews: this.nativeViews ?? 0,
+      nativeError: this.nativeError ?? null,
+    };
   }
   refreshButton(header) {
     this.button.textContent = appearanceText(
@@ -427,6 +449,10 @@ export class BackgroundView {
       }
       covered.add(element);
       this.foregroundScope.set(element, "visibility", "hidden");
+      // Embedded browser hosts explicitly set visibility:visible below this
+      // root. Opacity also hides their composited content without resizing,
+      // detaching or navigating the webview, and restores through the same scope.
+      this.foregroundScope.set(element, "opacity", "0");
       if (!this.inert.has(element)) this.inert.set(element, element.inert);
       element.inert = true;
     };

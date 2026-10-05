@@ -10,6 +10,9 @@ const ownedSelector =
   "[data-coskin-ui],[data-coskin-decoration],[data-coskin-transition]";
 const discoverySelector = [
   "#root",
+  "[data-embedded-frame-host-root]",
+  "[data-browser-host-root]",
+  "webview,iframe",
   "[data-app-navigation-rail]",
   "[data-sidebar-destination]",
   "[data-app-shell-main-surface]",
