@@ -214,7 +214,8 @@ export class BackgroundView {
   constructor(controller) {
     this.c = controller;
     this.active = false;
-    this.nativeActive = false;
+    // A reloaded shell may inherit native views hidden by its old controller.
+    this.nativeActive = null;
     this.nativeTask = Promise.resolve();
     this.scope = new NativePaintScope();
     this.foregroundScope = new NativePaintScope();

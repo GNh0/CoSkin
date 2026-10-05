@@ -293,6 +293,15 @@ test("background-only excludes the native titlebar once and restores the origina
   f.view.dispose();
 });
 
+test("a new controller releases inherited native visibility once before any background-only toggle", async () => {
+  const f = fixture(), calls = [];
+  f.c.request = async (_op, data) => { calls.push(data.active); return { supported: true }; };
+  f.view.refresh(); await f.view.nativeTask;
+  f.view.refresh(); await f.view.nativeTask;
+  assert.deepEqual(calls, [false]);
+  f.view.dispose();
+});
+
 test("native browser hide and restore remain ordered when Esc or disposal interrupts a pending toggle", async () => {
   const f = fixture(), calls = [];
   let finishHide;
