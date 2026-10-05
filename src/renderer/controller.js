@@ -147,7 +147,7 @@ export class Controller {
       "transfer-cancel",
       "transfer-cancel-owner",
       "asset-media-release",
-    ].includes(op);
+    ].includes(op) || (op === "background-view" && data.active === false);
     if (this.disposed && !cleanup)
       return Promise.reject(Error("연결이 종료되었습니다."));
     this.requestEpoch ??= crypto.randomUUID().replaceAll("-", "");

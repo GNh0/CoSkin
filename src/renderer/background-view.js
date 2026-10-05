@@ -214,6 +214,8 @@ export class BackgroundView {
   constructor(controller) {
     this.c = controller;
     this.active = false;
+    this.nativeActive = false;
+    this.nativeTask = Promise.resolve();
     this.scope = new NativePaintScope();
     this.foregroundScope = new NativePaintScope();
     this.inert = new Map();
@@ -300,6 +302,19 @@ export class BackgroundView {
     this.lastToggle = { active: value, totalMs: Math.round(performance.now() - started) };
     return true;
   }
+  syncNative() {
+    if (this.nativeActive === this.active || !this.c.request) return;
+    const active = this.active;
+    this.nativeActive = active;
+    // Preserve toggle order, including Esc and disposal during a pending hide.
+    this.nativeTask = this.nativeTask
+      .then(() => active && this.c.disposed ? null : this.c.request("background-view", { active }))
+      .then((result) => { this.nativeSupported = result?.supported === true; })
+      .catch((error) => {
+        this.nativeError = error.message;
+        console.warn("CoSkin background-only browser visibility:", error);
+      });
+  }
   restoreForeground() {
     this.scope.dispose();
     this.foregroundScope.dispose();
@@ -355,6 +370,7 @@ export class BackgroundView {
     this.titlebar = header;
     const dec = this.background;
     if (this.active && !dec) this.active = false;
+    this.syncNative();
     this.refreshButton(header);
     if (!this.active) {
       if (this.lifted) this.restoreForeground();
@@ -427,6 +443,7 @@ export class BackgroundView {
   }
   dispose() {
     this.active = false;
+    this.syncNative();
     this.restoreForeground();
     this.abort.abort();
     this.button.remove();

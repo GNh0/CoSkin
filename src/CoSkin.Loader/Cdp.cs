@@ -172,6 +172,12 @@ internal sealed class Cdp : IAsyncDisposable
             throw new InvalidDataException(result["exceptionDetails"]!.ToJsonString());
         return result["result"]?["value"];
     }
+    internal async Task<JsonObject> SetBackgroundView(bool active)
+    {
+        // Direct renderer debugging cannot control the owning native views.
+        if (parent is null) return new JsonObject { ["supported"] = false };
+        return await Send("CoSkin.backgroundView", new JsonObject { ["active"] = active }, TimeSpan.FromSeconds(5));
+    }
     internal async Task<JsonNode?> Invoke(string function, JsonArray arguments, TimeSpan? timeout = null)
     {
         var started = System.Diagnostics.Stopwatch.StartNew();

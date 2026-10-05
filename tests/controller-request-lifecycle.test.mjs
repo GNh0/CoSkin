@@ -293,6 +293,19 @@ test("all three disposal cleanup operations still reach the binding without awai
   assert.equal(api.timers.size, 0);
 });
 
+test("disposal still restores native browser visibility but cannot issue a new hide", async () => {
+  const api = runtime(), controller = api.controller();
+  controller.dispose();
+  const result = await controller.request("background-view", { active: false });
+  assert.equal(result.ok, true);
+  assert.equal(api.sent.at(-1).op, "background-view");
+  assert.equal(api.sent.at(-1).active, false);
+  const count = api.sent.length;
+  await assert.rejects(controller.request("background-view", { active: true }), /연결이 종료/);
+  assert.equal(api.sent.length, count);
+  assert.equal(controller.pending.size, 0); assert.equal(api.timers.size, 0);
+});
+
 test("a failed cleanup binding after disposal rejects without leaving a pending timer", async () => {
   const api = runtime(),
     controller = api.controller();

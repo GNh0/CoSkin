@@ -292,6 +292,33 @@ test("background-only excludes the native titlebar once and restores the origina
   );
   f.view.dispose();
 });
+
+test("native browser hide and restore remain ordered when Esc or disposal interrupts a pending toggle", async () => {
+  const f = fixture(), calls = [];
+  let finishHide;
+  f.c.request = (op, data) => {
+    calls.push({ op, ...data });
+    return data.active ? new Promise(resolve => { finishHide = resolve; }) : Promise.resolve({ supported: true });
+  };
+  f.view.toggle(true); f.view.refresh();
+  await Promise.resolve();
+  assert.deepEqual(calls, [{ op: "background-view", active: true }]);
+  f.view.toggle(false); f.view.dispose();
+  finishHide({ supported: true });
+  await f.view.nativeTask;
+  assert.deepEqual(calls, [{ op: "background-view", active: true }, { op: "background-view", active: false }]);
+  assert.equal(f.view.nativeSupported, true);
+});
+
+test("removing the selected background restores the native browser as well as the foreground", async () => {
+  const f = fixture(), calls = [];
+  f.c.request = async (_op, data) => { calls.push(data.active); return { supported: true }; };
+  f.view.toggle(true); await f.view.nativeTask;
+  f.root.remove(); f.view.refresh(); await f.view.nativeTask;
+  assert.deepEqual(calls, [true, false]);
+  assert.equal(f.view.active, false); assert.equal(f.foreground.inert, false);
+  f.view.dispose();
+});
 test("a retained inert titlebar is ignored and a live div titlebar keeps its native controls", () => {
   const f = fixture();
   const retained = f.doc.createElement("div");

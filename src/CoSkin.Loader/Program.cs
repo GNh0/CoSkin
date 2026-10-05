@@ -607,6 +607,8 @@ internal static class Program
     }
     private static async Task<JsonNode> ExecuteRequest(Cdp cdp, Library library, JsonObject request, Func<Cdp[]> windows)
     {
+        if (request["op"]?.GetValue<string>() == "background-view")
+            return await cdp.SetBackgroundView(request["active"]?.GetValue<bool>() ?? throw new InvalidDataException("배경만 보기 상태가 필요합니다."));
         return await library.Handle(request,
                 async doc => { await cdp.Evaluate("window.__coskinValidate(" + doc.ToJsonString() + ")"); },
                 async (bytes, mime) =>
