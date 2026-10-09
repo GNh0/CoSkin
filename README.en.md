@@ -2,95 +2,139 @@
 
 # CoSkin
 
-**Make Codex your own.**
+**Make Codex your own space.**
 
-Style Codex with images, animated backgrounds and effects. Pick a theme, preview it in the actual app, and apply it with a click.
+Animated backgrounds, matching icons and sidebar rows, and readable conversations. Preview a theme in Codex, then apply it to the app, a project, or a chat.
 
 [한국어](README.md) · [English](README.en.md) · [日本語](README.ja.md) · [简体中文](README.zh-CN.md)
 
-[Download for Windows](https://github.com/GNh0/CoSkin/releases/latest) · [Theme file specification](docs/theme-package-spec.md) · [Custom effects](docs/custom-effects.md) · [Compatibility](docs/support-matrix.md)
+[Download for Windows](https://github.com/GNh0/CoSkin/releases/latest) · [Theme format](docs/theme-package-spec.md) · [Theme request template](docs/theme-request-template.md) · [Custom effects](docs/custom-effects.md) · [Compatibility](docs/support-matrix.md)
 
-![Codex styled with CoSkin](docs/media/wuthering-waves/shorekeeper-live-applied.png)
+![Aemeath · Rainy Memories — animated background and sidebar effects](docs/media/current/aemeath-rainy-memories.webp)
+
+*Wuthering Waves Aemeath 2D video theme, rendered by CoSkin on a sample workspace layout. [Capture details](docs/media/current/README.md)*
 
 ## Get started
 
-1. Download the ZIP from the [latest release](https://github.com/GNh0/CoSkin/releases/latest) and extract it.
+1. Download and extract the ZIP from the [latest release](https://github.com/GNh0/CoSkin/releases/latest).
 2. Run **CoSkin.Loader.exe** and choose your installation options.
-3. Start Codex and CoSkin. **They connect automatically in either launch order.**
+3. Start Codex and CoSkin, then open **CoSkin** in the left icon bar.
+4. Import or create a theme, then choose **Preview → Apply**.
 
-CoSkin waits in the tray if started first. Use the desktop **CoSkin** shortcut to start it independently, or **Codex + CoSkin** in the Start menu to launch both. No development tools are needed.
+CoSkin can wait in the tray before Codex starts. Use the **CoSkin** desktop shortcut to run it independently, or **Codex + CoSkin** in the Start menu to launch both. No development tools are required.
 
-Run Codex and CoSkin on **Windows x64** at the same Windows privilege level. From CoSkin 0.1.6, connection checks the original signatures and runtime capabilities instead of a fixed Codex version list. Verified on Codex 26.928.2636.0. Future changes to the internal connection APIs may require a CoSkin update.
+Run both apps with the same Windows privilege level on **Windows x64**. CoSkin checks the original application's signature and connection capabilities. These features and captures use the **current main source based on CoSkin 0.1.18**; verified environments are listed in the [support matrix](docs/support-matrix.md).
 
 ## What can you customize?
 
-| Feature                 | What you can do                                                                                         |
-| ----------------------- | ------------------------------------------------------------------------------------------------------- |
-| Theme library           | Create, import and delete; preview and apply directly from cards                                        |
-| Organization and search | Nested folder tree, favorites and tags; numbered pages, sorting and multi-select organization           |
-| Details and editing     | Edit theme information, duplicate, edit in the actual app and export                                    |
-| Images, GIFs and video  | Set backgrounds, decorations and icons; loop muted MP4/WebM video; see resolution and aspect recommendations |
-| Text styles             | Theme-tinted automatic text colors or your own color, installed font and weight                         |
-| Animation effects       | Configure hover, click and selected states, plus enter, exit and repeating effects                      |
-| Application scope       | Apply across the app, projects or chats; override individual items                                      |
-| Languages               | Follow Codex in Korean, English, Japanese or Simplified Chinese                                         |
+| Feature | What it does |
+| --- | --- |
+| Backgrounds | PNG, JPEG, GIF, MP4 and WebM; muted loops, position, fit, opacity and video speed |
+| Icons and rows | Images, colors, borders and decorations for navigation, project and chat rows |
+| Readability | Automatic contrast or custom text color, font and weight; conversation background and video opacity |
+| Effects | Hover, click, selection, enter, exit and repeating effects; static profiles |
+| Scope | App, project or chat; all matching elements or one individual item |
+| Library | Nested folders, tags, favorites, search, sorting, multiple selection, cards or a compact list |
+| Sharing and downloads | Import, duplicate, export; original background extraction, conversion and download queue |
+| Runtime | Window and playback limits, shared media storage, startup, shutdown and updates |
 
-## Choose and edit a theme
+## One character, three moods
 
-Open **CoSkin** from the left icon rail. Use **Preview** on a card to try a theme and **Apply** to use it. Click the card for details, editing, duplication and export.
+Each example has distinct icons and sidebar artwork. **Projects use outlined cards**, while **chats use quieter rows** with smaller icons and less decoration.
 
-To ask an AI assistant to make a theme, share the [request template](docs/theme-request-template.md) and [package specification](docs/theme-package-spec.md). CoSkin 0.1.4 and later also offer an editable **Request a theme** action in the library.
+| Bubble Sky | Rainy Memories | Whispering Stars |
+| :---: | :---: | :---: |
+| ![Bubble Sky](docs/media/current/aemeath-bubble-sky.png) | ![Rainy Memories](docs/media/current/aemeath-rainy-memories.png) | ![Whispering Stars](docs/media/current/aemeath-whispering-stars.png) |
+| Pearls, bubbles and aqua | Neon, rain and violet | Golden stars, wings and orbits |
 
-|                    Theme library                     |                           Details and preview                            |
-| :--------------------------------------------------: | :----------------------------------------------------------------------: |
-| ![Theme library](docs/media/theme-library-0.1.2.png) | ![Theme detail](docs/media/wuthering-waves/shorekeeper-theme-detail.png) |
-
-In editing mode, **right-click** the area you want to customize to adjust its images, effects and styles. Project and chat row edits apply to all rows of the same kind by default; choose an **individual override** to change just one item.
-
-**Save** keeps your theme changes; **Apply** uses them in the selected scope. Cancel a preview to return to the previous theme. Add and share your own effects with the [custom effects guide](docs/custom-effects.md).
-
-Browse a folder tree on the left and folders with theme files on the right. A single click selects a folder; **double-click or Enter** opens it. Clicking a theme opens its management screen. Switch **Folder view/Tree view** independently of **Preview cards/One-line list**. Breadcrumbs, back/forward/up and **Include subfolders** support navigation. Drag theme cards onto a folder to move their classification, or use selection mode for moves, favorites and tags. Numbered, first/last and direct page navigation supports 24/48/96 items; returning from details preserves search and list position. One-line lists load no media previews. [Library guide](docs/theme-library.md)
-
-**Match text colors automatically** prioritizes contrast with a subtle theme tint. When needed, it strengthens the surface behind text to keep bright video readable. Select **Choose manually** in the text editor to choose a color, installed font and weight for that area.
-
-## Animated backgrounds and effects
-
-Combine a GIF background with row hover effects to create your own theme.
-
-Use GIF for short scenes and **MP4/WebM** for longer character motion. Video loops muted; the **No effects** profile shows a still image. Playback resumes from its position after minimizing and restoring. Videos support up to512MiB and10minutes with decoding checks. Image controls show resolution and aspect recommendations for the selected area. Choose **Show entire image** to keep the full action visible.
-
-Choose **Theme storage folder** in settings to set the common folder for all theme images and videos. Migration verifies copied hashes before switching and retains originals. Shared media is stored once by SHA256. Theme records, revisions and runtime settings stay in the existing CoSkin store. Library display and sorting options are grouped in a menu; filters and folder/batch management open on demand.
-
-![Animated GIF background](docs/media/wuthering-waves/shorekeeper-live-gif.gif)
+![Distinct icons and project/chat rows](docs/media/current/aemeath-signatures.png)
 
 <details>
-<summary>View the effect editor and hover example</summary>
+<summary>Watch the sky and starlight examples</summary>
 
-**Effect editor**
+**Bubble Sky**
 
-![Effect editor](docs/media/wuthering-waves/shorekeeper-effect-editor.png)
+![Bubble Sky animation](docs/media/current/aemeath-bubble-sky.webp)
 
-**Project row hover**
+**Whispering Stars**
 
-![Project row hover effect](docs/media/wuthering-waves/shorekeeper-hover.gif)
+![Whispering Stars animation](docs/media/current/aemeath-whispering-stars.webp)
 
 </details>
 
-Screens show an unofficial Wuthering Waves Shorekeeper fan-art theme. [Image and GIF credits](docs/media/wuthering-waves/ASSET-NOTES.md)
+Each example includes an animated profile and a static **No effects** profile. These are unofficial fan themes, not a list of themes bundled with the installer. [Media credits](docs/media/current/ASSET-NOTES.md)
 
-## Startup and updates
+<details>
+<summary>Additional 2D theme with character motion · Blue Resonance</summary>
 
-Change themes or open **CoSkin settings** from the tray.
-If the dark layer over the background disappears, choose **Refresh theme** from the tray to redraw the current theme.
+**Blue Resonance** combines animated eyes, mouth, head, upper body and hair with aqua resonance icons and waveform row artwork.
 
-- **Start at Windows sign-in**: keep CoSkin ready to connect when Codex starts.
-- **Exit with Codex**: close CoSkin when the last connected Codex exits.
-- **Automatic updates**: download and install new stable GitHub releases. Manual checks are also available in settings.
+![Aemeath · Blue Resonance — 2D character animation](docs/media/current/aemeath-blue-resonance.webp)
 
-If a GIF does not animate, check the motion option in effect settings and the Windows **reduced motion** preference. Large GIFs can affect scrolling performance.
+</details>
+
+## Choose and organize themes
+
+**Preview** shows a theme in the real Codex window. **Apply** commits it to your chosen scope; canceling restores the previous theme. Detail offers editing, metadata, duplication, export and background extraction.
+
+| Library | Detail and preview |
+| :---: | :---: |
+| ![Current library](docs/media/current/theme-library.png) | ![Current detail page](docs/media/current/theme-detail.png) |
+
+Open folders with a **double click or Enter**. Path, back, forward and up controls help navigation. Folder/tree navigation and preview-card/compact-row layouts can be switched independently; compact rows do not load media previews.
+
+Search, tags, favorites, sorting, descendant folders and multiple selection organize large collections. Dragging changes classification without moving media. Choose **24/48/96 items per page** or jump to a page; returning from detail preserves your position. [Library guide](docs/theme-library.md)
+
+## Edit the screen and keep text readable
+
+Choose **Edit**, then **right-click** a region. Adjust backgrounds, the conversation area, composer, buttons, project or chat rows. Edit all matching elements or use **Individual** for one item.
+
+For bright backgrounds, reduce **video opacity** or increase **conversation background opacity**. **Automatic text color** prioritizes contrast. Manual mode supports text color, installed fonts and weight.
+
+<details>
+<summary>See the video and opacity editor</summary>
+
+![Video, opacity and playback speed](docs/media/current/image-editor.png)
+
+</details>
+
+**Save** stores changes; **Apply** changes the chosen scope. Duplicates retain folders, tags and favorites. To request an AI-made theme, provide the [request template](docs/theme-request-template.md) and [file specification](docs/theme-package-spec.md).
+
+## Animated backgrounds and background-only view
+
+MP4 and WebM loop silently. Adjust **0.1–4× speed**, position, **Fill/Show entire image**, and opacity. Restoring a minimized window resumes playback. Videos support **512 MiB and 10 minutes per file**, with resolution, duration and decoding checks.
+
+Use **Background only** in the title bar or **Alt+Shift+B** to hide the workspace. The embedded-browser visibility fix is included in **main after v0.1.18**. Restore with the button, the same shortcut, or **Esc**.
+
+If a GIF or effect does not move, check theme animation options and Windows **Reduce motion**. Large GIFs can affect memory and scrolling; MP4 or WebM is preferable for long animations.
+
+## Save backgrounds and manage downloads
+
+**Extract background → Download original quality** saves registered media without recompression. Convert to JPG, PNG, MP4, WebM or GIF at **720p, 1080p, original resolution or a custom size**.
+
+Add jobs and select **1–4 simultaneous jobs**. Identical media/preset jobs are deduplicated. Jobs continue after closing the extraction panel while CoSkin remains running. [Download guide](docs/background-downloads.md)
+
+## Runtime and storage settings
+
+Open **CoSkin settings** or switch themes from the tray.
+
+- **Connected/playing window limits**: defaults 5/2. Allow 1–10 connections and playback within that count. Active/recent windows have priority; minimized windows stop playback.
+- **Hide startup greeting**: hide the new-chat greeting while keeping the composer.
+- **Shared theme storage**: view the media path and usage. Migration copies files and verifies SHA256; originals are preserved.
+- **Start at Windows sign-in / Exit with Codex**: wait at sign-in or exit when the last connected Codex closes.
+- **Automatic updates / Manual check**: check and install stable GitHub releases.
+
+Media is deduplicated by SHA256. Library records, revisions and preferences stay in the original CoSkin store. Use **Refresh theme** in the tray if repainting is needed.
+
+<details>
+<summary>See the current settings screen</summary>
+
+![Window limits, greeting and shared storage](docs/media/current/runtime-settings.png)
+
+</details>
 
 ## Learn more
 
-[Development and build](docs/development.md) · [Custom effects](docs/custom-effects.md) · [Supported environments](docs/support-matrix.md) · [Publishing updates](docs/updates.md)
+[Development](docs/development.md) · [Custom effects](docs/custom-effects.md) · [Support matrix](docs/support-matrix.md) · [Updates](docs/updates.md)
 
-CoSkin source does not yet have an assigned license. See [third-party notices](THIRD-PARTY-NOTICES.txt) for dependency licenses.
+A source license has not yet been assigned to CoSkin. See [third-party notices](THIRD-PARTY-NOTICES.txt).

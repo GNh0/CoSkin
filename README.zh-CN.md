@@ -2,95 +2,139 @@
 
 # CoSkin
 
-**让Codex成为你的专属空间。**
+**把 Codex 变成自己的空间。**
 
-用图片、动态背景和效果装扮Codex。选择主题，在真实界面中预览，再一键应用。
+动态背景、配套图标与侧栏装饰，以及清晰易读的聊天界面。在 Codex 中预览主题，再应用到整个应用、项目或聊天。
 
 [한국어](README.md) · [English](README.en.md) · [日本語](README.ja.md) · [简体中文](README.zh-CN.md)
 
-[下载Windows版](https://github.com/GNh0/CoSkin/releases/latest) · [主题文件规范](docs/theme-package-spec.md) · [自定义效果](docs/custom-effects.md) · [兼容性说明](docs/support-matrix.md)
+[Windows 下载](https://github.com/GNh0/CoSkin/releases/latest) · [主题格式](docs/theme-package-spec.md) · [需求模板](docs/theme-request-template.md) · [自定义效果](docs/custom-effects.md) · [兼容性](docs/support-matrix.md)
 
-![使用CoSkin装扮的Codex](docs/media/wuthering-waves/shorekeeper-live-applied.png)
+![爱弥斯·雨夜回忆 — 动态背景与侧栏效果](docs/media/current/aemeath-rainy-memories.webp)
+
+*鸣潮爱弥斯 2D 视频主题：在示例工作区中使用真实 CoSkin 渲染器。[截图说明](docs/media/current/README.md)*
 
 ## 开始使用
 
-1. 从[最新版本](https://github.com/GNh0/CoSkin/releases/latest)下载ZIP并解压。
+1. 从[最新版本](https://github.com/GNh0/CoSkin/releases/latest)下载 ZIP 并解压。
 2. 运行 **CoSkin.Loader.exe**，选择安装选项。
-3. 启动Codex和CoSkin。**无论先启动哪个应用，都会自动连接。**
+3. 启动 Codex 和 CoSkin，从左侧图标栏打开 **CoSkin**。
+4. 导入或创建主题，选择**预览 → 应用**。
 
-CoSkin先启动时会在托盘等待Codex。桌面的 **CoSkin** 快捷方式可单独启动，开始菜单的 **Codex + CoSkin** 可同时启动两个应用，无需安装开发工具。
+先启动 CoSkin 时，它会在托盘等待 Codex。通过桌面 **CoSkin** 独立启动，或在开始菜单选择 **Codex + CoSkin** 同时启动。不需要开发工具。
 
-请在 **Windows x64**上以相同的Windows权限级别运行两个应用。CoSkin 0.1.6起根据原始文件签名和实际连接功能进行检查，不再使用固定Codex版本列表。已在Codex 26.928.2636.0上验证。未来内部连接API发生变化时可能需要更新CoSkin。
+在 **Windows x64** 中以相同 Windows 权限运行两者。连接会检查原应用签名和实际连接能力。本文功能与截图基于 **CoSkin 0.1.18 的当前 main 源码**，验证环境见[支持说明](docs/support-matrix.md)。
 
 ## 可以自定义什么？
 
-| 功能            | 用途                                                          |
-| --------------- | ------------------------------------------------------------- |
-| 主题库          | 创建、导入、删除，在卡片上直接预览和应用                      |
-| 整理与搜索      | 嵌套文件夹树、收藏和标签，页码、排序及多选整理                |
-| 详情与编辑      | 修改主题信息、复制、在真实界面中编辑、导出                    |
-| 图片、GIF与视频 | 设置背景、装饰和图标，静音循环MP4/WebM，显示各区域推荐分辨率和比例 |
-| 文字样式        | 随主题自动调整文字颜色，也可手动指定颜色、已安装字体和字重    |
-| 动画效果        | 设置悬停、点击、选中状态，以及进入、退出和循环效果            |
-| 应用范围        | 应用于整个应用、项目或聊天，也可单独设置某一项                |
-| 语言            | 跟随Codex显示韩语、英语、日语或简体中文                       |
+| 功能 | 内容 |
+| --- | --- |
+| 背景 | PNG、JPEG、GIF、MP4、WebM；静音循环、位置、适配、不透明度、视频速度 |
+| 图标与侧栏行 | 导航按钮、项目与聊天行的图片、颜色、边框与装饰 |
+| 可读性 | 自动文字对比度或手动颜色、字体、字重；正文背景和视频不透明度 |
+| 效果 | 悬停、点击、选中、进入、退出、循环，以及静态配置 |
+| 应用范围 | 整个应用、项目或聊天；同类全部元素或单个条目 |
+| 主题库 | 多级文件夹、标签、收藏、搜索、排序、多选、卡片或单行列表 |
+| 分享与保存 | 导入、复制、导出；原背景提取、转换、下载队列 |
+| 运行管理 | 连接与播放窗口数量、共享媒体目录、启动、退出、更新 |
 
-## 选择与编辑主题
+## 同一角色，不同氛围
 
-从左侧图标栏打开 **CoSkin**。点击卡片上的 **预览**试用主题，再用 **应用**切换。点击卡片可进入详情页面，进行编辑、复制和导出。
+每个示例都设计了配套图标与行装饰。**项目为有轮廓的卡片**，**聊天为装饰更少的简洁行**。
 
-如果要请 AI 制作主题，请同时提供[请求模板](docs/theme-request-template.md)和[文件规范与制作步骤](docs/theme-package-spec.md)。CoSkin 0.1.4 及更高版本也可在主题库中通过 **请求制作主题** 编辑并复制请求。
+| 天空泡泡 | 雨夜回忆 | 星光低语 |
+| :---: | :---: | :---: |
+| ![天空泡泡](docs/media/current/aemeath-bubble-sky.png) | ![雨夜回忆](docs/media/current/aemeath-rainy-memories.png) | ![星光低语](docs/media/current/aemeath-whispering-stars.png) |
+| 珍珠、泡泡与青色 | 霓虹、雨线与紫色 | 金色星星、翅膀与轨道 |
 
-|                    主题库                     |                              详情与预览                              |
-| :-------------------------------------------: | :------------------------------------------------------------------: |
-| ![主题库](docs/media/theme-library-0.1.2.png) | ![主题详情](docs/media/wuthering-waves/shorekeeper-theme-detail.png) |
-
-在编辑模式中 **右键点击**要装扮的区域，即可调整图片、效果和样式。项目行和聊天行默认应用于同类全部行，选择 **单独指定**即可只修改当前项。
-
-**保存**保留主题修改，**应用**将修改反映到所选范围。取消预览会回到之前的主题。通过[自定义效果指南](docs/custom-effects.md)可以添加和分享自己制作的效果。
-
-通过左侧文件夹树和右侧文件夹、主题列表浏览。单击选择文件夹，**双击或Enter**打开；单击主题打开管理界面。**文件夹视图/树视图**与**预览卡片/单行列表**可分别切换，并支持路径、后退、前进、上级及包含子文件夹。将主题卡片拖到文件夹即可移动分类，也可跨页多选并批量移动、修改收藏或添加标签。支持页码、首页/末页/指定页及每页24/48/96项，从详情返回时保留搜索和列表位置。单行列表不加载媒体预览。[主题库管理指南](docs/theme-library.md)
-
-**主题自动文字颜色** 优先保证对比度，再轻微融入主题色。必要时会加深文字背后的表面，改善明亮视频上的可读性。在文字编辑中选择 **手动指定**，可为各区域分别设置颜色、已安装字体和字重。
-
-## 动态背景与效果
-
-将GIF背景与行悬停效果组合，制作自己的主题。
-
-短片段可用GIF，较长的角色动作可用 **MP4/WebM**。视频静音循环播放，**无效果** 配置则显示静态画面。最小化后恢复会继续之前的播放位置。视频支持512MiB及10分钟，并检查实际解码。图片设置会显示当前区域的推荐分辨率和比例。选择 **显示完整图片** 可以保留完整动作。
-
-在设置的 **主题保存目录** 指定所有主题图片与视频的共同目录。迁移先核验复制文件的哈希，再切换位置，保留原文件。相同媒体按SHA256去重；主题信息、修订及运行设置仍保存在原CoSkin目录。显示与排序集中在选项菜单，筛选及文件夹、批量管理按需打开。
-
-![动态GIF背景](docs/media/wuthering-waves/shorekeeper-live-gif.gif)
+![三款主题的图标及项目、聊天行](docs/media/current/aemeath-signatures.png)
 
 <details>
-<summary>查看效果编辑与悬停示例</summary>
+<summary>查看天空与星夜的动态示例</summary>
 
-**效果编辑**
+**天空泡泡**
 
-![效果编辑](docs/media/wuthering-waves/shorekeeper-effect-editor.png)
+![天空泡泡动态示例](docs/media/current/aemeath-bubble-sky.webp)
 
-**项目行悬停**
+**星光低语**
 
-![项目行悬停效果](docs/media/wuthering-waves/shorekeeper-hover.gif)
+![星光低语动态示例](docs/media/current/aemeath-whispering-stars.webp)
 
 </details>
 
-界面示例为鸣潮守岸人非官方同人主题。[图片与GIF制作信息](docs/media/wuthering-waves/ASSET-NOTES.md)
+示例提供视频配置和静态图片的**无效果**配置。这些是非官方同人主题，不代表安装程序附带的主题列表。[素材来源](docs/media/current/ASSET-NOTES.md)
 
-## 启动与更新设置
+<details>
+<summary>表情与身体动态的额外2D主题·蓝色共鸣</summary>
 
-在托盘中可切换主题或打开 **CoSkin设置**。
-如果背景上的暗色图层消失，可在托盘中选择 **刷新主题**，重新绘制当前主题。
+**蓝色共鸣**结合眼睛、嘴部、头部、上半身与头发的2D原画动画，以及青色共鸣图标和波形行装饰。
 
-- **Windows登录时启动**：让CoSkin提前待命，在Codex启动时连接。
-- **随Codex退出**：最后一个已连接Codex退出时，CoSkin也会退出。
-- **自动更新**：下载并安装GitHub上的新稳定版本，也可在设置中手动检查。
+![爱弥斯·蓝色共鸣 — 2D角色动画](docs/media/current/aemeath-blue-resonance.webp)
 
-如果GIF不播放，请检查效果中的动态选项及Windows的 **减少动态效果** 设置。大型GIF可能影响滚动性能。
+</details>
 
-## 更多文档
+## 选择与整理
 
-[开发与构建](docs/development.md) · [自定义效果](docs/custom-effects.md) · [支持环境](docs/support-matrix.md) · [发布更新](docs/updates.md)
+**预览**显示在实际 Codex 窗口中，**应用**反映到所选范围；取消会恢复之前的主题。详情页支持信息编辑、复制、导出和背景提取。
 
-CoSkin源码尚未指定许可证。依赖组件的许可证请参阅[第三方声明](THIRD-PARTY-NOTICES.txt)。
+| 主题库 | 详情 |
+| :---: | :---: |
+| ![当前主题库](docs/media/current/theme-library.png) | ![当前详情页](docs/media/current/theme-detail.png) |
+
+**双击或 Enter**打开文件夹。支持路径、后退、前进、上级目录；文件夹/树形与卡片/单行显示可分别切换。单行列表不加载媒体预览。
+
+支持搜索、标签、收藏、排序、包含子文件夹和多选。拖动仅更改分类，不移动媒体。每页 **24/48/96 项**并可直接跳转，返回详情后保留列表位置。[主题库指南](docs/theme-library.md)
+
+## 编辑界面与可读性
+
+选择**编辑**，再**右键**目标区域。调整背景、正文、输入框、按钮、项目和聊天行的图片、效果、文字。可修改全部同类元素或**单独指定**。
+
+背景太亮时，**降低视频不透明度**或**提高正文背景不透明度**。自动文字颜色优先保证对比度；手动模式支持颜色、已安装字体、字重。
+
+<details>
+<summary>查看视频与不透明度编辑器</summary>
+
+![视频、不透明度、播放速度](docs/media/current/image-editor.png)
+
+</details>
+
+**保存**保留修改，**应用**反映到所选范围。副本继承文件夹、标签、收藏。委托 AI 时提供[需求模板](docs/theme-request-template.md)和[文件规范](docs/theme-package-spec.md)。
+
+## 动态背景与仅显示背景
+
+MP4、WebM 静音循环播放。支持 **0.1～4 倍速**、位置、**填满画面/完整显示**及不透明度。窗口恢复后继续播放。单个视频支持 **512MiB、10 分钟**以内，并检查分辨率、时长和解码。
+
+标题栏的**仅显示背景**或 **Alt+Shift+B** 隐藏工作界面。内置浏览器隐藏修复包含在 **v0.1.18 之后的 main** 中。使用恢复按钮、相同快捷键或 **Esc** 返回。
+
+GIF 或效果不动时，请检查主题动画和 Windows 的**减少动态效果**。大型 GIF 可能影响内存和滚动，较长动画建议使用 MP4、WebM。
+
+## 背景保存与下载
+
+**提取背景 → 原画质下载**不重新压缩已注册媒体。支持 JPG、PNG、MP4、WebM、GIF 转换，以及 **720p、1080p、原分辨率、自定义尺寸**。
+
+队列支持 **1～4 个并发任务**。相同背景和设置不会重复添加。CoSkin 仍运行时，关闭提取面板后任务继续。[背景下载指南](docs/background-downloads.md)
+
+## 运行与存储设置
+
+从托盘切换主题或打开 **CoSkin 设置**。
+
+- **连接/播放窗口限制**：默认 5/2。连接数 1～10，播放数不超过连接数。优先活动和最近使用窗口，最小化窗口暂停播放。
+- **隐藏开始问候语**：隐藏新聊天问候，保留输入框。
+- **共享媒体目录**：查看路径和占用。迁移复制文件并验证 SHA256，保留原文件。
+- **Windows 登录时启动 / 随 Codex 退出**：登录后等待 Codex，或随最后一个连接的 Codex 退出。
+- **自动更新 / 手动检查**：检查并安装 GitHub 稳定版本。
+
+媒体以 SHA256 去重。主题库、修订和设置仍在原存储中。绘制异常可用托盘的**刷新主题**。
+
+<details>
+<summary>查看当前设置页</summary>
+
+![窗口数量、问候语、共享目录](docs/media/current/runtime-settings.png)
+
+</details>
+
+## 更多信息
+
+[开发与构建](docs/development.md) · [自定义效果](docs/custom-effects.md) · [支持环境](docs/support-matrix.md) · [更新](docs/updates.md)
+
+CoSkin 源码尚未指定许可证，外部组件见[第三方声明](THIRD-PARTY-NOTICES.txt)。
